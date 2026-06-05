@@ -4,38 +4,7 @@ This repository is the JI TECH OpenClaw product source repository.
 
 It is not the server operations repository. Host install, NAS mount policy, customer slots, image catalog, rollout, drift checks, and the admin console are handled by [`Epicevent/openclaw-nas-agent-baseline`](https://github.com/Epicevent/openclaw-nas-agent-baseline).
 
-## Account And Path Map
-
-| Layer | Account / path | Purpose | Must match |
-| --- | --- | --- | --- |
-| Product source of truth | `Epicevent/openclaw-jitech` | OpenClaw UI and product code | Source commit used for image release |
-| Server development checkout | `openclawdev:/home/openclawdev/src/openclaw-jitech` | Server-side development copy | Same Git repository and commit as this repo when releasing |
-| Development preview slot | `dev-oc` | Shows the current OpenClaw dev build through Apache | Must use OpenClaw source mode only on dev slot |
-| Development preview URL | `https://dev-oc.ji-tech.co.kr/` | Browser preview of the dev slot container | Must reflect the server dev build |
-| Canary customer slot | `oc2` | First image-only customer slot used for important OpenClaw changes | Must run a registry image digest, not source mode |
-| Customer OpenClaw slots | `oc1` to `oc14` | Customer slots | Image-only |
-| Hermes slots | `oc15` to `oc20` | Hermes customer slots | Managed by the Hermes image lane |
-
-`openclawdev` and `dev-oc` are not the same account.
-
-```text
-openclawdev:
-  developer/build account
-  owns product source
-  may build images
-
-dev-oc:
-  managed dev slot account
-  no sudo/docker role as a customer-like slot
-  container may see OpenClaw dev build output
-
-oc2:
-  managed customer slot
-  canary target
-  must only run a published registry image
-```
-
-## Repository Responsibility
+## Responsibility
 
 This repository owns:
 
@@ -46,52 +15,71 @@ This repository owns:
 
 This repository does not own:
 
+- customer slot assignment
+- canary slot selection
+- production lane rollout
 - NAS credentials
 - Gemini/API keys
 - gateway tokens
 - `/srv/openclaw-ops`
 - Apache vhost files
-- customer slot rollout state
 - server `.env` files
 
 Secrets and customer data must not be committed here.
 
-## Development Loop
+## Account And Environment Boundaries
 
-Development happens on the server-side checkout.
+The source repository, server development checkout, dev preview slot, and customer slots are different layers.
 
-```bash
-ssh openclawdev@SERVER
-cd /home/openclawdev/src/openclaw-jitech
-git status
-```
+| Layer | Example | Purpose | Source of truth |
+| --- | --- | --- | --- |
+| Product source | `Epicevent/openclaw-jitech` | OpenClaw code that JI TECH changes | This repository |
+| Server development checkout | `/home/openclawdev/src/openclaw-jitech` | Server-side working copy used by the developer account | This repository after push/pull |
+| Dev preview slot | configured in operations | Shows the development build through Apache | Operations repo and `/srv/openclaw-ops` |
+| Customer slot | configured in operations | Runs a published image digest | Operations repo and `/srv/openclaw-ops` |
 
-The development preview is `dev-oc`.
+The developer account and the dev preview slot are not the same thing.
 
 ```text
-source:
-  /home/openclawdev/src/openclaw-jitech
+developer account:
+  owns and edits the product source checkout
+  may run build and image release work
 
-preview slot:
-  dev-oc
+dev preview slot:
+  managed slot used to inspect the development build in a browser
+  may use source mode when operations policy allows it
 
-preview URL:
-  https://dev-oc.ji-tech.co.kr/
+customer slot:
+  managed slot used by a real tester or customer
+  must run only a published registry image digest
+```
+
+This repository must not decide which customer slot is used for canary. That decision belongs to operations state.
+
+## Development Loop
+
+Development happens in the product source checkout.
+
+```bash
+cd /home/openclawdev/src/openclaw-jitech
+git status
 ```
 
 The intended loop is:
 
 ```text
-edit source as openclawdev
+edit source
   -> build/update dev output
-  -> inspect https://dev-oc.ji-tech.co.kr/
+  -> inspect through the configured dev preview URL
   -> commit source
-  -> publish image from that commit
-  -> canary oc2
+  -> push source
+  -> publish product image from that commit
+  -> operations wrapper image
+  -> operations-selected canary slot
   -> rollout only after canary passes
 ```
 
-Do not mount source into `oc1` to `oc14`.
+Customer slots do not use source mode.
 
 ## Product Image Release
 
@@ -117,7 +105,7 @@ ghcr.io/epicevent/openclaw-jitech:<version>-arm64
 ghcr.io/epicevent/openclaw-jitech:<version>
 ```
 
-The operating server is ARM64. The ARM64 digest is the input for the operations wrapper image.
+Use the architecture digest that matches the target server. The image tag is a human-readable name; digest is the deployment identity.
 
 ## Operations Wrapper Image
 
@@ -125,27 +113,27 @@ Customer slots do not run this product image directly. They run the OpenClaw NAS
 
 ```text
 openclaw-jitech source commit
-  -> ghcr.io/epicevent/openclaw-jitech:<version>-arm64
+  -> ghcr.io/epicevent/openclaw-jitech:<version>-<arch>
   -> openclaw-nas-agent-baseline wrapper workflow
   -> ghcr.io/epicevent/openclaw-nas-agent:<release>
   -> server image catalog
-  -> oc2 canary
+  -> operations-selected canary slot
   -> OpenClaw lane rollout
 ```
 
-Dispatch the wrapper workflow with the product image digest:
+Dispatch the wrapper workflow from the operations repository with the product image digest:
 
 ```bash
 gh workflow run "Publish OpenClaw Family Runtime Wrapper" \
   -R Epicevent/openclaw-nas-agent-baseline \
   -f image_tag="openclaw-jitech-YYYYMMDD-alphaN" \
-  -f base_image="ghcr.io/epicevent/openclaw-jitech@sha256:<arm64_digest>" \
+  -f base_image="ghcr.io/epicevent/openclaw-jitech@sha256:<digest>" \
   -f runtime_user="node"
 ```
 
 ## Server Registration
 
-On the server, register and verify the wrapper image with `svcops-control.sh`.
+Server registration and rollout are operations work. Use the operations repository and `svcops-control.sh`.
 
 ```bash
 sudo -n /opt/openclaw-nas-agent-baseline/scripts/svcops-control.sh image-release-add \
@@ -156,44 +144,21 @@ sudo -n /opt/openclaw-nas-agent-baseline/scripts/svcops-control.sh image-release
   openclaw-jitech-YYYYMMDD-alphaN
 ```
 
-Important OpenClaw changes are applied to `oc2` first.
+The operations state chooses the canary slot and rollout lane. This repository only produces the product source and product image.
 
-```bash
-sudo -n /opt/openclaw-nas-agent-baseline/scripts/svcops-control.sh image-rollout-slot \
-  oc2 openclaw-jitech-YYYYMMDD-alphaN
+## OpenClaw And Hermes Separation
 
-sudo -n /opt/openclaw-nas-agent-baseline/scripts/svcops-control.sh image-status oc2
-
-sudo -n /opt/openclaw-nas-agent-baseline/scripts/svcops-control.sh check \
-  oc2 oc2.ji-tech.co.kr
-```
-
-Only after `oc2` passes browser verification and deployment check should the OpenClaw lane be promoted.
-
-## Rollout Rules
+OpenClaw and Hermes are separate product lanes.
 
 ```text
-dev-oc:
-  source mode is allowed
+OpenClaw source:
+  Epicevent/openclaw-jitech
 
-oc1 to oc14:
-  image-only
-  source mode is forbidden
-
-oc15 to oc20:
-  Hermes lane
-  do not apply OpenClaw images
-```
-
-Hermes source and images are managed separately.
-
-```text
-source repo:
+Hermes source:
   Epicevent/hermes-jitech
-
-slots:
-  oc15 to oc20
 ```
+
+Do not apply an OpenClaw image to the Hermes lane. Do not apply a Hermes image to the OpenClaw lane.
 
 ## Local Checks
 
@@ -210,4 +175,4 @@ pnpm install --frozen-lockfile
 pnpm ui:build
 ```
 
-Deployment state is verified in the operations repository and on the server image catalog, not by this repository alone.
+Deployment state is verified in the operations repository and server image catalog, not by this repository alone.
