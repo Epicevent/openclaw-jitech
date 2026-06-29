@@ -161,6 +161,18 @@ LABEL com.epicevent.agent-runtime.selftest.name="openclaw-selftest-v1" \
   com.epicevent.agent-runtime.selftest.command="node dist/index.js selftest --json" \
   com.epicevent.agent-runtime.selftest.timeout="120"
 
+# Self-contained config contract: the image declares how to validate and migrate its own
+# on-disk config. agent-runtime-ops runs `config-validate.command` against the on-disk
+# config BEFORE recreating a container (a config the image would reject is gated, so the
+# running container is never torn down into a crash loop) and runs `config-migrate.command`
+# (the product's own `doctor --fix`, atomic + .bak backup) on explicit operator request.
+# opsctl never reimplements the schema; trust is anchored by the root-approved image digest.
+LABEL com.epicevent.agent-runtime.config.name="openclaw-config-v1" \
+  com.epicevent.agent-runtime.config-validate.command="node dist/index.js config validate --json" \
+  com.epicevent.agent-runtime.config-validate.timeout="120" \
+  com.epicevent.agent-runtime.config-migrate.command="node dist/index.js doctor --non-interactive --fix --no-workspace-suggestions" \
+  com.epicevent.agent-runtime.config-migrate.timeout="180"
+
 WORKDIR /app
 
 # Install runtime system utilities missing from bookworm-slim.
