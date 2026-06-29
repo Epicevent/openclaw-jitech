@@ -21,9 +21,15 @@ afterEach(() => {
 describe("openclaw selftest", () => {
   it("passes when gateway, model, and NAS round-trip all succeed", async () => {
     callGateway.mockImplementation(async (opts: { method: string }) => {
-      if (opts.method === "health") return {};
-      if (opts.method === "sessions.create") return { key: "s1" };
-      if (opts.method === "sessions.send") return { reply: "OK" };
+      if (opts.method === "health") {
+        return {};
+      }
+      if (opts.method === "sessions.create") {
+        return { key: "s1" };
+      }
+      if (opts.method === "sessions.send") {
+        return { reply: "OK" };
+      }
       throw new Error(`unexpected method ${opts.method}`);
     });
     vi.stubGlobal("fetch", vi.fn(async () => okRunnerResponse()));
@@ -39,9 +45,15 @@ describe("openclaw selftest", () => {
 
   it("fails when the model reply lacks the expected token", async () => {
     callGateway.mockImplementation(async (opts: { method: string }) => {
-      if (opts.method === "health") return {};
-      if (opts.method === "sessions.create") return { sessionKey: "s2" };
-      if (opts.method === "sessions.send") return { reply: "nope" };
+      if (opts.method === "health") {
+        return {};
+      }
+      if (opts.method === "sessions.create") {
+        return { sessionKey: "s2" };
+      }
+      if (opts.method === "sessions.send") {
+        return { reply: "nope" };
+      }
       throw new Error(`unexpected method ${opts.method}`);
     });
     vi.stubGlobal("fetch", vi.fn(async () => okRunnerResponse()));
@@ -53,9 +65,15 @@ describe("openclaw selftest", () => {
 
   it("fails the NAS check when the runner reports no tool calls", async () => {
     callGateway.mockImplementation(async (opts: { method: string }) => {
-      if (opts.method === "health") return {};
-      if (opts.method === "sessions.create") return { key: "s3" };
-      if (opts.method === "sessions.send") return { reply: "OK" };
+      if (opts.method === "health") {
+        return {};
+      }
+      if (opts.method === "sessions.create") {
+        return { key: "s3" };
+      }
+      if (opts.method === "sessions.send") {
+        return { reply: "OK" };
+      }
       throw new Error(`unexpected method ${opts.method}`);
     });
     vi.stubGlobal(
