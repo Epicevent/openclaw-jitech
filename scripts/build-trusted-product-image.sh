@@ -56,7 +56,11 @@ DOCKER_BUILDKIT=1 docker buildx build \
   -f "${work}/Dockerfile" \
   "${work}"
 
-digest="$(docker buildx imagetools inspect "${image_ref}" --format '{{.Manifest.Digest}}')"
+digest="$(docker buildx imagetools inspect "${image_ref}" | awk '/^Digest:/ { print $2; exit }')"
+case "${digest}" in
+  sha256:*) : ;;
+  *) echo "error: could not resolve pushed image digest" >&2; exit 1 ;;
+esac
 pinned="${REPO}@${digest}"
 echo "BUILT_IMAGE=${pinned}"
 echo "BUILT_SOURCE_COMMIT=${sha}"
