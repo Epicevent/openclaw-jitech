@@ -153,6 +153,14 @@ LABEL org.opencontainers.image.source="https://github.com/openclaw/openclaw" \
   org.opencontainers.image.title="OpenClaw" \
   org.opencontainers.image.description="OpenClaw gateway and CLI runtime container image"
 
+# Self-contained selftest contract: the image declares how to run its own customer-truth
+# self-check. The required checks come from the command's JSON output (required_checks).
+# agent-runtime-ops reads this label, runs the command, and gates rollout on the result;
+# trust is anchored by the root-approved image digest.
+LABEL com.epicevent.agent-runtime.selftest.name="openclaw-selftest-v1" \
+  com.epicevent.agent-runtime.selftest.command="node dist/index.js selftest --json" \
+  com.epicevent.agent-runtime.selftest.timeout="120"
+
 WORKDIR /app
 
 # Install runtime system utilities missing from bookworm-slim.
