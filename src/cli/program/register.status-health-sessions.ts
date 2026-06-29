@@ -162,6 +162,25 @@ export function registerStatusHealthSessionsCommands(program: Command) {
       });
     });
 
+  program
+    .command("selftest")
+    .description("Run the runtime customer-truth self-check (gateway, model, NAS) and emit JSON")
+    .option("--json", "Emit the structured selftest result (required by the operator contract)", false)
+    .option("--timeout <ms>", "Per-check timeout in milliseconds", "30000")
+    .option("--verbose", "Verbose logging", false)
+    .option("--debug", "Alias for --verbose", false)
+    .addHelpText(
+      "after",
+      () =>
+        `\n${theme.muted("Used by agent-runtime-ops to gate customer rollouts via the in-image selftest contract.")}\n`,
+    )
+    .action(async (opts) => {
+      await runWithVerboseAndTimeout(opts, async ({ timeoutMs }) => {
+        const { selftestCommand } = await import("../../commands/selftest.js");
+        await selftestCommand({ json: Boolean(opts.json), timeoutMs });
+      });
+    });
+
   const sessionsCmd = addSessionsListOptions(
     program.command("sessions").description("List stored conversation sessions"),
   )
