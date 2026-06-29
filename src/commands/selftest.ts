@@ -2,37 +2,24 @@
  * `openclaw selftest --json` — product-attested customer-truth self-check.
  *
  * The OpenClaw product attests to its own customer truth from INSIDE the running
- * container (it owns the gateway client, sessions, and the executor/NAS tool path),
+ * container (it owns the gateway, the model path, and the executor/NAS tool path),
  * instead of the operator tool reimplementing product probing. The agent-runtime-ops
- * wrapper image declares a selftest contract (recipes/runtime/openclaw-control.yaml);
- * opsctl verifies the attested contract via wrapper-label/recipe digests and then runs
- * this command via `docker exec`, parses the JSON below, and gates the rollout on the
- * `required` checks.
+ * wrapper image declares a selftest contract; opsctl verifies the attested contract via
+ * wrapper-label/recipe digests, runs this command via `docker exec`, parses the JSON
+ * below, and gates the rollout on the `required` checks.
  *
- * Required checks (must all pass for a customer rollout to proceed):
- *   - selftest_gateway_ready_ok          gateway answers (RPC reachable)
- *   - selftest_model_roundtrip_ok        a real model turn returns a reply
- *   - selftest_executor_nas_roundtrip_ok a real nas.list runs through the runner -> executor -> broker
+ * Required checks (all must pass for a customer rollout to proceed):
+ *   - selftest_gateway_ready_ok          GET  /readyz       -> 200 (gateway up + ready)
+ *   - selftest_model_roundtrip_ok        POST /v1/responses -> a real model completion
+ *   - selftest_executor_nas_roundtrip_ok POST runner /runner/runs -> real nas.list via executor
  *
- * NAS path: the executor session key is minted by the runner (POST /runner/runs), which
- * drives the real customer chain. The product src has no in-repo executor client (the
- * nas-executor-tools plugin lives in the openclaw-executor repo), so the NAS round-trip
- * is exercised by asking the runner to do it and inspecting its tool audit.
- *
- * ─────────────────────────────────────────────────────────────────────────────
- * VERIFICATION REQUIRED (could not be compiled/linted/tested where this was authored):
- *   - tsgo:core type-check + the repo lint suite (host-env-policy for process.env reads,
- *     no-raw-fetch may require a sanctioned http helper instead of global fetch).
- *   - Confirm gateway method names + return shapes used below against the live gateway:
- *       * "health" (readiness), "sessions.create" (returns key|sessionKey),
- *         "sessions.send" ({ key, message }).
- *   - Confirm the runner contract: POST {OPENCLAW_RUNNER_BASE_URL}/runner/runs with
- *     { request_id, mb_id, authoritative_grants, prompt } and the tool_audit response shape
- *     (openclaw-executor/runner/main.py).
- * Adjust the call sites flagged with `VERIFY:` once confirmed.
- * ─────────────────────────────────────────────────────────────────────────────
+ * All three talk to localhost services the gateway container can reach:
+ *   - the gateway HTTP surface on 18789 (the openclaw-gateway-http-18789 contract). The
+ *     model round-trip uses the synchronous OpenResponses endpoint (the same path the
+ *     runner uses); sessions.send is not used because it streams the reply asynchronously.
+ *   - the runner (OPENCLAW_RUNNER_BASE_URL, default :8006), which mints the executor
+ *     session and drives the real gateway -> nas-executor-tools -> executor -> broker chain.
  */
-import { callGateway } from "../gateway/call.js";
 import type { SelfTestCheck, SelfTestResult } from "./selftest.types.js";
 
 const CONTRACT_NAME = "openclaw-selftest-v1";
@@ -41,6 +28,9 @@ const REQUIRED_CHECKS = [
   "selftest_model_roundtrip_ok",
   "selftest_executor_nas_roundtrip_ok",
 ] as const;
+
+// Container-internal gateway HTTP surface (the openclaw-gateway-http-18789 contract).
+const GATEWAY_ORIGIN = "http://127.0.0.1:18789";
 
 /** Never let a token/secret-looking blob reach the JSON detail field. */
 function redact(value: unknown): string {
@@ -52,39 +42,50 @@ function required(name: string, ok: boolean, detail: string): SelfTestCheck {
   return { name, ok, detail, severity: "required" };
 }
 
+async function withTimeout<T>(timeoutMs: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await run(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function checkGatewayReady(timeoutMs: number): Promise<SelfTestCheck> {
   try {
-    // VERIFY: method name "health" + that a non-throwing response means ready.
-    await callGateway({ method: "health", params: {}, timeoutMs });
-    return required("selftest_gateway_ready_ok", true, "gateway answered");
+    const res = await withTimeout(timeoutMs, (signal) =>
+      fetch(`${GATEWAY_ORIGIN}/readyz`, { signal }),
+    );
+    return required("selftest_gateway_ready_ok", res.ok, `readyz status=${res.status}`);
   } catch (err) {
     return required("selftest_gateway_ready_ok", false, redact(err));
   }
 }
 
 async function checkModelRoundtrip(timeoutMs: number): Promise<SelfTestCheck> {
+  const token = process.env.OPENCLAW_GATEWAY_TOKEN || "";
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
   try {
-    // VERIFY: sessions.create params + return key field (key vs sessionKey).
-    const created = await callGateway<{ key?: string; sessionKey?: string }>({
-      method: "sessions.create",
-      params: {},
-      timeoutMs,
-    });
-    const sessionKey = created.key ?? created.sessionKey;
-    if (!sessionKey) {
-      return required("selftest_model_roundtrip_ok", false, "sessions.create returned no session key");
+    const res = await withTimeout(timeoutMs, (signal) =>
+      fetch(`${GATEWAY_ORIGIN}/v1/responses`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ model: "openclaw", input: "Reply with exactly: OK", stream: false }),
+        signal,
+      }),
+    );
+    if (!res.ok) {
+      return required("selftest_model_roundtrip_ok", false, `responses status=${res.status}`);
     }
-    // VERIFY: sessions.send params { key, message } + that the reply text is in the result.
-    const sent = await callGateway<Record<string, unknown>>({
-      method: "sessions.send",
-      params: { key: sessionKey, message: "Reply with exactly: OK" },
-      timeoutMs,
-    });
-    const replied = /\bOK\b/.test(JSON.stringify(sent));
+    const replied = /\bOK\b/.test(await res.text());
     return required(
       "selftest_model_roundtrip_ok",
       replied,
-      replied ? "model replied" : "no OK token in model reply",
+      replied ? "model completed" : "no OK token in completion",
     );
   } catch (err) {
     return required("selftest_model_roundtrip_ok", false, redact(err));
@@ -92,8 +93,8 @@ async function checkModelRoundtrip(timeoutMs: number): Promise<SelfTestCheck> {
 }
 
 async function checkExecutorNasRoundtrip(timeoutMs: number): Promise<SelfTestCheck> {
-  // VERIFY: env keys + host-env-policy. The executor session is minted by the runner;
-  // we drive the real chain and inspect its tool audit rather than calling the executor directly.
+  // The executor session is minted by the runner; we drive the real chain and inspect
+  // its tool audit rather than calling the executor directly (no in-repo executor client).
   const base = (process.env.OPENCLAW_RUNNER_BASE_URL || "http://127.0.0.1:8006").replace(/\/$/, "");
   const token = process.env.OPENCLAW_RUNNER_INTERNAL_TOKEN || "";
   const mbId = process.env.OPENCLAW_SELFTEST_MB_ID || "system_selftest";
@@ -106,21 +107,20 @@ async function checkExecutorNasRoundtrip(timeoutMs: number): Promise<SelfTestChe
   if (token) {
     headers["x-openclaw-runner-token"] = token;
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    // VERIFY: runner endpoint path + request/response contract (openclaw-executor/runner/main.py).
-    const res = await fetch(`${base}/runner/runs`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        request_id: `selftest_${Date.now()}`,
-        mb_id: mbId,
-        authoritative_grants: grants,
-        prompt: "List the root NAS directory to verify NAS access.",
+    const res = await withTimeout(timeoutMs, (signal) =>
+      fetch(`${base}/runner/runs`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          request_id: `selftest_${Date.now()}`,
+          mb_id: mbId,
+          authoritative_grants: grants,
+          prompt: "List the root NAS directory to verify NAS access.",
+        }),
+        signal,
       }),
-      signal: controller.signal,
-    });
+    );
     if (!res.ok) {
       return required("selftest_executor_nas_roundtrip_ok", false, `runner status=${res.status}`);
     }
@@ -131,8 +131,6 @@ async function checkExecutorNasRoundtrip(timeoutMs: number): Promise<SelfTestChe
     return required("selftest_executor_nas_roundtrip_ok", ok, `tool_calls=${calls} ok=${audit.ok ?? "n/a"}`);
   } catch (err) {
     return required("selftest_executor_nas_roundtrip_ok", false, redact(err));
-  } finally {
-    clearTimeout(timer);
   }
 }
 
