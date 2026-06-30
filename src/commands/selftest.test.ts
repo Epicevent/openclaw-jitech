@@ -1,37 +1,30 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runSelftest } from "./selftest.js";
 
-type FetchResponse = {
-  ok: boolean;
-  status: number;
-  text?: () => Promise<string>;
-  json?: () => Promise<unknown>;
-};
+const completionMock = vi.fn<[
+  string,
+], Promise<{ ok: boolean; text: string; detail: string }>>();
+vi.mock("../cli/capability-cli.js", () => ({
+  runLocalModelCompletion: (prompt: string) => completionMock(prompt),
+}));
 
-/** Route a mocked fetch by URL to the three localhost surfaces the selftest hits. */
-function mockFetch(routes: {
-  readyz?: FetchResponse;
-  responses?: FetchResponse;
-  runner?: FetchResponse;
-}) {
+const readdirMock = vi.fn<[string], Promise<string[]>>();
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    promises: { ...actual.promises, readdir: (path: string) => readdirMock(path) },
+  };
+});
+
+/** Stub the gateway readiness HTTP probe. */
+function stubReadyz(response: { ok: boolean; status: number } = { ok: true, status: 200 }) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
       if (url.includes("/readyz")) {
-        return (routes.readyz ?? { ok: true, status: 200 }) as unknown as Response;
-      }
-      if (url.includes("/v1/responses")) {
-        return (routes.responses ??
-          { ok: true, status: 200, text: async () => "...OK..." }) as unknown as Response;
-      }
-      if (url.includes("/runner/runs")) {
-        return (routes.runner ??
-          {
-            ok: true,
-            status: 200,
-            json: async () => ({ tool_audit: { ok: true, tool_call_count: 1 } }),
-          }) as unknown as Response;
+        return response as unknown as Response;
       }
       throw new Error(`unexpected fetch url ${url}`);
     }),
@@ -42,59 +35,64 @@ function byName(checks: { name: string; ok: boolean; detail?: string }[]) {
   return Object.fromEntries(checks.map((c) => [c.name, c]));
 }
 
+beforeEach(() => {
+  completionMock.mockResolvedValue({ ok: true, text: "OK", detail: "google/gemini-x" });
+  readdirMock.mockResolvedValue(["host-abc123"]);
+  stubReadyz();
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
+  completionMock.mockReset();
+  readdirMock.mockReset();
 });
 
 describe("openclaw selftest", () => {
-  it("passes when gateway, model, and NAS round-trip all succeed", async () => {
-    mockFetch({});
+  it("passes when gateway, model, and NAS access all succeed", async () => {
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(result.ok).toBe(true);
     expect(result.contract).toBe("openclaw-selftest-v1");
+    expect(result.required_checks).toEqual([
+      "selftest_gateway_ready_ok",
+      "selftest_model_roundtrip_ok",
+      "selftest_nas_access_ok",
+    ]);
     const checks = byName(result.checks);
     expect(checks.selftest_gateway_ready_ok.ok).toBe(true);
     expect(checks.selftest_model_roundtrip_ok.ok).toBe(true);
-    expect(checks.selftest_executor_nas_roundtrip_ok.ok).toBe(true);
+    expect(checks.selftest_nas_access_ok.ok).toBe(true);
   });
 
   it("fails when the model completion lacks the expected token", async () => {
-    mockFetch({ responses: { ok: true, status: 200, text: async () => "no token here" } });
+    completionMock.mockResolvedValue({ ok: true, text: "no token here", detail: "google/gemini-x" });
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(result.ok).toBe(false);
     expect(byName(result.checks).selftest_model_roundtrip_ok.ok).toBe(false);
   });
 
-  it("fails the model check on a non-200 responses status", async () => {
-    mockFetch({ responses: { ok: false, status: 401, text: async () => "" } });
+  it("fails the model check when the local completion errors", async () => {
+    completionMock.mockResolvedValue({ ok: false, text: "", detail: "no api key" });
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(byName(result.checks).selftest_model_roundtrip_ok.ok).toBe(false);
   });
 
-  it("fails the NAS check when the runner reports no tool calls", async () => {
-    mockFetch({
-      runner: { ok: true, status: 200, json: async () => ({ tool_audit: { ok: false, tool_call_count: 0 } }) },
-    });
+  it("fails the NAS check when the docs mount is not readable", async () => {
+    readdirMock.mockRejectedValue(new Error("ENOENT: no such file or directory"));
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(result.ok).toBe(false);
-    expect(byName(result.checks).selftest_executor_nas_roundtrip_ok.ok).toBe(false);
+    expect(byName(result.checks).selftest_nas_access_ok.ok).toBe(false);
   });
 
   it("fails gateway readiness on a non-200 readyz", async () => {
-    mockFetch({ readyz: { ok: false, status: 503 } });
+    stubReadyz({ ok: false, status: 503 });
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(byName(result.checks).selftest_gateway_ready_ok.ok).toBe(false);
   });
 
   it("does not leak long secret-like blobs into details", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new Error("boom token=abcdefghijklmnopqrstuvwxyz0123456789");
-      }),
-    );
+    completionMock.mockRejectedValue(new Error("boom token=abcdefghijklmnopqrstuvwxyz0123456789"));
     const result = await runSelftest({ timeoutMs: 5_000 });
-    const detail = byName(result.checks).selftest_gateway_ready_ok.detail ?? "";
+    const detail = byName(result.checks).selftest_model_roundtrip_ok.detail ?? "";
     expect(detail).not.toContain("abcdefghijklmnopqrstuvwxyz0123456789");
     expect(detail).toContain("<redacted>");
   });
