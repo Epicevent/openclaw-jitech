@@ -114,7 +114,9 @@ import {
   deleteSessionsAndRefresh,
   loadSessions,
   patchSession,
+  renameSidebarSession,
   restoreSessionFromCheckpoint,
+  suggestAndApplySessionLabel,
   toggleSessionCompactionCheckpoints,
 } from "./controllers/sessions.ts";
 import {
@@ -305,6 +307,11 @@ function renderSidebarSessions(state: AppViewState) {
               <div class="sidebar-recent-sessions__list">
                 ${recent.map((row) => renderSidebarRecentSession(state, row))}
               </div>
+              ${state.sidebarRenameError && !state.sidebarRenameKey
+                ? html`<div class="sidebar-recent-session__rename-error" role="alert">
+                    ${resolveSidebarLabelErrorMessage(state.sidebarRenameError)}
+                  </div>`
+                : nothing}
             </div>
           `}
     </section>
@@ -316,42 +323,163 @@ function renderSidebarRecentSession(state: AppViewState, row: GatewaySessionRow)
   const label = resolveSessionDisplayName(row.key, row);
   const meta = row.updatedAt ? formatRelativeTimestamp(row.updatedAt) : "n/a";
   const href = `${pathForTab("chat", state.basePath)}?session=${encodeURIComponent(row.key)}`;
+
+  if (state.sidebarRenameKey === row.key) {
+    return renderSidebarRecentSessionEditor(state, row);
+  }
+
+  const suggesting = state.sidebarSuggestKey === row.key;
+  const actionsDisabled = !state.connected || !state.client || state.sidebarRenameBusy;
   return html`
-    <a
-      href=${href}
-      class="sidebar-recent-session ${active ? "sidebar-recent-session--active" : ""}"
-      title=${`${label} · ${row.key}`}
-      @click=${(event: MouseEvent) => {
-        if (
-          event.defaultPrevented ||
-          event.button !== 0 ||
-          event.metaKey ||
-          event.ctrlKey ||
-          event.shiftKey ||
-          event.altKey
-        ) {
-          return;
-        }
-        event.preventDefault();
-        if (row.key !== state.sessionKey) {
-          switchChatSession(state, row.key);
-        }
-        state.setTab("chat" as import("./navigation.ts").Tab);
-      }}
-    >
-      <span class="sidebar-recent-session__dot" aria-hidden="true"></span>
-      <span class="sidebar-recent-session__body">
-        <span class="sidebar-recent-session__name">${label}</span>
-        <span class="sidebar-recent-session__meta">${meta}</span>
-      </span>
-      ${row.hasActiveRun
-        ? html`<span
-            class="sidebar-recent-session__live"
-            aria-label=${t("sessions.sessionDetails.activeRun")}
-          ></span>`
-        : nothing}
-    </a>
+    <div class="sidebar-recent-session-row ${active ? "sidebar-recent-session-row--active" : ""}">
+      <a
+        href=${href}
+        class="sidebar-recent-session ${active ? "sidebar-recent-session--active" : ""}"
+        title=${`${label} · ${row.key}`}
+        @click=${(event: MouseEvent) => {
+          if (
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey
+          ) {
+            return;
+          }
+          event.preventDefault();
+          if (row.key !== state.sessionKey) {
+            switchChatSession(state, row.key);
+          }
+          state.setTab("chat" as import("./navigation.ts").Tab);
+        }}
+      >
+        <span class="sidebar-recent-session__dot" aria-hidden="true"></span>
+        <span class="sidebar-recent-session__body">
+          <span class="sidebar-recent-session__name">${label}</span>
+          <span class="sidebar-recent-session__meta">${meta}</span>
+        </span>
+        ${row.hasActiveRun
+          ? html`<span
+              class="sidebar-recent-session__live"
+              aria-label=${t("sessions.sessionDetails.activeRun")}
+            ></span>`
+          : nothing}
+      </a>
+      <div class="sidebar-recent-session__actions">
+        <button
+          type="button"
+          class="sidebar-recent-session__action"
+          title=${t("chat.sidebar.autoName.action")}
+          aria-label=${t("chat.sidebar.autoName.action")}
+          ?disabled=${actionsDisabled || suggesting}
+          @click=${(event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void suggestAndApplySessionLabel(state, row.key);
+          }}
+        >
+          ${suggesting ? icons.loader : icons.spark}
+        </button>
+        <button
+          type="button"
+          class="sidebar-recent-session__action"
+          title=${t("chat.sidebar.rename.action")}
+          aria-label=${t("chat.sidebar.rename.action")}
+          ?disabled=${actionsDisabled || suggesting}
+          @click=${(event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            state.sidebarRenameError = null;
+            state.sidebarRenameKey = row.key;
+          }}
+        >
+          ${icons.edit}
+        </button>
+      </div>
+    </div>
   `;
+}
+
+function renderSidebarRecentSessionEditor(state: AppViewState, row: GatewaySessionRow) {
+  const commit = (inputEl: HTMLInputElement) => {
+    if (state.sidebarRenameKey !== row.key) {
+      return;
+    }
+    const value = inputEl.value.trim();
+    const current = (row.label ?? "").trim();
+    state.sidebarRenameKey = null;
+    if (!value || value === current) {
+      return;
+    }
+    void renameSidebarSession(state, row.key, value);
+  };
+  const cancel = () => {
+    if (state.sidebarRenameKey !== row.key) {
+      return;
+    }
+    state.sidebarRenameKey = null;
+    state.sidebarRenameError = null;
+  };
+  return html`
+    <div class="sidebar-recent-session-row sidebar-recent-session-row--editing">
+      <form
+        class="sidebar-recent-session__rename-form"
+        @submit=${(event: Event) => {
+          event.preventDefault();
+        }}
+      >
+        <input
+          class="sidebar-recent-session__rename-input"
+          .value=${row.label ?? ""}
+          placeholder=${t("chat.sidebar.rename.placeholder")}
+          ?disabled=${state.sidebarRenameBusy}
+          autofocus
+          @click=${(event: MouseEvent) => event.stopPropagation()}
+          @keydown=${(event: KeyboardEvent) => {
+            event.stopPropagation();
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commit(event.target as HTMLInputElement);
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              cancel();
+            }
+          }}
+          @blur=${(event: FocusEvent) => commit(event.target as HTMLInputElement)}
+        />
+        <button
+          type="button"
+          class="sidebar-recent-session__action"
+          title=${t("chat.sidebar.rename.cancel")}
+          aria-label=${t("chat.sidebar.rename.cancel")}
+          @mousedown=${(event: MouseEvent) => {
+            // mousedown fires before the input's blur so cancel wins over commit.
+            event.preventDefault();
+            cancel();
+          }}
+        >
+          ${icons.x}
+        </button>
+      </form>
+      ${state.sidebarRenameError
+        ? html`<div class="sidebar-recent-session__rename-error">
+            ${resolveSidebarLabelErrorMessage(state.sidebarRenameError)}
+          </div>`
+        : nothing}
+    </div>
+  `;
+}
+
+function resolveSidebarLabelErrorMessage(code: string): string {
+  switch (code) {
+    case "duplicate":
+      return t("chat.sidebar.rename.errorDuplicate");
+    case "autoNameFailed":
+      return t("chat.sidebar.autoName.error");
+    default:
+      return t("chat.sidebar.rename.errorGeneric");
+  }
 }
 
 // Lazy-loaded view modules are deferred so the initial bundle stays small.
