@@ -524,6 +524,80 @@ export async function patchSession(
   }
 }
 
+/**
+ * Sidebar session-list edit state: a superset of {@link SessionsState} carrying
+ * the transient rename/auto-name flags the left sidebar owns. AppViewState
+ * satisfies this structurally.
+ */
+export type SidebarSessionLabelState = SessionsState & {
+  sidebarRenameBusy: boolean;
+  sidebarRenameError: string | null;
+  sidebarSuggestKey: string | null;
+};
+
+function classifySidebarLabelError(err: unknown): "duplicate" | "generic" {
+  const message = err instanceof Error ? err.message : String(err);
+  return /already in use/i.test(message) ? "duplicate" : "generic";
+}
+
+/**
+ * Rename a session from the sidebar by setting its label via sessions.patch.
+ * Owns its own busy/error state so the admin table's error banner is untouched.
+ * Returns true on success.
+ */
+export async function renameSidebarSession(
+  state: SidebarSessionLabelState,
+  key: string,
+  label: string | null,
+): Promise<boolean> {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  state.sidebarRenameBusy = true;
+  state.sidebarRenameError = null;
+  try {
+    await state.client.request("sessions.patch", { key, label });
+    await loadSessions(state);
+    return true;
+  } catch (err) {
+    state.sidebarRenameError = classifySidebarLabelError(err);
+    return false;
+  } finally {
+    state.sidebarRenameBusy = false;
+  }
+}
+
+/**
+ * Ask the server to suggest a session title (sessions.suggestLabel), then apply
+ * it as the label via sessions.patch. No-ops when the suggestion is empty.
+ */
+export async function suggestAndApplySessionLabel(
+  state: SidebarSessionLabelState,
+  key: string,
+): Promise<void> {
+  if (!state.client || !state.connected) {
+    return;
+  }
+  const client = state.client;
+  state.sidebarSuggestKey = key;
+  state.sidebarRenameError = null;
+  try {
+    const res = await client.request<{ suggestion?: string }>("sessions.suggestLabel", { key });
+    const suggestion = typeof res?.suggestion === "string" ? res.suggestion.trim() : "";
+    if (!suggestion) {
+      state.sidebarRenameError = "autoNameFailed";
+      return;
+    }
+    await client.request("sessions.patch", { key, label: suggestion });
+    await loadSessions(state);
+  } catch (err) {
+    state.sidebarRenameError =
+      classifySidebarLabelError(err) === "duplicate" ? "duplicate" : "autoNameFailed";
+  } finally {
+    state.sidebarSuggestKey = null;
+  }
+}
+
 export async function createSessionAndRefresh(
   state: SessionsState,
   params: CreateSessionParams = {},

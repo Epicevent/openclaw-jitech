@@ -681,6 +681,26 @@ function normalizeModelRunThinking(value: unknown): ThinkLevel | undefined {
   return normalized;
 }
 
+/**
+ * Thin reusable wrapper for the product self-test: run a real one-shot model completion
+ * through the LOCAL transport (the customer's configured provider + credentials, no
+ * gateway HTTP endpoint flag and no WS dependency) and return a flat result. Reuses the
+ * exact, tested `runModelRun` path so the self-test exercises the same completion code
+ * customers rely on.
+ */
+export async function runLocalModelCompletion(
+  prompt: string,
+): Promise<{ ok: boolean; text: string; detail: string }> {
+  try {
+    const envelope = await runModelRun({ prompt, transport: "local" });
+    const text = String(envelope.outputs?.[0]?.text ?? "");
+    const attribution = `${envelope.provider ?? "?"}/${envelope.model ?? "?"}`;
+    return { ok: Boolean(envelope.ok) && text.length > 0, text, detail: attribution };
+  } catch (err) {
+    return { ok: false, text: "", detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 async function runModelRun(params: {
   prompt: string;
   files?: string[];

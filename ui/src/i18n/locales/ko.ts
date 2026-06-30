@@ -1078,6 +1078,19 @@ export const ko: TranslationMap = {
       send: "Send",
       sendMessage: "Send message",
     },
+    sidebar: {
+      rename: {
+        action: "세션 이름 변경",
+        placeholder: "세션 이름",
+        cancel: "취소",
+        errorDuplicate: "이미 사용 중인 이름입니다.",
+        errorGeneric: "세션 이름을 변경하지 못했습니다.",
+      },
+      autoName: {
+        action: "AI로 자동 이름 지정",
+        error: "이름을 생성하지 못했습니다.",
+      },
+    },
     composer: {
       placeholder: "Message {name} (Enter to send)",
       placeholderWithAttachments: "Add a message or paste more images...",

@@ -273,6 +273,11 @@ export type AppViewState = {
   sessionsLoading: boolean;
   sessionsResult: SessionsListResult | null;
   sessionsError: string | null;
+  // Transient sidebar session-list edit state (not persisted).
+  sidebarRenameKey: string | null;
+  sidebarRenameBusy: boolean;
+  sidebarRenameError: string | null;
+  sidebarSuggestKey: string | null;
   threadsLoading: boolean;
   threadsResult: SessionsListResult | null;
   threadsError: string | null;

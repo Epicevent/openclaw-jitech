@@ -401,6 +401,10 @@ export class OpenClawApp extends LitElement {
   @state() sessionsLoading = false;
   @state() sessionsResult: SessionsListResult | null = null;
   @state() sessionsError: string | null = null;
+  @state() sidebarRenameKey: string | null = null;
+  @state() sidebarRenameBusy = false;
+  @state() sidebarRenameError: string | null = null;
+  @state() sidebarSuggestKey: string | null = null;
   @state() sessionsFilterActive = DEFAULT_SESSIONS_FILTERS.activeMinutes;
   @state() sessionsFilterLimit = DEFAULT_SESSIONS_FILTERS.limit;
   @state() sessionsIncludeGlobal = true;

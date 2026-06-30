@@ -9,7 +9,12 @@ import {
   isEmbeddedPiRunActive,
   waitForEmbeddedPiRunEnd,
 } from "../../agents/pi-embedded-runner/runs.js";
+import { extractAssistantText } from "../../agents/pi-embedded-utils.js";
 import { compactEmbeddedPiSession } from "../../agents/pi-embedded.js";
+import {
+  completeWithPreparedSimpleCompletionModel,
+  prepareSimpleCompletionModelForAgent,
+} from "../../agents/simple-completion-runtime.js";
 import { clearSessionQueues } from "../../auto-reply/reply/queue/cleanup.js";
 import { normalizeReasoningLevel, normalizeThinkLevel } from "../../auto-reply/thinking.js";
 import {
@@ -44,6 +49,13 @@ import {
   toAgentStoreSessionKey,
 } from "../../routing/session-key.js";
 import {
+  SESSION_TITLE_MAX_TOKENS,
+  SESSION_TITLE_SYSTEM_PROMPT,
+  SESSION_TITLE_TIMEOUT_MS,
+  buildSessionTitleUserPrompt,
+  sanitizeSuggestedSessionTitle,
+} from "../../sessions/session-title.js";
+import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
   readStringValue,
@@ -68,6 +80,7 @@ import {
   validateSessionsMessagesSubscribeParams,
   validateSessionsMessagesUnsubscribeParams,
   validateSessionsPatchParams,
+  validateSessionsSuggestLabelParams,
   validateSessionsPluginPatchParams,
   validateSessionsPreviewParams,
   validateSessionsResetParams,
@@ -98,6 +111,7 @@ import {
   migrateAndPruneGatewaySessionStoreKey,
   readRecentSessionMessagesWithStatsAsync,
   readRecentSessionTranscriptLines,
+  readSessionTitleFieldsFromTranscriptAsync,
   readSessionMessageCountAsync,
   readSessionPreviewItemsFromTranscript,
   resolveDeletedAgentIdFromSessionKey,
@@ -1158,6 +1172,89 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       transcriptUsageMaxBytes: 64 * 1024,
     });
     respond(true, { session: row }, undefined);
+  },
+  "sessions.suggestLabel": async ({ params, respond, context }) => {
+    if (
+      !assertValidParams(
+        params,
+        validateSessionsSuggestLabelParams,
+        "sessions.suggestLabel",
+        respond,
+      )
+    ) {
+      return;
+    }
+    const key = requireSessionKey(params.key, respond);
+    if (!key) {
+      return;
+    }
+    const cfg = context.getRuntimeConfig();
+    const { target, storePath } = resolveGatewaySessionTargetFromKey(key, cfg);
+    const store = loadSessionStore(storePath);
+    const entry = resolveFreshestSessionEntryFromStoreKeys(store, target.storeKeys);
+    const emptySuggestion = { ok: true as const, key: target.canonicalKey, suggestion: "" };
+    if (!entry) {
+      respond(true, emptySuggestion, undefined);
+      return;
+    }
+    const agentId = normalizeAgentId(
+      parseAgentSessionKey(target.canonicalKey ?? key)?.agentId ?? resolveDefaultAgentId(cfg),
+    );
+    const fields = await readSessionTitleFieldsFromTranscriptAsync(
+      entry.sessionId,
+      storePath,
+      entry.sessionFile,
+      agentId,
+    );
+    const userPrompt = buildSessionTitleUserPrompt(fields);
+    if (!userPrompt) {
+      respond(true, emptySuggestion, undefined);
+      return;
+    }
+    const sessionModel = resolveSessionModelRef(cfg, entry, agentId);
+    const modelRef =
+      sessionModel.provider && sessionModel.model
+        ? `${sessionModel.provider}/${sessionModel.model}`
+        : undefined;
+    const prepared = await prepareSimpleCompletionModelForAgent({
+      cfg,
+      agentId,
+      ...(modelRef ? { modelRef } : {}),
+      allowMissingApiKeyModes: ["aws-sdk"],
+    });
+    if ("error" in prepared) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, prepared.error));
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SESSION_TITLE_TIMEOUT_MS);
+    try {
+      const response = await completeWithPreparedSimpleCompletionModel({
+        model: prepared.model,
+        auth: prepared.auth,
+        cfg,
+        context: {
+          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content: userPrompt,
+              timestamp: Date.now(),
+            },
+          ],
+        },
+        options: {
+          maxTokens: SESSION_TITLE_MAX_TOKENS,
+          signal: controller.signal,
+        },
+      });
+      const suggestion = sanitizeSuggestedSessionTitle(extractAssistantText(response));
+      respond(true, { ok: true, key: target.canonicalKey, suggestion }, undefined);
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
+    } finally {
+      clearTimeout(timer);
+    }
   },
   "sessions.resolve": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validateSessionsResolveParams, "sessions.resolve", respond)) {

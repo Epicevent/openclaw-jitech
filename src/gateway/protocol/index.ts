@@ -327,6 +327,9 @@ import {
   SessionsPatchParamsSchema,
   type SessionsPluginPatchParams,
   SessionsPluginPatchParamsSchema,
+  type SessionsSuggestLabelParams,
+  SessionsSuggestLabelParamsSchema,
+  type SessionsSuggestLabelResult,
   type SessionsPreviewParams,
   SessionsPreviewParamsSchema,
   type SessionsResetParams,
@@ -611,6 +614,9 @@ export const validateSessionsAbortParams =
   lazyCompile<SessionsAbortParams>(SessionsAbortParamsSchema);
 export const validateSessionsPatchParams =
   lazyCompile<SessionsPatchParams>(SessionsPatchParamsSchema);
+export const validateSessionsSuggestLabelParams = lazyCompile<SessionsSuggestLabelParams>(
+  SessionsSuggestLabelParamsSchema,
+);
 export const validateSessionsPluginPatchParams = lazyCompile<SessionsPluginPatchParams>(
   SessionsPluginPatchParamsSchema,
 );
@@ -1181,6 +1187,8 @@ export type {
   SessionOperationEvent,
   SessionsPatchParams,
   SessionsPatchResult,
+  SessionsSuggestLabelParams,
+  SessionsSuggestLabelResult,
   SessionsResetParams,
   SessionsDeleteParams,
   SessionsCompactParams,

@@ -220,6 +220,22 @@ export const SessionsPatchParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const SessionsSuggestLabelParamsSchema = Type.Object(
+  {
+    key: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+export const SessionsSuggestLabelResultSchema = Type.Object(
+  {
+    ok: Type.Literal(true),
+    key: NonEmptyString,
+    suggestion: Type.String(),
+  },
+  { additionalProperties: false },
+);
+
 export const SessionsPluginPatchParamsSchema = Type.Object(
   {
     key: NonEmptyString,
