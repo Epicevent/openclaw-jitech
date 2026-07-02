@@ -90,6 +90,7 @@ describe("google manifest model catalog", () => {
     expect(suppressionRefs).not.toContain("google/gemini-2.5-flash-lite");
     expect(suppressionRefs).not.toContain("google/gemini-2.5-pro");
     expect(suppressionRefs).not.toContain("google/gemini-3.1-pro-preview");
+    expect(suppressionRefs).not.toContain("google/gemini-3.5-flash");
   });
 
   it("normalizes retired Gemini 3 Pro aliases for all Google chat providers", () => {
