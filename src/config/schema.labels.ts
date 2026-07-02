@@ -30,6 +30,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "cli.banner.taglineMode": "CLI Banner Tagline Mode",
   update: "Updates",
   "update.channel": "Update Channel",
+  "update.source": "Update Source",
   "update.checkOnStart": "Update Check on Start",
   "update.auto.enabled": "Auto Update Enabled",
   "update.auto.stableDelayHours": "Auto Update Stable Delay (hours)",

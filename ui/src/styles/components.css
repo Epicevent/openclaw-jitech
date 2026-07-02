@@ -239,6 +239,12 @@
   background: rgba(239, 68, 68, 0.15);
 }
 
+.update-banner__note {
+  margin-left: 8px;
+  opacity: 0.85;
+  font-size: 12px;
+}
+
 .update-banner__close {
   display: inline-flex;
   align-items: center;

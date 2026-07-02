@@ -65,6 +65,8 @@ export const SnapshotSchema = Type.Object(
         currentVersion: NonEmptyString,
         latestVersion: NonEmptyString,
         channel: NonEmptyString,
+        source: Type.Optional(Type.Union([Type.Literal("npm"), Type.Literal("control-plane")])),
+        note: Type.Optional(NonEmptyString),
       }),
     ),
   },

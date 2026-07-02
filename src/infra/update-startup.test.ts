@@ -471,4 +471,86 @@ describe("update-startup", () => {
     });
     stop();
   });
+
+  describe("control-plane source", () => {
+    const controlPlaneCfg = { update: { source: "control-plane" as const } };
+
+    async function writeSignal(signal: Record<string, unknown>): Promise<void> {
+      await fs.writeFile(path.join(tempDir, "update-signal.json"), JSON.stringify(signal));
+    }
+
+    it("surfaces an approved image newer than the running version", async () => {
+      await writeSignal({
+        version: 1,
+        availableVersion: "2.0.0",
+        channel: "jitech",
+        note: "approved by ops",
+      });
+      const onUpdateAvailableChange = vi.fn();
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+        onUpdateAvailableChange,
+      });
+
+      const expected = {
+        currentVersion: "1.0.0",
+        latestVersion: "2.0.0",
+        channel: "jitech",
+        source: "control-plane",
+        note: "approved by ops",
+      };
+      expect(getUpdateAvailable()).toEqual(expected);
+      expect(onUpdateAvailableChange).toHaveBeenLastCalledWith(expected);
+    });
+
+    it("never contacts the npm registry and defaults the channel label", async () => {
+      await writeSignal({ version: 1, availableVersion: "2.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+
+      expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+      expect(checkUpdateStatus).not.toHaveBeenCalled();
+      expect(getUpdateAvailable()?.channel).toBe("control-plane");
+    });
+
+    it("reports no update when the signal is not newer than the running version", async () => {
+      await writeSignal({ version: 1, availableVersion: "1.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+    });
+
+    it("reports no update when the signal file is absent", async () => {
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+    });
+
+    it("stays silent when checkOnStart is disabled", async () => {
+      await writeSignal({ version: 1, availableVersion: "2.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: { update: { source: "control-plane", checkOnStart: false } },
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+      expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    });
+  });
 });

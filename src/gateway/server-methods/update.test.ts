@@ -539,3 +539,30 @@ describe("update.status", () => {
     expect(response?.sentinel?.status).toBe("ok");
   });
 });
+
+describe("update.run control-plane source", () => {
+  it("skips with control-plane-managed and never attempts an install", async () => {
+    const { updateHandlers } = await import("./update.js");
+    const respond = vi.fn();
+
+    await updateHandlers["update.run"]({
+      params: {},
+      respond: respond as never,
+      context: { getRuntimeConfig: () => ({ update: { source: "control-plane" } }) },
+    } as never);
+
+    expect(respond).toHaveBeenCalledTimes(1);
+    const [ok, response] = firstMockCall(respond, "update run response") as [
+      boolean,
+      { ok?: boolean; result?: { status?: string; reason?: string } } | undefined,
+    ];
+    expect(ok).toBe(true);
+    expect(response?.ok).toBe(false);
+    expect(response?.result?.status).toBe("skipped");
+    expect(response?.result?.reason).toBe("control-plane-managed");
+    expect(runGatewayUpdateMock).not.toHaveBeenCalled();
+    expect(resolveUpdateInstallSurfaceMock).not.toHaveBeenCalled();
+    expect(scheduleGatewaySigusr1RestartMock).not.toHaveBeenCalled();
+    expect(capturedPayload).toBeUndefined();
+  });
+});

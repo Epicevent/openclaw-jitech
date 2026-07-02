@@ -177,6 +177,8 @@ function resolveUpdateStatusBanner(params: { status?: string; reason?: string })
       "no-upstream": "Set an upstream branch, then retry.",
       "not-git-install":
         "Not a git checkout. Run `openclaw update` from the CLI for a global reinstall.",
+      "control-plane-managed":
+        "This deployment is updated by the operator. Approved images are promoted from the control plane, not from here.",
       "not-openclaw-root":
         "Run the update from an OpenClaw checkout or use the CLI global reinstall path.",
       "deps-install-failed": "Dependency install failed. Fix the install error and retry.",

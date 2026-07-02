@@ -13,6 +13,7 @@ import {
   type UpdateRestartSentinelMeta,
 } from "../../infra/update-restart-sentinel-payload.js";
 import { resolveUpdateInstallSurface, runGatewayUpdate } from "../../infra/update-runner.js";
+import { DEFAULT_UPDATE_SOURCE, normalizeUpdateSource } from "../../infra/update-signal.js";
 import { formatControlPlaneActor, resolveControlPlaneActor } from "../control-plane-audit.js";
 import { validateUpdateRunParams, validateUpdateStatusParams } from "../protocol/index.js";
 import {
@@ -46,6 +47,27 @@ export const updateHandlers: GatewayRequestHandlers = {
   },
   "update.run": async ({ params, respond, client, context }) => {
     if (!assertValidParams(params, validateUpdateRunParams, "update.run", respond)) {
+      return;
+    }
+    // Control-plane-managed slots (e.g. product images) can't self-apply: promotion is an
+    // operator action (`rollout image-promote`). Short-circuit so CLI/agent-tool callers get
+    // clear guidance instead of attempting an npm/git install that can't map to a promote.
+    const runtimeConfig = context.getRuntimeConfig();
+    const updateSource =
+      normalizeUpdateSource(runtimeConfig.update?.source) ?? DEFAULT_UPDATE_SOURCE;
+    if (updateSource === "control-plane") {
+      respond(true, {
+        ok: false,
+        result: {
+          status: "skipped",
+          mode: "unknown",
+          reason: "control-plane-managed",
+          steps: [],
+          durationMs: 0,
+        },
+        restart: null,
+        sentinel: { path: null, payload: null },
+      });
       return;
     }
     const actor = resolveControlPlaneActor(client);
