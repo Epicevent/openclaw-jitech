@@ -65,7 +65,7 @@ Skills own workflows; root owns hard policy and routing.
 - Typecheck: `tsgo` lanes only (`pnpm tsgo*`, `pnpm check:test-types`); never add `tsc --noEmit`, `typecheck`, `check:types`.
 - Formatting: `oxfmt`, not Prettier. Use repo wrappers (`pnpm format:*`, `pnpm lint:*`, `scripts/run-oxlint.mjs`).
 - Build before push when build output, packaging, lazy/module boundaries, dynamic imports, or published surfaces can change.
-- Dev preview (JI fleet): to *see* a change you do NOT build an image — build the dist (`pnpm build:docker && pnpm ui:build`), then ops syncs it to the source-mode slot `dev-oc` (`https://dev-oc.ji-tech.co.kr`) via `opsctl recipe apply-dev dev-oc --sync-from <dist>` (svcops-run; coordinate the sync). Build an image only for `dev-oc-img` image-artifact validation and customer ship (`image approve` -> `image-promote`); never target `dev-oc` with `image-*`. See agent-runtime-ops `AGENTS.md` / `docs/DEV_SLOTS.md`.
+- Dev preview (JI fleet): to *see* a change you do NOT build an image — build the dist (`pnpm build:docker && pnpm ui:build`; ensure `pnpm` is on PATH, the sub-scripts call bare `pnpm` — e.g. `corepack enable pnpm` — or `ui:build` fails silently into a UI-less `dist/index.js`-only tree; verify BOTH `dist/index.js` and `dist/control-ui` exist), then ops syncs the WHOLE `dist/` to the source-mode slot `dev-oc` (`https://dev-oc.ji-tech.co.kr`) via `opsctl recipe apply-dev dev-oc --sync-from <dist>` (svcops-run; coordinate the sync). Build an image only for `dev-oc-img` image-artifact validation and customer ship (`image approve` -> `image-promote`); never target `dev-oc` with `image-*`. See agent-runtime-ops `AGENTS.md` / `docs/DEV_SLOTS.md`.
 
 ## Validation
 
