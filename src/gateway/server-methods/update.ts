@@ -12,8 +12,12 @@ import {
   buildUpdateRestartSentinelPayload,
   type UpdateRestartSentinelMeta,
 } from "../../infra/update-restart-sentinel-payload.js";
-import { resolveUpdateInstallSurface, runGatewayUpdate } from "../../infra/update-runner.js";
-import { DEFAULT_UPDATE_SOURCE, normalizeUpdateSource } from "../../infra/update-signal.js";
+import {
+  resolveUpdateInstallSurface,
+  runGatewayUpdate,
+  type UpdateInstallSurface,
+} from "../../infra/update-runner.js";
+import { resolveEffectiveUpdateSource, type UpdateInstallKind } from "../../infra/update-signal.js";
 import { formatControlPlaneActor, resolveControlPlaneActor } from "../control-plane-audit.js";
 import { validateUpdateRunParams, validateUpdateStatusParams } from "../protocol/index.js";
 import {
@@ -36,6 +40,16 @@ function formatUpdateRunErrorMessage(err: unknown): string {
   return String(err);
 }
 
+function installSurfaceToInstallKind(kind: UpdateInstallSurface["kind"]): UpdateInstallKind {
+  if (kind === "git") {
+    return "git";
+  }
+  if (kind === "missing") {
+    return "unknown";
+  }
+  return "package";
+}
+
 export const updateHandlers: GatewayRequestHandlers = {
   "update.status": async ({ params, respond }) => {
     if (!assertValidParams(params, validateUpdateStatusParams, "update.status", respond)) {
@@ -47,27 +61,6 @@ export const updateHandlers: GatewayRequestHandlers = {
   },
   "update.run": async ({ params, respond, client, context }) => {
     if (!assertValidParams(params, validateUpdateRunParams, "update.run", respond)) {
-      return;
-    }
-    // Control-plane-managed slots (e.g. product images) can't self-apply: promotion is an
-    // operator action (`rollout image-promote`). Short-circuit so CLI/agent-tool callers get
-    // clear guidance instead of attempting an npm/git install that can't map to a promote.
-    const runtimeConfig = context.getRuntimeConfig();
-    const updateSource =
-      normalizeUpdateSource(runtimeConfig.update?.source) ?? DEFAULT_UPDATE_SOURCE;
-    if (updateSource === "control-plane") {
-      respond(true, {
-        ok: false,
-        result: {
-          status: "skipped",
-          mode: "unknown",
-          reason: "control-plane-managed",
-          steps: [],
-          durationMs: 0,
-        },
-        restart: null,
-        sentinel: { path: null, payload: null },
-      });
       return;
     }
     const actor = resolveControlPlaneActor(client);
@@ -115,6 +108,30 @@ export const updateHandlers: GatewayRequestHandlers = {
         cwd: root,
         argv1: process.argv[1],
       });
+      // Control-plane-managed installs (this fork's default for package/image installs)
+      // can't self-apply: promotion is an operator action (`rollout image-promote`).
+      // Short-circuit so CLI/agent-tool callers get clear guidance instead of an
+      // npm/git install attempt that can't map to a promote.
+      const updateSource = resolveEffectiveUpdateSource({
+        configSource: config.update?.source,
+        installKind: installSurfaceToInstallKind(installSurface.kind),
+      });
+      if (updateSource === "control-plane") {
+        respond(true, {
+          ok: false,
+          result: {
+            status: "skipped",
+            mode: installSurface.mode,
+            ...(installSurface.root ? { root: installSurface.root } : {}),
+            reason: "control-plane-managed",
+            steps: [],
+            durationMs: 0,
+          },
+          restart: null,
+          sentinel: { path: null, payload: null },
+        });
+        return;
+      }
       const supervisor = detectRespawnSupervisor(process.env, process.platform);
       if (!isRestartEnabled(config) && !supervisor) {
         const beforeVersion = installSurface.root

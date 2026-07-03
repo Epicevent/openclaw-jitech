@@ -3,10 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  DEFAULT_UPDATE_SOURCE,
   normalizeUpdateSource,
   parseUpdateSignal,
   readUpdateSignal,
+  resolveEffectiveUpdateSource,
   resolveUpdateSignalPath,
   UPDATE_SIGNAL_FILENAME,
 } from "./update-signal.js";
@@ -23,9 +23,29 @@ describe("normalizeUpdateSource", () => {
     expect(normalizeUpdateSource("")).toBeNull();
     expect(normalizeUpdateSource(undefined)).toBeNull();
   });
+});
 
-  it("defaults to upstream npm behavior", () => {
-    expect(DEFAULT_UPDATE_SOURCE).toBe("npm");
+describe("resolveEffectiveUpdateSource", () => {
+  it("explicit config wins regardless of install kind", () => {
+    expect(resolveEffectiveUpdateSource({ configSource: "npm", installKind: "package" })).toBe(
+      "npm",
+    );
+    expect(
+      resolveEffectiveUpdateSource({ configSource: "control-plane", installKind: "git" }),
+    ).toBe("control-plane");
+  });
+
+  it("defaults git checkouts to npm", () => {
+    expect(resolveEffectiveUpdateSource({ installKind: "git" })).toBe("npm");
+  });
+
+  it("defaults package and unknown installs to control-plane", () => {
+    expect(resolveEffectiveUpdateSource({ installKind: "package" })).toBe("control-plane");
+    expect(resolveEffectiveUpdateSource({ installKind: "unknown" })).toBe("control-plane");
+  });
+
+  it("treats an invalid config value as unset", () => {
+    expect(resolveEffectiveUpdateSource({ configSource: "ghcr", installKind: "git" })).toBe("npm");
   });
 });
 

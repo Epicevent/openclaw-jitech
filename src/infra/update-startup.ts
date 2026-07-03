@@ -13,9 +13,9 @@ import { resolveOpenClawPackageRoot } from "./openclaw-root.js";
 import { normalizeUpdateChannel, DEFAULT_PACKAGE_CHANNEL } from "./update-channels.js";
 import { compareSemverStrings, resolveNpmChannelTag, checkUpdateStatus } from "./update-check.js";
 import {
-  DEFAULT_UPDATE_SOURCE,
   normalizeUpdateSource,
   readUpdateSignal,
+  resolveEffectiveUpdateSource,
   type UpdateSignal,
   type UpdateSource,
 } from "./update-signal.js";
@@ -66,6 +66,9 @@ export type UpdateAvailable = {
 };
 
 let updateAvailableCache: UpdateAvailable | null = null;
+// Set by runGatewayUpdateCheck once the install kind is known; lets the sync
+// interval resolver honor the install-kind-aware default without re-probing.
+let lastEffectiveUpdateSource: UpdateSource | null = null;
 
 export function getUpdateAvailable(): UpdateAvailable | null {
   return updateAvailableCache;
@@ -73,6 +76,7 @@ export function getUpdateAvailable(): UpdateAvailable | null {
 
 export function resetUpdateAvailableStateForTest(): void {
   updateAvailableCache = null;
+  lastEffectiveUpdateSource = null;
 }
 
 const UPDATE_CHECK_FILENAME = "update-check.json";
@@ -120,7 +124,8 @@ function resolveAutoUpdatePolicy(cfg: OpenClawConfig): AutoUpdatePolicy {
 }
 
 function resolveCheckIntervalMs(cfg: OpenClawConfig): number {
-  if ((normalizeUpdateSource(cfg.update?.source) ?? DEFAULT_UPDATE_SOURCE) === "control-plane") {
+  const source = normalizeUpdateSource(cfg.update?.source) ?? lastEffectiveUpdateSource;
+  if (source === "control-plane") {
     return CONTROL_PLANE_CHECK_INTERVAL_MS;
   }
   const channel = normalizeUpdateChannel(cfg.update?.channel) ?? DEFAULT_PACKAGE_CHANNEL;
@@ -376,7 +381,24 @@ export async function runGatewayUpdateCheck(params: {
   if (params.isNixMode) {
     return;
   }
-  const source = normalizeUpdateSource(params.cfg.update?.source) ?? DEFAULT_UPDATE_SOURCE;
+  let source = normalizeUpdateSource(params.cfg.update?.source);
+  if (!source) {
+    // Install-kind probe is a few local git/fs checks; the npm path re-resolves it
+    // after its own interval gate, which only overlaps for unset-source git checkouts.
+    const probeRoot = await resolveOpenClawPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    });
+    const probeStatus = await checkUpdateStatus({
+      root: probeRoot,
+      timeoutMs: 2500,
+      fetchGit: false,
+      includeRegistry: false,
+    });
+    source = resolveEffectiveUpdateSource({ installKind: probeStatus.installKind });
+  }
+  lastEffectiveUpdateSource = source;
   if (source === "control-plane") {
     await runControlPlaneUpdateCheck(params);
     return;

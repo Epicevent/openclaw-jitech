@@ -218,19 +218,24 @@ safe shell command instead of running the package manager in-process.
 ## Control-plane-managed deployments
 
 Fleets that run operator-built, promoted product images (rather than public npm
-releases) should not point customers at the upstream release feed. Set the update
-**source** to the control plane:
+releases) should not point customers at the upstream release feed. **This is the
+fork's default for package and image installs**: when `update.source` is unset,
+git checkouts behave as `"npm"` (upstream release hints for developer working
+copies) and package/image installs behave as `"control-plane"` — no registry
+calls, no banner until an operator signal appears, no config write needed on
+slots. Set the key explicitly only to override:
 
 ```json5
 {
   update: {
+    // "npm" restores the upstream feed; "control-plane" forces the operator signal.
     source: "control-plane",
     checkOnStart: true,
   },
 }
 ```
 
-With `update.source: "control-plane"` the gateway never contacts a registry.
+With an effective source of `"control-plane"` the gateway never contacts a registry.
 Instead it reads an operator-written signal that describes the latest approved
 image, and the control UI shows a **display-only** banner: there is no "update
 now" button, because promotion is an operator action (`rollout image-promote`),

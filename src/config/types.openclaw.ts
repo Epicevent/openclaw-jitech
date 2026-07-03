@@ -94,10 +94,11 @@ export type OpenClawConfig = {
     /** Update channel for git + npm installs ("stable", "beta", or "dev"). */
     channel?: "stable" | "beta" | "dev";
     /**
-     * Where the "update available" signal comes from. "npm" (default) polls the
-     * upstream release feed; "control-plane" reads an operator-written signal file
-     * describing the latest approved product image and is display-only (promotion is
-     * an operator action, not an in-process install).
+     * Where the "update available" signal comes from. "npm" polls the upstream
+     * release feed; "control-plane" reads an operator-written signal file describing
+     * the latest approved product image and is display-only (promotion is an operator
+     * action, not an in-process install). Unset defaults by install kind: git
+     * checkouts behave as "npm", package/image installs as "control-plane".
      */
     source?: "npm" | "control-plane";
     /** Check for updates on gateway start. */

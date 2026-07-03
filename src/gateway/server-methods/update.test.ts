@@ -171,7 +171,10 @@ async function invokeUpdateRun(
   await updateHandlers["update.run"]({
     params,
     respond: onRespond as never,
-    context: { getRuntimeConfig: () => ({ update: {} }) },
+    // Pin the legacy npm source so these tests exercise the self-update machinery;
+    // unset source on a package surface now defaults to control-plane (see the
+    // "default source resolution" describe).
+    context: { getRuntimeConfig: () => ({ update: { source: "npm" } }) },
   } as never);
 }
 
@@ -561,8 +564,56 @@ describe("update.run control-plane source", () => {
     expect(response?.result?.status).toBe("skipped");
     expect(response?.result?.reason).toBe("control-plane-managed");
     expect(runGatewayUpdateMock).not.toHaveBeenCalled();
-    expect(resolveUpdateInstallSurfaceMock).not.toHaveBeenCalled();
+    expect(resolveUpdateInstallSurfaceMock).toHaveBeenCalledTimes(1);
     expect(scheduleGatewaySigusr1RestartMock).not.toHaveBeenCalled();
     expect(capturedPayload).toBeUndefined();
+  });
+});
+
+describe("update.run default source resolution", () => {
+  it("skips package installs as control-plane-managed when source is unset", async () => {
+    resolveUpdateInstallSurfaceMock.mockResolvedValue({
+      kind: "global",
+      mode: "npm",
+      root: "/tmp/openclaw",
+      packageRoot: "/tmp/openclaw",
+    });
+    const { updateHandlers } = await import("./update.js");
+    const respond = vi.fn();
+
+    await updateHandlers["update.run"]({
+      params: {},
+      respond: respond as never,
+      context: { getRuntimeConfig: () => ({ update: {} }) },
+    } as never);
+
+    const [, response] = firstMockCall(respond, "update run response") as [
+      boolean,
+      { ok?: boolean; result?: { status?: string; reason?: string } } | undefined,
+    ];
+    expect(response?.ok).toBe(false);
+    expect(response?.result?.status).toBe("skipped");
+    expect(response?.result?.reason).toBe("control-plane-managed");
+    expect(runGatewayUpdateMock).not.toHaveBeenCalled();
+    expect(startManagedServiceUpdateHandoffMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps git checkouts on the self-update path when source is unset", async () => {
+    const { updateHandlers } = await import("./update.js");
+    const respond = vi.fn();
+
+    await updateHandlers["update.run"]({
+      params: {},
+      respond: respond as never,
+      context: { getRuntimeConfig: () => ({ update: {} }) },
+    } as never);
+
+    const [ok, response] = firstMockCall(respond, "update run response") as [
+      boolean,
+      { ok?: boolean } | undefined,
+    ];
+    expect(ok).toBe(true);
+    expect(response?.ok).toBe(true);
+    expect(runGatewayUpdateMock).toHaveBeenCalledTimes(1);
   });
 });

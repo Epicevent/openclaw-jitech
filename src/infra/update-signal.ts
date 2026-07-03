@@ -15,7 +15,7 @@ import {
  */
 export type UpdateSource = "npm" | "control-plane";
 
-export const DEFAULT_UPDATE_SOURCE: UpdateSource = "npm";
+export type UpdateInstallKind = "git" | "package" | "unknown";
 
 export function normalizeUpdateSource(value?: string | null): UpdateSource | null {
   const normalized = normalizeOptionalLowercaseString(value);
@@ -23,6 +23,24 @@ export function normalizeUpdateSource(value?: string | null): UpdateSource | nul
     return normalized;
   }
   return null;
+}
+
+/**
+ * Effective update source. Explicit config always wins. When unset, this fork
+ * defaults package/image installs to "control-plane" — a fork artifact must never
+ * nag customers toward upstream npm releases, and it stays silent until an operator
+ * signal appears. Git checkouts keep the upstream "npm" behavior so developer
+ * working copies still see release hints and can self-update.
+ */
+export function resolveEffectiveUpdateSource(params: {
+  configSource?: string | null;
+  installKind: UpdateInstallKind;
+}): UpdateSource {
+  const explicit = normalizeUpdateSource(params.configSource);
+  if (explicit) {
+    return explicit;
+  }
+  return params.installKind === "git" ? "npm" : "control-plane";
 }
 
 /**
