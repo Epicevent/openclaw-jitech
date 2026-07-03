@@ -46,10 +46,8 @@ const GATEWAY_ORIGIN = "http://127.0.0.1:18789";
 /** Never let a token/secret-looking blob reach the JSON detail field. */
 function redact(value: unknown): string {
   const text = value instanceof Error ? value.message : String(value);
-  return text
-    .replace(/[A-Za-z0-9._-]{24,}/g, "<redacted>")
-    .split("\n", 1)[0]!
-    .slice(0, 200);
+  const [firstLine = ""] = text.replace(/[A-Za-z0-9._-]{24,}/g, "<redacted>").split("\n", 1);
+  return firstLine.slice(0, 200);
 }
 
 function required(name: string, ok: boolean, detail: string): SelfTestCheck {

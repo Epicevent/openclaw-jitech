@@ -2,14 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runSelftest } from "./selftest.js";
 
-const completionMock = vi.fn<[
-  string,
-], Promise<{ ok: boolean; text: string; detail: string }>>();
+const completionMock =
+  vi.fn<(prompt: string) => Promise<{ ok: boolean; text: string; detail: string }>>();
 vi.mock("../cli/capability-cli.js", () => ({
   runLocalModelCompletion: (prompt: string) => completionMock(prompt),
 }));
 
-const readdirMock = vi.fn<[string], Promise<string[]>>();
+const readdirMock = vi.fn<(path: string) => Promise<string[]>>();
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {

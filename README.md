@@ -31,12 +31,12 @@ Secrets and customer data must not be committed here.
 
 The source repository, server development checkout, dev preview slot, and customer slots are different layers.
 
-| Layer | Example | Purpose | Source of truth |
-| --- | --- | --- | --- |
-| Product source | `Epicevent/openclaw-jitech` | OpenClaw code that JI TECH changes | This repository |
-| Server development checkout | `/home/openclawdev/src/openclaw-jitech` | Server-side working copy used by the developer account | This repository after push/pull |
-| Dev preview slot | configured in operations | Shows the development build through Apache | Operations repo and `/srv/openclaw-ops` |
-| Customer slot | configured in operations | Runs a published image digest | Operations repo and `/srv/openclaw-ops` |
+| Layer                       | Example                                 | Purpose                                                | Source of truth                         |
+| --------------------------- | --------------------------------------- | ------------------------------------------------------ | --------------------------------------- |
+| Product source              | `Epicevent/openclaw-jitech`             | OpenClaw code that JI TECH changes                     | This repository                         |
+| Server development checkout | `/home/openclawdev/src/openclaw-jitech` | Server-side working copy used by the developer account | This repository after push/pull         |
+| Dev preview slot            | configured in operations                | Shows the development build through Apache             | Operations repo and `/srv/openclaw-ops` |
+| Customer slot               | configured in operations                | Runs a published image digest                          | Operations repo and `/srv/openclaw-ops` |
 
 The developer account and the dev preview slot are not the same thing.
 
