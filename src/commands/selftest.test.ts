@@ -17,6 +17,20 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
+// The session-title check dynamically imports the real config/agent/model stack;
+// stub all three so the test never reads host config or resolves a real model.
+const configSnapshotMock = vi.fn<() => Promise<{ runtimeConfig?: object; config?: object }>>();
+vi.mock("../config/config.js", () => ({
+  readConfigFileSnapshot: () => configSnapshotMock(),
+}));
+vi.mock("../agents/agent-scope.js", () => ({
+  resolveDefaultAgentId: () => "main",
+}));
+const titleMock = vi.fn<(params: unknown) => Promise<string>>();
+vi.mock("../sessions/session-title.js", () => ({
+  generateSessionTitle: (params: unknown) => titleMock(params),
+}));
+
 /** Stub the gateway readiness HTTP probe. */
 function stubReadyz(response: { ok: boolean; status: number } = { ok: true, status: 200 }) {
   vi.stubGlobal(
@@ -37,6 +51,8 @@ function byName(checks: { name: string; ok: boolean; detail?: string }[]) {
 beforeEach(() => {
   completionMock.mockResolvedValue({ ok: true, text: "OK", detail: "google/gemini-x" });
   readdirMock.mockResolvedValue(["host-abc123"]);
+  configSnapshotMock.mockResolvedValue({ runtimeConfig: {} });
+  titleMock.mockResolvedValue("Deployment status summary");
   stubReadyz();
 });
 
@@ -44,10 +60,12 @@ afterEach(() => {
   vi.restoreAllMocks();
   completionMock.mockReset();
   readdirMock.mockReset();
+  configSnapshotMock.mockReset();
+  titleMock.mockReset();
 });
 
 describe("openclaw selftest", () => {
-  it("passes when gateway, model, and NAS access all succeed", async () => {
+  it("passes when gateway, model, NAS access, and session titling all succeed", async () => {
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(result.ok).toBe(true);
     expect(result.contract).toBe("openclaw-selftest-v1");
@@ -55,11 +73,14 @@ describe("openclaw selftest", () => {
       "selftest_gateway_ready_ok",
       "selftest_model_roundtrip_ok",
       "selftest_nas_access_ok",
+      "selftest_session_title_ok",
     ]);
     const checks = byName(result.checks);
     expect(checks.selftest_gateway_ready_ok.ok).toBe(true);
     expect(checks.selftest_model_roundtrip_ok.ok).toBe(true);
     expect(checks.selftest_nas_access_ok.ok).toBe(true);
+    expect(checks.selftest_session_title_ok.ok).toBe(true);
+    expect(titleMock).toHaveBeenCalledTimes(1);
   });
 
   it("fails when the model completion lacks the expected token", async () => {
@@ -80,6 +101,22 @@ describe("openclaw selftest", () => {
     const result = await runSelftest({ timeoutMs: 5_000 });
     expect(result.ok).toBe(false);
     expect(byName(result.checks).selftest_nas_access_ok.ok).toBe(false);
+  });
+
+  it("fails the session-title check when the generated title is empty", async () => {
+    titleMock.mockResolvedValue("   ");
+    const result = await runSelftest({ timeoutMs: 5_000 });
+    expect(result.ok).toBe(false);
+    expect(byName(result.checks).selftest_session_title_ok.ok).toBe(false);
+  });
+
+  it("fails the session-title check when no runtime config is available", async () => {
+    configSnapshotMock.mockResolvedValue({});
+    const result = await runSelftest({ timeoutMs: 5_000 });
+    const check = byName(result.checks).selftest_session_title_ok;
+    expect(check.ok).toBe(false);
+    expect(check.detail).toBe("no runtime config");
+    expect(titleMock).not.toHaveBeenCalled();
   });
 
   it("fails gateway readiness on a non-200 readyz", async () => {
