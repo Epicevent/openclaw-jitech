@@ -564,7 +564,9 @@ jobs:
           fi
 
           if [ "$RUN_GATEWAY_WATCH" = "true" ]; then
-            start_check "gateway-watch" node scripts/check-gateway-watch-regression.mjs --skip-build --ready-timeout-ms 5000
+            # Upstream tunes 5000ms for its blacksmith-16vcpu runners; this fork runs
+            # standard ubuntu-24.04 runners where a clean boot measures 4.8-5.2s.
+            start_check "gateway-watch" node scripts/check-gateway-watch-regression.mjs --skip-build --ready-timeout-ms 10000
           fi
 
           for index in "${!pids[@]}"; do
