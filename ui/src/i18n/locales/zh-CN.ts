@@ -1051,6 +1051,19 @@ export const zh_CN: TranslationMap = {
       send: "发送",
       sendMessage: "发送消息",
     },
+    sidebar: {
+      rename: {
+        action: "Rename session",
+        placeholder: "Session name",
+        cancel: "取消",
+        errorDuplicate: "That name is already in use.",
+        errorGeneric: "Couldn't rename the session.",
+      },
+      autoName: {
+        action: "Auto-name with AI",
+        error: "Couldn't generate a name.",
+      },
+    },
     composer: {
       placeholder: "给 {name} 发消息（Enter 发送）",
       placeholderWithAttachments: "添加消息或继续粘贴图片...",
