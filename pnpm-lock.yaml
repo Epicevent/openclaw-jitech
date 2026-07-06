@@ -12,6 +12,7 @@ overrides:
   ws@8: 8.21.0
   '@grpc/grpc-js': 1.14.4
   '@earendil-works/pi-coding-agent': 0.78.1
+  '@earendil-works/pi-agent-core': 0.78.1
   '@vitest/browser': 4.1.8
   vitest: 4.1.8
   linkify-it: 5.0.2
@@ -60,8 +61,8 @@ importers:
         specifier: 1.4.0
         version: 1.4.0
       '@earendil-works/pi-agent-core':
-        specifier: 0.75.1
-        version: 0.75.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
+        specifier: 0.78.1
+        version: 0.78.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-ai':
         specifier: 0.75.1
         version: 0.75.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
@@ -363,8 +364,8 @@ importers:
         specifier: 0.16.0
         version: 0.16.0(zod@4.4.3)
       '@earendil-works/pi-agent-core':
-        specifier: 0.75.1
-        version: 0.75.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
+        specifier: 0.78.1
+        version: 0.78.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-ai':
         specifier: 0.75.1
         version: 0.75.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
@@ -2326,10 +2327,6 @@ packages:
   '@discordjs/voice@0.19.2':
     resolution: {integrity: sha512-3yJ255e4ag3wfZu/DSxeOZK1UtnqNxnspmLaQetGT0pDkThNZoHs+Zg6dgZZ19JEVomXygvfHn9lNpICZuYtEA==}
     engines: {node: '>=22.12.0'}
-
-  '@earendil-works/pi-agent-core@0.75.1':
-    resolution: {integrity: sha512-JVpX/Zle/enBzEM6he9sE0ASMo8Yhm8q7nOuPQjR/BXhkTBUevrNz7wtTV8VFvgjyhsXzbAsNCP5A4LiCcDx/A==}
-    engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-agent-core@0.78.1':
     resolution: {integrity: sha512-oPwVRkkAvyKPWyM7E4k+EaTNmynbYn7ZLG/LBh9BUnMNb2gvpMp+VQ420R6JCJ20uogSqrHnWTyosSa/rU8lVw==}
@@ -8780,21 +8777,6 @@ snapshots:
       - node-opus
       - opusscript
       - utf-8-validate
-
-  '@earendil-works/pi-agent-core@0.75.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)':
-    dependencies:
-      '@earendil-works/pi-ai': 0.75.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
-      ignore: 7.0.5
-      typebox: 1.1.38
-      yaml: 2.9.0
-    transitivePeerDependencies:
-      - '@modelcontextprotocol/sdk'
-      - aws-crt
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-      - ws
-      - zod
 
   '@earendil-works/pi-agent-core@0.78.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)':
     dependencies:
