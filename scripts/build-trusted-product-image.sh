@@ -49,6 +49,7 @@ echo "BUILD_IMAGE_REF=${image_ref}"
 
 DOCKER_BUILDKIT=1 docker buildx build \
   --build-arg "OPENCLAW_EXTENSIONS=${EXTENSIONS}" \
+  --build-arg "OPENCLAW_BUILD_VERSION=${TAG}" \
   --label "org.opencontainers.image.revision=${sha}" \
   --label "org.opencontainers.image.source=https://github.com/Epicevent/openclaw-jitech" \
   -t "${image_ref}" \
