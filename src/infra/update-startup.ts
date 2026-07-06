@@ -12,6 +12,13 @@ import { writeJson } from "./json-files.js";
 import { resolveOpenClawPackageRoot } from "./openclaw-root.js";
 import { normalizeUpdateChannel, DEFAULT_PACKAGE_CHANNEL } from "./update-channels.js";
 import { compareSemverStrings, resolveNpmChannelTag, checkUpdateStatus } from "./update-check.js";
+import {
+  normalizeUpdateSource,
+  readUpdateSignal,
+  resolveEffectiveUpdateSource,
+  type UpdateSignal,
+  type UpdateSource,
+} from "./update-signal.js";
 
 type UpdateCheckState = {
   lastCheckedAt?: string;
@@ -48,9 +55,20 @@ export type UpdateAvailable = {
   currentVersion: string;
   latestVersion: string;
   channel: string;
+  /**
+   * Delivery model. "npm" (default when omitted) allows an in-app self-apply via
+   * `update.run`; "control-plane" is display-only — promotion is an operator action,
+   * so the control UI omits the apply button.
+   */
+  source?: UpdateSource;
+  /** Optional operator note shown in the banner (control-plane source). */
+  note?: string;
 };
 
 let updateAvailableCache: UpdateAvailable | null = null;
+// Set by runGatewayUpdateCheck once the install kind is known; lets the sync
+// interval resolver honor the install-kind-aware default without re-probing.
+let lastEffectiveUpdateSource: UpdateSource | null = null;
 
 export function getUpdateAvailable(): UpdateAvailable | null {
   return updateAvailableCache;
@@ -58,11 +76,15 @@ export function getUpdateAvailable(): UpdateAvailable | null {
 
 export function resetUpdateAvailableStateForTest(): void {
   updateAvailableCache = null;
+  lastEffectiveUpdateSource = null;
 }
 
 const UPDATE_CHECK_FILENAME = "update-check.json";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
+// Reading the local control-plane signal is nearly free, so re-check hourly to surface a
+// freshly approved image without waiting for the 24h npm cadence.
+const CONTROL_PLANE_CHECK_INTERVAL_MS = ONE_HOUR_MS;
 const AUTO_UPDATE_COMMAND_TIMEOUT_MS = 45 * 60 * 1000;
 const AUTO_STABLE_DELAY_HOURS_DEFAULT = 6;
 const AUTO_STABLE_JITTER_HOURS_DEFAULT = 12;
@@ -102,6 +124,10 @@ function resolveAutoUpdatePolicy(cfg: OpenClawConfig): AutoUpdatePolicy {
 }
 
 function resolveCheckIntervalMs(cfg: OpenClawConfig): number {
+  const source = normalizeUpdateSource(cfg.update?.source) ?? lastEffectiveUpdateSource;
+  if (source === "control-plane") {
+    return CONTROL_PLANE_CHECK_INTERVAL_MS;
+  }
   const channel = normalizeUpdateChannel(cfg.update?.channel) ?? DEFAULT_PACKAGE_CHANNEL;
   const auto = resolveAutoUpdatePolicy(cfg);
   if (!auto.enabled) {
@@ -299,6 +325,44 @@ function clearAutoState(nextState: UpdateCheckState): void {
   delete nextState.autoFirstSeenAt;
 }
 
+function evaluateControlPlaneUpdate(signal: UpdateSignal | null): UpdateAvailable | null {
+  if (!signal) {
+    return null;
+  }
+  const cmp = compareSemverStrings(VERSION, signal.availableVersion);
+  if (cmp == null || cmp >= 0) {
+    return null;
+  }
+  return {
+    currentVersion: VERSION,
+    latestVersion: signal.availableVersion,
+    channel: signal.channel ?? "control-plane",
+    source: "control-plane",
+    ...(signal.note ? { note: signal.note } : {}),
+  };
+}
+
+// Control-plane source is display-only: operators promote approved images via the
+// control plane, so we never reach a registry or inspect the install surface here — we
+// just reflect the opsctl-written signal into the banner cache.
+async function runControlPlaneUpdateCheck(params: {
+  cfg: OpenClawConfig;
+  onUpdateAvailableChange?: (updateAvailable: UpdateAvailable | null) => void;
+}): Promise<void> {
+  if (params.cfg.update?.checkOnStart === false) {
+    setUpdateAvailableCache({
+      next: null,
+      onUpdateAvailableChange: params.onUpdateAvailableChange,
+    });
+    return;
+  }
+  const signal = await readUpdateSignal();
+  setUpdateAvailableCache({
+    next: evaluateControlPlaneUpdate(signal),
+    onUpdateAvailableChange: params.onUpdateAvailableChange,
+  });
+}
+
 export async function runGatewayUpdateCheck(params: {
   cfg: OpenClawConfig;
   log: { info: (msg: string, meta?: Record<string, unknown>) => void };
@@ -315,6 +379,28 @@ export async function runGatewayUpdateCheck(params: {
     return;
   }
   if (params.isNixMode) {
+    return;
+  }
+  let source = normalizeUpdateSource(params.cfg.update?.source);
+  if (!source) {
+    // Install-kind probe is a few local git/fs checks; the npm path re-resolves it
+    // after its own interval gate, which only overlaps for unset-source git checkouts.
+    const probeRoot = await resolveOpenClawPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    });
+    const probeStatus = await checkUpdateStatus({
+      root: probeRoot,
+      timeoutMs: 2500,
+      fetchGit: false,
+      includeRegistry: false,
+    });
+    source = resolveEffectiveUpdateSource({ installKind: probeStatus.installKind });
+  }
+  lastEffectiveUpdateSource = source;
+  if (source === "control-plane") {
+    await runControlPlaneUpdateCheck(params);
     return;
   }
   const auto = resolveAutoUpdatePolicy(params.cfg);

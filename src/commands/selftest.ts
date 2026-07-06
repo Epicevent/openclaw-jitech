@@ -13,6 +13,9 @@
  *   - selftest_model_roundtrip_ok  real one-shot completion via the local model transport
  *                                  (the customer's configured provider + credentials)
  *   - selftest_nas_access_ok       the NAS docs mount is readable from inside the container
+ *   - selftest_session_title_ok    AI session-title generation yields a non-empty title via
+ *                                  the SAME generateSessionTitle path the sessions.suggestLabel
+ *                                  gateway RPC uses (a green canary proves that feature)
  *
  * These use only what the gateway container natively has: the gateway readiness HTTP probe,
  * the product's own local model-completion path (reused from `infer model run`), and the
@@ -27,7 +30,15 @@ const REQUIRED_CHECKS = [
   "selftest_gateway_ready_ok",
   "selftest_model_roundtrip_ok",
   "selftest_nas_access_ok",
+  "selftest_session_title_ok",
 ] as const;
+
+// Representative transcript context for the title self-check. English so it is
+// model/locale-agnostic; the check only asserts a non-empty sanitized title.
+const SELFTEST_TITLE_SAMPLE = {
+  firstUserMessage: "Summarize the deployment status and list any failing checks.",
+  lastMessagePreview: "Then propose the next rollout step.",
+};
 
 // Container-internal gateway HTTP surface (the openclaw-gateway-http-18789 contract).
 const GATEWAY_ORIGIN = "http://127.0.0.1:18789";
@@ -35,14 +46,18 @@ const GATEWAY_ORIGIN = "http://127.0.0.1:18789";
 /** Never let a token/secret-looking blob reach the JSON detail field. */
 function redact(value: unknown): string {
   const text = value instanceof Error ? value.message : String(value);
-  return text.replace(/[A-Za-z0-9._-]{24,}/g, "<redacted>").split("\n", 1)[0]!.slice(0, 200);
+  const [firstLine = ""] = text.replace(/[A-Za-z0-9._-]{24,}/g, "<redacted>").split("\n", 1);
+  return firstLine.slice(0, 200);
 }
 
 function required(name: string, ok: boolean, detail: string): SelfTestCheck {
   return { name, ok, detail, severity: "required" };
 }
 
-async function withTimeout<T>(timeoutMs: number, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withTimeout<T>(
+  timeoutMs: number,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -77,7 +92,11 @@ async function checkModelRoundtrip(timeoutMs: number): Promise<SelfTestCheck> {
       ),
     ]);
     if (!result.ok) {
-      return required("selftest_model_roundtrip_ok", false, `model=${result.detail} ${redact(result.text || "no completion")}`);
+      return required(
+        "selftest_model_roundtrip_ok",
+        false,
+        `model=${result.detail} ${redact(result.text || "no completion")}`,
+      );
     }
     const replied = /\bOK\b/.test(result.text);
     return required(
@@ -94,12 +113,46 @@ async function checkNasAccess(): Promise<SelfTestCheck> {
   // Verify the customer's NAS is mounted and readable from inside the container (the
   // executor's data path). opsctl separately confirms it is a real mount (findmnt); here
   // we prove the gateway runtime can actually list it.
-  const dir = process.env.OPENCLAW_NAS_DOCS_DIR || join(process.env.HOME || "/home/node", "nas_docs");
+  const dir =
+    process.env.OPENCLAW_NAS_DOCS_DIR || join(process.env.HOME || "/home/node", "nas_docs");
   try {
     const entries = await fs.readdir(dir);
     return required("selftest_nas_access_ok", true, `nas dir=${dir} entries=${entries.length}`);
   } catch (err) {
     return required("selftest_nas_access_ok", false, `nas dir=${dir} ${redact(err)}`);
+  }
+}
+
+async function checkSessionTitle(timeoutMs: number): Promise<SelfTestCheck> {
+  // Exercise the AI session-title path with the customer's configured model, through the
+  // SAME generateSessionTitle the sessions.suggestLabel gateway RPC uses. Asserts only a
+  // non-empty sanitized title (lenient on purpose); catches regressions like an empty
+  // title from too-small a token budget on thinking models.
+  try {
+    const [{ readConfigFileSnapshot }, { resolveDefaultAgentId }, { generateSessionTitle }] =
+      await Promise.all([
+        import("../config/config.js"),
+        import("../agents/agent-scope.js"),
+        import("../sessions/session-title.js"),
+      ]);
+    const snapshot = await readConfigFileSnapshot();
+    const cfg = snapshot.runtimeConfig ?? snapshot.config;
+    if (!cfg) {
+      return required("selftest_session_title_ok", false, "no runtime config");
+    }
+    const agentId = resolveDefaultAgentId(cfg);
+    const title = await Promise.race([
+      generateSessionTitle({ cfg, agentId, fields: SELFTEST_TITLE_SAMPLE }),
+      new Promise<string>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeoutMs)),
+    ]);
+    const ok = typeof title === "string" && title.trim().length > 0;
+    return required(
+      "selftest_session_title_ok",
+      ok,
+      ok ? `title=${JSON.stringify(title)}` : "empty title",
+    );
+  } catch (err) {
+    return required("selftest_session_title_ok", false, redact(err));
   }
 }
 
@@ -114,6 +167,7 @@ export async function runSelftest(opts: SelftestOptions = {}): Promise<SelfTestR
   const checks: SelfTestCheck[] = [];
   checks.push(await checkGatewayReady(Math.min(timeoutMs, 10_000)));
   checks.push(await checkModelRoundtrip(timeoutMs));
+  checks.push(await checkSessionTitle(timeoutMs));
   checks.push(await checkNasAccess());
   const ok = checks.filter((c) => c.severity === "required").every((c) => c.ok);
   return {

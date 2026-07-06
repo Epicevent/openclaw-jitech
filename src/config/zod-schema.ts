@@ -533,6 +533,7 @@ export const OpenClawSchema = z
     update: z
       .object({
         channel: z.union([z.literal("stable"), z.literal("beta"), z.literal("dev")]).optional(),
+        source: z.union([z.literal("npm"), z.literal("control-plane")]).optional(),
         checkOnStart: z.boolean().optional(),
         auto: z
           .object({

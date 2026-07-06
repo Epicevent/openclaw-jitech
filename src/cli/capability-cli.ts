@@ -693,9 +693,9 @@ export async function runLocalModelCompletion(
 ): Promise<{ ok: boolean; text: string; detail: string }> {
   try {
     const envelope = await runModelRun({ prompt, transport: "local" });
-    const text = String(envelope.outputs?.[0]?.text ?? "");
+    const text = envelope.outputs?.[0]?.text ?? "";
     const attribution = `${envelope.provider ?? "?"}/${envelope.model ?? "?"}`;
-    return { ok: Boolean(envelope.ok) && text.length > 0, text, detail: attribution };
+    return { ok: envelope.ok && text.length > 0, text, detail: attribution };
   } catch (err) {
     return { ok: false, text: "", detail: err instanceof Error ? err.message : String(err) };
   }

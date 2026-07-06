@@ -6,6 +6,8 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- Update: add `update.source` ("npm" | "control-plane") — control-plane reads an operator-written `update-signal.json` and surfaces a display-only update banner (no in-app self-apply; `update.run` reports `control-plane-managed`).
+- Update: unset `update.source` now defaults by install kind — git checkouts keep upstream npm behavior, package/image installs default to control-plane so fork deployments never surface upstream npm release nags.
 - Agents/config: allow `agents.list[].experimental.localModelLean` so lean local-model mode can be enabled for one configured agent instead of globally.
 - Providers/xAI: add device-code OAuth login so remote and headless setups can authorize xAI without a localhost browser callback. (#84005) Thanks @fuller-stack-dev.
 

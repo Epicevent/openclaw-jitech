@@ -144,7 +144,7 @@ describe("update-startup", () => {
 
     const log = { info: vi.fn() };
     await runGatewayUpdateCheck({
-      cfg: { update: { channel } },
+      cfg: { update: { source: "npm", channel } },
       log,
       isNixMode: false,
       allowInTests: true,
@@ -184,6 +184,7 @@ describe("update-startup", () => {
     return {
       update: {
         ...(params?.checkOnStart === false ? { checkOnStart: false } : {}),
+        source: "npm" as const,
         channel: "beta" as const,
         auto: {
           enabled: true,
@@ -212,7 +213,7 @@ describe("update-startup", () => {
     >[0]["onUpdateAvailableChange"];
   }) {
     await runGatewayUpdateCheck({
-      cfg: { update: { channel: "stable" } },
+      cfg: { update: { source: "npm", channel: "stable" } },
       log: { info: vi.fn() },
       isNixMode: false,
       allowInTests: true,
@@ -260,7 +261,7 @@ describe("update-startup", () => {
 
     const onUpdateAvailableChange = vi.fn();
     await runGatewayUpdateCheck({
-      cfg: { update: { channel: "stable" } },
+      cfg: { update: { source: "npm", channel: "stable" } },
       log: { info: vi.fn() },
       isNixMode: false,
       allowInTests: true,
@@ -310,7 +311,7 @@ describe("update-startup", () => {
     const log = { info: vi.fn() };
 
     await runGatewayUpdateCheck({
-      cfg: { update: { checkOnStart: false } },
+      cfg: { update: { source: "npm", checkOnStart: false } },
       log,
       isNixMode: false,
       allowInTests: true,
@@ -329,6 +330,7 @@ describe("update-startup", () => {
     });
     const stableAutoConfig = {
       update: {
+        source: "npm" as const,
         channel: "stable" as const,
         auto: {
           enabled: true,
@@ -465,10 +467,128 @@ describe("update-startup", () => {
     mockPackageUpdateStatus("latest", "2.0.0");
 
     const stop = scheduleGatewayUpdateCheck({
-      cfg: { update: { channel: "stable" } },
+      cfg: { update: { source: "npm", channel: "stable" } },
       log: { info: vi.fn() },
       isNixMode: false,
     });
     stop();
+  });
+
+  describe("control-plane source", () => {
+    const controlPlaneCfg = { update: { source: "control-plane" as const } };
+
+    async function writeSignal(signal: Record<string, unknown>): Promise<void> {
+      await fs.writeFile(path.join(tempDir, "update-signal.json"), JSON.stringify(signal));
+    }
+
+    it("surfaces an approved image newer than the running version", async () => {
+      await writeSignal({
+        version: 1,
+        availableVersion: "2.0.0",
+        channel: "jitech",
+        note: "approved by ops",
+      });
+      const onUpdateAvailableChange = vi.fn();
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+        onUpdateAvailableChange,
+      });
+
+      const expected = {
+        currentVersion: "1.0.0",
+        latestVersion: "2.0.0",
+        channel: "jitech",
+        source: "control-plane",
+        note: "approved by ops",
+      };
+      expect(getUpdateAvailable()).toEqual(expected);
+      expect(onUpdateAvailableChange).toHaveBeenLastCalledWith(expected);
+    });
+
+    it("never contacts the npm registry and defaults the channel label", async () => {
+      await writeSignal({ version: 1, availableVersion: "2.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+
+      expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+      expect(checkUpdateStatus).not.toHaveBeenCalled();
+      expect(getUpdateAvailable()?.channel).toBe("control-plane");
+    });
+
+    it("reports no update when the signal is not newer than the running version", async () => {
+      await writeSignal({ version: 1, availableVersion: "1.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+    });
+
+    it("reports no update when the signal file is absent", async () => {
+      await runGatewayUpdateCheck({
+        cfg: controlPlaneCfg,
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+    });
+
+    it("stays silent when checkOnStart is disabled", async () => {
+      await writeSignal({ version: 1, availableVersion: "2.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: { update: { source: "control-plane", checkOnStart: false } },
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+      expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    });
+
+    it("defaults package installs to control-plane when source is unset", async () => {
+      mockPackageInstallStatus();
+      await writeSignal({ version: 1, availableVersion: "2.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: {},
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toEqual({
+        currentVersion: "1.0.0",
+        latestVersion: "2.0.0",
+        channel: "control-plane",
+        source: "control-plane",
+      });
+      expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    });
+
+    it("defaults git checkouts to npm behavior when source is unset (signal ignored)", async () => {
+      vi.mocked(resolveOpenClawPackageRoot).mockResolvedValue("/opt/openclaw");
+      vi.mocked(checkUpdateStatus).mockResolvedValue({
+        root: "/opt/openclaw",
+        installKind: "git",
+        packageManager: "pnpm",
+      } satisfies UpdateCheckResult);
+      await writeSignal({ version: 1, availableVersion: "2.0.0" });
+      await runGatewayUpdateCheck({
+        cfg: {},
+        log: { info: vi.fn() },
+        isNixMode: false,
+        allowInTests: true,
+      });
+      expect(getUpdateAvailable()).toBeNull();
+      expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    });
   });
 });

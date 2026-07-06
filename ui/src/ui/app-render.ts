@@ -1973,16 +1973,27 @@ export function renderApp(state: AppViewState) {
         ${state.updateAvailable &&
         state.updateAvailable.latestVersion !== state.updateAvailable.currentVersion &&
         !isUpdateBannerDismissed(state.updateAvailable)
-          ? html`<div class="update-banner callout danger" role="alert">
+          ? html`<div
+              class="update-banner ${state.updateAvailable.source === "control-plane"
+                ? "callout"
+                : "callout danger"}"
+              role="alert"
+            >
               <strong>${t("chat.updateAvailable")}</strong> v${state.updateAvailable.latestVersion}
               (${t("chat.runningVersion", { version: state.updateAvailable.currentVersion })}).
-              <button
-                class="btn btn--sm update-banner__btn"
-                ?disabled=${state.updateRunning || !state.connected}
-                @click=${() => runUpdate(state)}
-              >
-                ${state.updateRunning ? t("chat.updating") : t("chat.updateNow")}
-              </button>
+              ${state.updateAvailable.source === "control-plane"
+                ? // Control-plane updates are operator-applied (rollout image-promote), so
+                  // show the operator note instead of a self-apply button.
+                  state.updateAvailable.note
+                  ? html`<span class="update-banner__note">${state.updateAvailable.note}</span>`
+                  : nothing
+                : html`<button
+                    class="btn btn--sm update-banner__btn"
+                    ?disabled=${state.updateRunning || !state.connected}
+                    @click=${() => runUpdate(state)}
+                  >
+                    ${state.updateRunning ? t("chat.updating") : t("chat.updateNow")}
+                  </button>`}
               <button
                 class="update-banner__close"
                 type="button"

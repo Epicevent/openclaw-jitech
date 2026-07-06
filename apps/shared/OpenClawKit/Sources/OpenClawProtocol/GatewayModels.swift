@@ -2298,6 +2298,42 @@ public struct SessionsPluginPatchResult: Codable, Sendable {
     }
 }
 
+public struct SessionsSuggestLabelParams: Codable, Sendable {
+    public let key: String
+
+    public init(
+        key: String)
+    {
+        self.key = key
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+    }
+}
+
+public struct SessionsSuggestLabelResult: Codable, Sendable {
+    public let ok: Bool
+    public let key: String
+    public let suggestion: String
+
+    public init(
+        ok: Bool,
+        key: String,
+        suggestion: String)
+    {
+        self.ok = ok
+        self.key = key
+        self.suggestion = suggestion
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case key
+        case suggestion
+    }
+}
+
 public struct SessionsResetParams: Codable, Sendable {
     public let key: String
     public let reason: AnyCodable?

@@ -215,6 +215,65 @@ reachability, and recover an installed-but-unloaded macOS LaunchAgent when
 possible. If the Gateway cannot make that handoff safely, `update.run` reports a
 safe shell command instead of running the package manager in-process.
 
+## Control-plane-managed deployments
+
+Fleets that run operator-built, promoted product images (rather than public npm
+releases) should not point customers at the upstream release feed. **This is the
+fork's default for package and image installs**: when `update.source` is unset,
+git checkouts behave as `"npm"` (upstream release hints for developer working
+copies) and package/image installs behave as `"control-plane"` — no registry
+calls, no banner until an operator signal appears, no config write needed on
+slots. Set the key explicitly only to override:
+
+```json5
+{
+  update: {
+    // "npm" restores the upstream feed; "control-plane" forces the operator signal.
+    source: "control-plane",
+    checkOnStart: true,
+  },
+}
+```
+
+With an effective source of `"control-plane"` the gateway never contacts a registry.
+Instead it reads an operator-written signal that describes the latest approved
+image, and the control UI shows a **display-only** banner: there is no "update
+now" button, because promotion is an operator action (`rollout image-promote`),
+not an in-process install. If a caller still invokes the `update.run` control
+plane method, it returns `skipped` with reason `control-plane-managed` rather than
+attempting an npm or git install.
+
+### Update signal
+
+The operator/control plane (opsctl) writes the signal when a JI-approved image
+becomes promotable. Default location `<stateDir>/update-signal.json` (override
+with `OPENCLAW_UPDATE_SIGNAL_PATH`):
+
+```json
+{
+  "version": 1,
+  "availableVersion": "2026.7.1",
+  "channel": "jitech",
+  "imageTag": "ghcr.io/epicevent/openclaw-jitech:2026.7.1",
+  "approvedAt": "2026-07-01T12:00:00Z",
+  "note": "Approved for promotion by ops."
+}
+```
+
+Only `version` and `availableVersion` are required. The gateway compares
+`availableVersion` against its own running version and surfaces the banner (with
+the optional `note`) when the signal is newer. It re-reads the signal hourly, and
+a missing, empty, or malformed file simply means "no update available".
+
+### Running version
+
+Under this model the running version must describe the actual image, not a
+per-slot override. Stamp it into `build-info.json` at image build time by setting
+`OPENCLAW_BUILD_VERSION` before `pnpm build` (the trusted product-image build does
+this), and stop exporting the runtime `OPENCLAW_VERSION` override. `src/version.ts`
+resolves the version from `build-info.json`, so the banner compares against the
+real built image.
+
 ## After updating
 
 <Steps>

@@ -1089,6 +1089,19 @@ export const ja_JP: TranslationMap = {
       send: "Send",
       sendMessage: "Send message",
     },
+    sidebar: {
+      rename: {
+        action: "Rename session",
+        placeholder: "Session name",
+        cancel: "キャンセル",
+        errorDuplicate: "That name is already in use.",
+        errorGeneric: "Couldn't rename the session.",
+      },
+      autoName: {
+        action: "Auto-name with AI",
+        error: "Couldn't generate a name.",
+      },
+    },
     composer: {
       placeholder: "Message {name} (Enter to send)",
       placeholderWithAttachments: "Add a message or paste more images...",

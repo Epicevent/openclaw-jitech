@@ -9,12 +9,7 @@ import {
   isEmbeddedPiRunActive,
   waitForEmbeddedPiRunEnd,
 } from "../../agents/pi-embedded-runner/runs.js";
-import { extractAssistantText } from "../../agents/pi-embedded-utils.js";
 import { compactEmbeddedPiSession } from "../../agents/pi-embedded.js";
-import {
-  completeWithPreparedSimpleCompletionModel,
-  prepareSimpleCompletionModelForAgent,
-} from "../../agents/simple-completion-runtime.js";
 import { clearSessionQueues } from "../../auto-reply/reply/queue/cleanup.js";
 import { normalizeReasoningLevel, normalizeThinkLevel } from "../../auto-reply/thinking.js";
 import {
@@ -48,13 +43,7 @@ import {
   resolveAgentIdFromSessionKey,
   toAgentStoreSessionKey,
 } from "../../routing/session-key.js";
-import {
-  SESSION_TITLE_MAX_TOKENS,
-  SESSION_TITLE_SYSTEM_PROMPT,
-  SESSION_TITLE_TIMEOUT_MS,
-  buildSessionTitleUserPrompt,
-  sanitizeSuggestedSessionTitle,
-} from "../../sessions/session-title.js";
+import { generateSessionTitle } from "../../sessions/session-title.js";
 import {
   normalizeOptionalLowercaseString,
   normalizeOptionalString,
@@ -1206,54 +1195,17 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       entry.sessionFile,
       agentId,
     );
-    const userPrompt = buildSessionTitleUserPrompt(fields);
-    if (!userPrompt) {
-      respond(true, emptySuggestion, undefined);
-      return;
-    }
     const sessionModel = resolveSessionModelRef(cfg, entry, agentId);
     const modelRef =
       sessionModel.provider && sessionModel.model
         ? `${sessionModel.provider}/${sessionModel.model}`
         : undefined;
-    const prepared = await prepareSimpleCompletionModelForAgent({
-      cfg,
-      agentId,
-      ...(modelRef ? { modelRef } : {}),
-      allowMissingApiKeyModes: ["aws-sdk"],
-    });
-    if ("error" in prepared) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, prepared.error));
-      return;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), SESSION_TITLE_TIMEOUT_MS);
     try {
-      const response = await completeWithPreparedSimpleCompletionModel({
-        model: prepared.model,
-        auth: prepared.auth,
-        cfg,
-        context: {
-          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
-          messages: [
-            {
-              role: "user",
-              content: userPrompt,
-              timestamp: Date.now(),
-            },
-          ],
-        },
-        options: {
-          maxTokens: SESSION_TITLE_MAX_TOKENS,
-          signal: controller.signal,
-        },
-      });
-      const suggestion = sanitizeSuggestedSessionTitle(extractAssistantText(response));
+      // Same generator the selftest exercises, so a green canary proves this path.
+      const suggestion = await generateSessionTitle({ cfg, agentId, fields, modelRef });
       respond(true, { ok: true, key: target.canonicalKey, suggestion }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(err)));
-    } finally {
-      clearTimeout(timer);
     }
   },
   "sessions.resolve": async ({ params, respond, context }) => {

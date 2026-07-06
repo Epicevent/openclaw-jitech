@@ -56,7 +56,9 @@ export const FIELD_HELP: Record<string, string> = {
   update:
     "Update-channel and startup-check behavior for keeping OpenClaw runtime versions current. Use conservative channels in production and more experimental channels only in controlled environments.",
   "update.channel": 'Update channel for git + npm installs ("stable", "beta", or "dev").',
-  "update.checkOnStart": "Check for npm updates when the gateway starts (default: true).",
+  "update.source":
+    'Where the "update available" signal comes from: "npm" polls the upstream release feed, "control-plane" reads an operator-written signal file for the latest approved product image (display-only; promotion is an operator action). Unset defaults by install kind: git checkouts use "npm", package/image installs use "control-plane".',
+  "update.checkOnStart": "Check for updates when the gateway starts (default: true).",
   "update.auto.enabled": "Enable background auto-update for package installs (default: false).",
   "update.auto.stableDelayHours":
     "Minimum delay before stable-channel auto-apply starts (default: 6).",

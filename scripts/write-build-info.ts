@@ -17,6 +17,17 @@ const readPackageVersion = () => {
   }
 };
 
+// Trusted product-image builds stamp the JI version via OPENCLAW_BUILD_VERSION so the
+// running slot resolves its own version from build-info.json (see src/version.ts) instead
+// of a per-slot OPENCLAW_VERSION override. Stored bare to match the package-version shape.
+const resolveBuildVersion = () => {
+  const envVersion = process.env.OPENCLAW_BUILD_VERSION?.trim();
+  if (envVersion) {
+    return envVersion.replace(/^v(?=\d)/i, "");
+  }
+  return readPackageVersion();
+};
+
 const resolveCommit = () => {
   const envCommit = process.env.GIT_COMMIT?.trim() || process.env.GIT_SHA?.trim();
   if (envCommit) {
@@ -34,7 +45,7 @@ const resolveCommit = () => {
   }
 };
 
-const version = readPackageVersion();
+const version = resolveBuildVersion();
 const commit = resolveCommit();
 
 const buildInfo = {

@@ -1,5 +1,14 @@
-// Shared prompt + sanitizer for AI-suggested session titles (sessions.suggestLabel).
-// The product owns this logic; opsctl/UI never call a model directly.
+// Shared prompt + sanitizer + generator for AI-suggested session titles. Both the
+// sessions.suggestLabel gateway handler and the product selftest call generateSessionTitle,
+// so the model path they exercise is identical. The product owns this logic; opsctl/UI
+// never call a model directly.
+
+import { extractAssistantText } from "../agents/pi-embedded-utils.js";
+import {
+  completeWithPreparedSimpleCompletionModel,
+  prepareSimpleCompletionModelForAgent,
+} from "../agents/simple-completion-runtime.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 export const SESSION_TITLE_SYSTEM_PROMPT =
   "You name chat sessions. Given a conversation, reply with a short, specific title " +
@@ -69,4 +78,48 @@ export function sanitizeSuggestedSessionTitle(raw: string): string {
     title = title.slice(0, MAX_TITLE_CHARS).trim();
   }
   return title;
+}
+
+/**
+ * Full title-generation path: prompt -> the configured model -> sanitize. The single
+ * source of truth used by both the sessions.suggestLabel handler (with the session's
+ * model ref) and the product selftest (with the agent default). Returns "" when there
+ * is no usable context; throws when the model cannot be prepared (caller maps to error).
+ */
+export async function generateSessionTitle(params: {
+  cfg: OpenClawConfig;
+  agentId: string;
+  fields: SessionTitleContextFields;
+  modelRef?: string;
+}): Promise<string> {
+  const userPrompt = buildSessionTitleUserPrompt(params.fields);
+  if (!userPrompt) {
+    return "";
+  }
+  const prepared = await prepareSimpleCompletionModelForAgent({
+    cfg: params.cfg,
+    agentId: params.agentId,
+    ...(params.modelRef ? { modelRef: params.modelRef } : {}),
+    allowMissingApiKeyModes: ["aws-sdk"],
+  });
+  if ("error" in prepared) {
+    throw new Error(prepared.error);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SESSION_TITLE_TIMEOUT_MS);
+  try {
+    const response = await completeWithPreparedSimpleCompletionModel({
+      model: prepared.model,
+      auth: prepared.auth,
+      cfg: params.cfg,
+      context: {
+        systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userPrompt, timestamp: Date.now() }],
+      },
+      options: { maxTokens: SESSION_TITLE_MAX_TOKENS, signal: controller.signal },
+    });
+    return sanitizeSuggestedSessionTitle(extractAssistantText(response));
+  } finally {
+    clearTimeout(timer);
+  }
 }
