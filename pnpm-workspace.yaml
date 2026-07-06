@@ -54,6 +54,8 @@ overrides:
   "@grpc/grpc-js": 1.14.4
   "@earendil-works/pi-coding-agent": 0.78.1
   "@earendil-works/pi-agent-core": 0.75.1
+  "@earendil-works/pi-ai": 0.75.1
+  "@earendil-works/pi-tui": 0.75.1
   "@vitest/browser": 4.1.8
   vitest: 4.1.8
   linkify-it: 5.0.2
