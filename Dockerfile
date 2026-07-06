@@ -114,6 +114,10 @@ RUN pnpm_config_verify_deps_before_run=false pnpm canvas:a2ui:bundle || \
      echo "/* A2UI bundle unavailable in this build */" > extensions/canvas/src/host/a2ui/a2ui.bundle.js && \
      echo "stub" > extensions/canvas/src/host/a2ui/.bundle.hash && \
      rm -rf vendor/a2ui apps/shared/OpenClawKit/Tools/CanvasA2UI)
+# Stamp the shipped version into the image's own package.json: the runtime version
+# resolver prefers package.json over dist/build-info.json (src/version.ts), so the
+# tag must land here for the running slot to report the shipped version.
+RUN if [ -n "$OPENCLAW_BUILD_VERSION" ]; then npm pkg set version="$OPENCLAW_BUILD_VERSION"; fi
 RUN NODE_OPTIONS=--max-old-space-size=8192 pnpm_config_verify_deps_before_run=false pnpm build:docker
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
