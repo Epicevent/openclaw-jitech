@@ -2,17 +2,24 @@
   "fallbackKeys": [
     "chat.sidebar.autoName.action",
     "chat.sidebar.autoName.error",
+    "chat.sidebar.folders.delete",
+    "chat.sidebar.folders.deleteConfirm",
+    "chat.sidebar.folders.new",
+    "chat.sidebar.folders.newPlaceholder",
+    "chat.sidebar.folders.newSubfolder",
+    "chat.sidebar.folders.rename",
+    "chat.sidebar.folders.renamePlaceholder",
     "chat.sidebar.rename.action",
     "chat.sidebar.rename.errorDuplicate",
     "chat.sidebar.rename.errorGeneric",
     "chat.sidebar.rename.placeholder"
   ],
-  "generatedAt": "2026-07-06T00:28:49.327Z",
+  "generatedAt": "2026-07-06T07:30:41.311Z",
   "locale": "uk",
   "model": "claude-opus-4-7",
   "provider": "anthropic",
-  "sourceHash": "753abbd21df320d7e4e8fd45b835fe2d16854e200c44374029a4f24f7ca99bc6",
-  "totalKeys": 1124,
-  "translatedKeys": 1118,
+  "sourceHash": "129c02a7d1f334591ba3c63db70aace498fdc936c6955f21bd5baf5f77d71445",
+  "totalKeys": 1132,
+  "translatedKeys": 1119,
   "workflow": 1
 }

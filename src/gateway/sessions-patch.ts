@@ -38,6 +38,7 @@ import {
 } from "../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../sessions/model-overrides.js";
 import { normalizeSendPolicy } from "../sessions/send-policy.js";
+import { parseSessionFolderPath } from "../sessions/session-folder.js";
 import { parseSessionLabel } from "../sessions/session-label.js";
 import {
   normalizeOptionalLowercaseString,
@@ -133,6 +134,7 @@ export async function applySessionsPatchToStore(params: {
   if (existing && !existing.sessionId) {
     delete next.label;
     delete next.displayName;
+    delete next.folderPath;
   }
 
   if ("spawnedBy" in patch) {
@@ -299,6 +301,19 @@ export async function applySessionsPatchToStore(params: {
         }
       }
       next.label = parsed.label;
+    }
+  }
+
+  if ("folderPath" in patch) {
+    const raw = patch.folderPath;
+    if (raw === null) {
+      delete next.folderPath;
+    } else if (raw !== undefined) {
+      const parsed = parseSessionFolderPath(raw);
+      if (!parsed.ok) {
+        return invalid(parsed.error);
+      }
+      next.folderPath = parsed.folderPath;
     }
   }
 

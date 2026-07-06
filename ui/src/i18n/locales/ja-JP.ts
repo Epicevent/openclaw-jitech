@@ -1101,6 +1101,16 @@ export const ja_JP: TranslationMap = {
         action: "Auto-name with AI",
         error: "Couldn't generate a name.",
       },
+      folders: {
+        treeLabel: "セッション",
+        new: "New folder",
+        newSubfolder: "New subfolder",
+        newPlaceholder: "Folder name",
+        rename: "Rename folder",
+        renamePlaceholder: "Folder name",
+        delete: "Delete folder",
+        deleteConfirm: "Delete this folder? Sessions inside move back to the top level.",
+      },
     },
     composer: {
       placeholder: "Message {name} (Enter to send)",

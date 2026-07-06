@@ -345,6 +345,8 @@ export type SessionEntry = {
   cliSessionBindings?: Record<string, CliSessionBinding>;
   claudeCliSessionId?: string;
   label?: string;
+  /** Canonical "/"-joined folder location for control-UI session organization. */
+  folderPath?: string;
   displayName?: string;
   channel?: string;
   groupId?: string;

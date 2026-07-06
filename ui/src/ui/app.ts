@@ -405,6 +405,8 @@ export class OpenClawApp extends LitElement {
   @state() sidebarRenameBusy = false;
   @state() sidebarRenameError: string | null = null;
   @state() sidebarSuggestKey: string | null = null;
+  @state() sidebarFolderEditPath: string | null = null;
+  @state() sidebarFolderCreateParent: string | null = null;
   @state() sessionsFilterActive = DEFAULT_SESSIONS_FILTERS.activeMinutes;
   @state() sessionsFilterLimit = DEFAULT_SESSIONS_FILTERS.limit;
   @state() sessionsIncludeGlobal = true;

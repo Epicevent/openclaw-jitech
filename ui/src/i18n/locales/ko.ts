@@ -1090,6 +1090,16 @@ export const ko: TranslationMap = {
         action: "AI로 자동 이름 지정",
         error: "이름을 생성하지 못했습니다.",
       },
+      folders: {
+        treeLabel: "세션",
+        new: "새 폴더",
+        newSubfolder: "새 하위 폴더",
+        newPlaceholder: "폴더 이름",
+        rename: "폴더 이름 변경",
+        renamePlaceholder: "폴더 이름",
+        delete: "폴더 삭제",
+        deleteConfirm: "이 폴더를 삭제할까요? 안의 세션은 최상위로 이동합니다.",
+      },
     },
     composer: {
       placeholder: "Message {name} (Enter to send)",

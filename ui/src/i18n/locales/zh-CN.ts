@@ -1063,6 +1063,16 @@ export const zh_CN: TranslationMap = {
         action: "Auto-name with AI",
         error: "Couldn't generate a name.",
       },
+      folders: {
+        treeLabel: "会话",
+        new: "New folder",
+        newSubfolder: "New subfolder",
+        newPlaceholder: "Folder name",
+        rename: "Rename folder",
+        renamePlaceholder: "Folder name",
+        delete: "Delete folder",
+        deleteConfirm: "Delete this folder? Sessions inside move back to the top level.",
+      },
     },
     composer: {
       placeholder: "给 {name} 发消息（Enter 发送）",

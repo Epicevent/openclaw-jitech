@@ -278,6 +278,10 @@ export type AppViewState = {
   sidebarRenameBusy: boolean;
   sidebarRenameError: string | null;
   sidebarSuggestKey: string | null;
+  /** Folder path being renamed in the sidebar session tree (transient). */
+  sidebarFolderEditPath: string | null;
+  /** Parent path receiving a new folder ("" = root, null = not creating). */
+  sidebarFolderCreateParent: string | null;
   threadsLoading: boolean;
   threadsResult: SessionsListResult | null;
   threadsError: string | null;

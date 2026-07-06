@@ -567,6 +567,94 @@ export async function renameSidebarSession(
   }
 }
 
+/** Assign (or clear with null) a session's sidebar folder via sessions.patch. */
+export async function moveSessionToFolder(
+  state: SidebarSessionLabelState,
+  key: string,
+  folderPath: string | null,
+): Promise<boolean> {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  state.sidebarRenameBusy = true;
+  state.sidebarRenameError = null;
+  try {
+    await state.client.request("sessions.patch", { key, folderPath });
+    await loadSessions(state);
+    return true;
+  } catch (err) {
+    state.sidebarRenameError = classifySidebarLabelError(err);
+    return false;
+  } finally {
+    state.sidebarRenameBusy = false;
+  }
+}
+
+function sessionsUnderFolder(
+  state: SidebarSessionLabelState,
+  folderPath: string,
+): Array<{ key: string; folderPath: string }> {
+  const prefix = `${folderPath}/`;
+  return (state.sessionsResult?.sessions ?? [])
+    .filter((row) => row.folderPath === folderPath || row.folderPath?.startsWith(prefix))
+    .map((row) => ({ key: row.key, folderPath: row.folderPath as string }));
+}
+
+/** Rename a folder (and its subtree) by re-pathing every session under it. */
+export async function renameSessionFolder(
+  state: SidebarSessionLabelState,
+  fromPath: string,
+  toPath: string,
+): Promise<boolean> {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  state.sidebarRenameBusy = true;
+  state.sidebarRenameError = null;
+  try {
+    for (const session of sessionsUnderFolder(state, fromPath)) {
+      const nextPath =
+        session.folderPath === fromPath
+          ? toPath
+          : `${toPath}${session.folderPath.slice(fromPath.length)}`;
+      await state.client.request("sessions.patch", { key: session.key, folderPath: nextPath });
+    }
+    await loadSessions(state);
+    return true;
+  } catch (err) {
+    state.sidebarRenameError = classifySidebarLabelError(err);
+    await loadSessions(state);
+    return false;
+  } finally {
+    state.sidebarRenameBusy = false;
+  }
+}
+
+/** Delete a folder: sessions in its subtree fall back to the root (folderPath cleared). */
+export async function deleteSessionFolder(
+  state: SidebarSessionLabelState,
+  folderPath: string,
+): Promise<boolean> {
+  if (!state.client || !state.connected) {
+    return false;
+  }
+  state.sidebarRenameBusy = true;
+  state.sidebarRenameError = null;
+  try {
+    for (const session of sessionsUnderFolder(state, folderPath)) {
+      await state.client.request("sessions.patch", { key: session.key, folderPath: null });
+    }
+    await loadSessions(state);
+    return true;
+  } catch (err) {
+    state.sidebarRenameError = classifySidebarLabelError(err);
+    await loadSessions(state);
+    return false;
+  } finally {
+    state.sidebarRenameBusy = false;
+  }
+}
+
 /**
  * Ask the server to suggest a session title (sessions.suggestLabel), then apply
  * it as the label via sessions.patch. No-ops when the suggestion is empty.
