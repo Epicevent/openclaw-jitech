@@ -534,6 +534,16 @@ describe("resolveSessionOptionGroups", () => {
     expect(labels).toEqual(["Subagent: cron-config-check"]);
   });
 
+  it("prefixes the folder path so the picker mirrors the sidebar tree", () => {
+    const sessionKey = "agent:main:dashboard:78c82f42-e3ad-4023-ba96-d1a81052af12";
+    const labels = labelsForSessionOptions({
+      sessionKey,
+      sessions: [row({ key: sessionKey, label: "테스트 B", folderPath: "전구체/액상" })],
+    });
+
+    expect(labels).toEqual(["전구체/액상 / 테스트 B"]);
+  });
+
   it("keeps the active subagent session visible when no row exists yet", () => {
     const sessionKey = "agent:main:subagent:4f2146de-887b-4176-9abe-91140082959b";
 
