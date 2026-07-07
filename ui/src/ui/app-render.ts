@@ -31,6 +31,7 @@ import {
   recordControlUiRenderTiming,
   roundedControlUiDurationMs,
 } from "./control-ui-performance.ts";
+import { controlUiIsReleaseBuild, versionFooterText } from "./control-ui-release.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
@@ -1946,13 +1947,18 @@ export function renderApp(state: AppViewState) {
                 <div class="sidebar-mode-switch">${renderTopbarThemeModeToggle(state)}</div>
                 ${(() => {
                   const version = state.hello?.server?.version ?? "";
-                  return version
+                  const footerText = versionFooterText(
+                    version,
+                    controlUiIsReleaseBuild(),
+                    t("common.devBuild"),
+                  );
+                  return footerText
                     ? html`
-                        <div class="sidebar-version" title=${`v${version}`}>
+                        <div class="sidebar-version" title=${footerText}>
                           ${!navCollapsed
                             ? html`
                                 <span class="sidebar-version__label">${t("common.version")}</span>
-                                <span class="sidebar-version__text">v${version}</span>
+                                <span class="sidebar-version__text">${footerText}</span>
                                 ${renderSidebarConnectionStatus(state)}
                               `
                             : html` ${renderSidebarConnectionStatus(state)} `}

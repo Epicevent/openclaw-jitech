@@ -59,6 +59,7 @@ export const ko: TranslationMap = {
     loadApprovals: "승인 로드",
     settingsSections: "설정 섹션",
     version: "버전",
+    devBuild: "개발",
     docs: "문서",
     theme: "테마",
     colorMode: "색상 모드",

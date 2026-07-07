@@ -87,6 +87,13 @@ export default defineConfig(() => {
     base,
     define: {
       OPENCLAW_CONTROL_UI_BUILD_ID: JSON.stringify(controlUiBuildId),
+      // A release image build sets OPENCLAW_BUILD_VERSION (see product Dockerfile);
+      // a local/dev `pnpm ui:build` (e.g. a source-mount preview slot) does not. The
+      // footer uses this to show "개발" instead of a version that reflects neither the
+      // mounted dev UI nor a real release.
+      OPENCLAW_CONTROL_UI_RELEASE: JSON.stringify(
+        Boolean(process.env.OPENCLAW_BUILD_VERSION?.trim()),
+      ),
     },
     publicDir: path.resolve(here, "public"),
     optimizeDeps: {
