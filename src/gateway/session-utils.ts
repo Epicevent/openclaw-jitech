@@ -87,6 +87,7 @@ import {
   resolveStoredSessionKeyForAgentStore,
 } from "./session-store-key.js";
 import {
+  isEmptyTranscriptTombstone,
   readRecentSessionUsageFromTranscript,
   readSessionTitleFieldsFromTranscriptAsync,
   readSessionTitleFieldsFromTranscript,
@@ -120,7 +121,6 @@ export {
   readSessionMessagesAsync,
   visitSessionMessagesAsync,
   resolveSessionTranscriptCandidates,
-  isEmptyTranscriptTombstone,
 } from "./session-utils.fs.js";
 export type { ReadSessionMessagesAsyncOptions } from "./session-utils.fs.js";
 export { canonicalizeSpawnedByForAgent, resolveSessionStoreKey } from "./session-store-key.js";
