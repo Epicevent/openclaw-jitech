@@ -27,6 +27,7 @@ import {
   readSessionTitleFieldsFromTranscript,
   readSessionTitleFieldsFromTranscriptAsync,
   readSessionPreviewItemsFromTranscript,
+  isEmptyTranscriptTombstone,
   resolveSessionTranscriptCandidates,
 } from "./session-utils.fs.js";
 
@@ -146,6 +147,32 @@ function expectUsageFields(usage: unknown, fields: Record<string, unknown>) {
     expect(record[key]).toEqual(value);
   }
 }
+
+describe("isEmptyTranscriptTombstone", () => {
+  let tmpDir: string;
+  let storePath: string;
+
+  registerTempSessionStore("openclaw-tombstone-test-", (nextTmpDir, nextStorePath) => {
+    tmpDir = nextTmpDir;
+    storePath = nextStorePath;
+  });
+
+  test("flags an exactly-empty transcript file as a tombstone", () => {
+    const sessionId = "tombstone-empty";
+    fs.writeFileSync(path.join(tmpDir, `${sessionId}.jsonl`), "");
+    expect(isEmptyTranscriptTombstone(sessionId, storePath)).toBe(true);
+  });
+
+  test("does not flag a transcript that has at least a header line", () => {
+    const sessionId = "tombstone-real";
+    writeTranscript(tmpDir, sessionId, [{ type: "session", version: 1, id: sessionId }]);
+    expect(isEmptyTranscriptTombstone(sessionId, storePath)).toBe(false);
+  });
+
+  test("does not flag a session whose transcript file is absent", () => {
+    expect(isEmptyTranscriptTombstone("tombstone-missing", storePath)).toBe(false);
+  });
+});
 
 describe("readFirstUserMessageFromTranscript", () => {
   let tmpDir: string;
