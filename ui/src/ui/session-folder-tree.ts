@@ -23,7 +23,7 @@ function folderCollapsed(state: AppViewState, path: string): boolean {
 }
 
 function toggleFolderCollapsed(state: AppViewState, path: string) {
-  const next = { ...(state.settings.sessionFolderCollapsed ?? {}) };
+  const next = { ...state.settings.sessionFolderCollapsed };
   next[path] = !folderCollapsed(state, path);
   state.applySettings({ ...state.settings, sessionFolderCollapsed: next });
 }

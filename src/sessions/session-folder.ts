@@ -6,7 +6,17 @@ export type ParsedSessionFolderPath =
   | { ok: true; folderPath: string }
   | { ok: false; error: string };
 
-const CONTROL_CHARS_RE = /[\u0000-\u001f\u007f]/u;
+// Walk by code point rather than regex — the no-control-regex lint rule
+// forbids control characters inside character classes.
+function hasControlChars(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code <= 0x1f || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Parse a user-supplied session folder path ("전구체/액상") into its canonical
@@ -19,7 +29,7 @@ export function parseSessionFolderPath(raw: unknown): ParsedSessionFolderPath {
     return { ok: false, error: "invalid folderPath: must be a string" };
   }
   const normalized = raw.normalize("NFC");
-  if (CONTROL_CHARS_RE.test(normalized)) {
+  if (hasControlChars(normalized)) {
     return { ok: false, error: "invalid folderPath: control characters are not allowed" };
   }
   const segments = normalized
