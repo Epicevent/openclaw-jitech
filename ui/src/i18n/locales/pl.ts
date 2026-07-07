@@ -59,6 +59,7 @@ export const pl: TranslationMap = {
     loadApprovals: "Wczytaj zatwierdzenia",
     settingsSections: "Sekcje ustawień",
     version: "Wersja",
+    devBuild: "Development",
     docs: "Dokumentacja",
     theme: "Motyw",
     colorMode: "Tryb kolorów",

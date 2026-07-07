@@ -59,6 +59,7 @@ export const fa: TranslationMap = {
     loadApprovals: "بارگیری تأییدیه‌ها",
     settingsSections: "بخش‌های تنظیمات",
     version: "نسخه",
+    devBuild: "Development",
     docs: "مستندات",
     theme: "پوسته",
     colorMode: "حالت رنگ",

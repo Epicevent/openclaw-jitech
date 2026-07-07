@@ -59,6 +59,7 @@ export const vi: TranslationMap = {
     loadApprovals: "Tải phê duyệt",
     settingsSections: "Các mục cài đặt",
     version: "Phiên bản",
+    devBuild: "Development",
     docs: "Tài liệu",
     theme: "Giao diện",
     colorMode: "Chế độ màu",

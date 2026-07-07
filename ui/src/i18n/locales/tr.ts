@@ -59,6 +59,7 @@ export const tr: TranslationMap = {
     loadApprovals: "Onayları yükle",
     settingsSections: "Ayar bölümleri",
     version: "Sürüm",
+    devBuild: "Development",
     docs: "Dokümanlar",
     theme: "Tema",
     colorMode: "Renk modu",
