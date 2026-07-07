@@ -18,7 +18,8 @@ env:
 
 jobs:
   check:
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    # Requires Blacksmith runners; skip on forks so PRs don't queue forever.
+    if: ${{ github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     permissions:
       contents: read
     name: "check"

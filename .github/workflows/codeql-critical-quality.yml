@@ -148,7 +148,9 @@ permissions:
 jobs:
   quality-shards:
     name: Select Critical Quality shards
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    # Requires Blacksmith runners; skip on forks so PRs don't queue forever.
+    # All shard jobs `needs` this one, so they skip along with it.
+    if: ${{ github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     outputs:
