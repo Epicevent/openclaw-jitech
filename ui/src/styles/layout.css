@@ -1568,6 +1568,11 @@
 .session-tree__chevron svg {
   width: 12px;
   height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .session-tree__folder-name {
@@ -1620,6 +1625,11 @@
 .session-tree__folder-action svg {
   width: 12px;
   height: 12px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .session-tree__folder-body {
