@@ -26,7 +26,8 @@ env:
 
 jobs:
   sandbox-common-smoke:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    # Requires Blacksmith runners; skip on forks so PRs don't queue forever.
+    if: github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
     runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - name: Checkout
