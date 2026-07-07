@@ -1589,13 +1589,13 @@
   gap: 2px;
 }
 
-.session-tree__folder-header:hover .session-tree__folder-actions,
-.session-tree__root-header:hover .session-tree__folder-action {
+.session-tree__folder-header:hover .session-tree__folder-actions {
   display: inline-flex;
 }
 
+/* The root "new folder" button is the feature's entry point — keep it visible. */
 .session-tree__root-header .session-tree__folder-action {
-  display: none;
+  display: inline-flex;
 }
 
 .session-tree__folder-action {
