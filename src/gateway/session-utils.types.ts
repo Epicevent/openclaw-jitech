@@ -42,6 +42,8 @@ export type GatewaySessionRow = {
   subagentControlScope?: SessionEntry["subagentControlScope"];
   kind: "direct" | "group" | "global" | "unknown";
   label?: string;
+  /** Canonical "/"-joined folder location for control-UI session organization. */
+  folderPath?: string;
   displayName?: string;
   derivedTitle?: string;
   lastMessagePreview?: string;

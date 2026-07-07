@@ -148,8 +148,9 @@ import {
   type Tab,
 } from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
-import "./components/dashboard-header.ts";
 import { isCronSessionKey, resolveSessionDisplayName } from "./session-display.ts";
+import "./components/dashboard-header.ts";
+import { renderSessionFolderTree } from "./session-folder-tree.ts";
 import {
   buildAgentMainSessionKey,
   isSubagentSessionKey,
@@ -248,7 +249,7 @@ function isSidebarSessionBusy(state: AppViewState) {
   );
 }
 
-function resolveSidebarRecentSessions(state: AppViewState): GatewaySessionRow[] {
+function resolveSidebarSessionRows(state: AppViewState): GatewaySessionRow[] {
   return (state.sessionsResult?.sessions ?? [])
     .filter(
       (row) =>
@@ -260,14 +261,13 @@ function resolveSidebarRecentSessions(state: AppViewState): GatewaySessionRow[] 
         !isSubagentSessionKey(row.key) &&
         !row.spawnedBy,
     )
-    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-    .slice(0, 5);
+    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 }
 
 function renderSidebarSessions(state: AppViewState) {
   const collapsed = state.settings.navCollapsed;
   const busy = isSidebarSessionBusy(state);
-  const recent = collapsed ? [] : resolveSidebarRecentSessions(state);
+  const rows = collapsed ? [] : resolveSidebarSessionRows(state);
   const newSessionDisabled = !state.connected || state.sessionsLoading || busy || !state.client;
   const newSessionTitle = !state.connected
     ? "Connect to create a new session"
@@ -299,14 +299,11 @@ function renderSidebarSessions(state: AppViewState) {
               >${t("chat.runControls.newSession")}</span
             >`}
       </button>
-      ${collapsed || recent.length === 0
+      ${collapsed || rows.length === 0
         ? nothing
         : html`
-            <div class="sidebar-recent-sessions" aria-label=${t("overview.cards.recentSessions")}>
-              <div class="sidebar-recent-sessions__label">${t("usage.sessions.recentShort")}</div>
-              <div class="sidebar-recent-sessions__list">
-                ${recent.map((row) => renderSidebarRecentSession(state, row))}
-              </div>
+            <div class="sidebar-recent-sessions" aria-label=${t("chat.sidebar.folders.treeLabel")}>
+              ${renderSessionFolderTree(state, rows, renderSidebarRecentSession)}
               ${state.sidebarRenameError && !state.sidebarRenameKey
                 ? html`<div class="sidebar-recent-session__rename-error" role="alert">
                     ${resolveSidebarLabelErrorMessage(state.sidebarRenameError)}
@@ -1889,7 +1886,11 @@ export function renderApp(state: AppViewState) {
               ${renderSidebarSessions(state)}
               <nav class="sidebar-nav">
                 ${TAB_GROUPS.map((group) => {
-                  const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
+                  // Sessions(chat) and settings stay open on first load; operational
+                  // groups start collapsed. User toggles persist via settings.
+                  const collapsedByDefault = group.label !== "chat" && group.label !== "settings";
+                  const isGroupCollapsed =
+                    state.settings.navGroupsCollapsed[group.label] ?? collapsedByDefault;
                   const showItems = navCollapsed || !isGroupCollapsed;
 
                   return html`

@@ -1904,6 +1904,7 @@ export function buildGatewaySessionRow(params: {
     subagentControlScope: entry?.subagentControlScope,
     kind: classifySessionKey(key, entry),
     label: entry?.label,
+    folderPath: entry?.folderPath,
     displayName,
     derivedTitle,
     lastMessagePreview,

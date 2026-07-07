@@ -93,6 +93,8 @@ export type UiSettings = {
   navCollapsed: boolean; // Collapsible sidebar state
   navWidth: number; // Sidebar width when expanded (240–400px)
   navGroupsCollapsed: Record<string, boolean>; // Which nav groups are collapsed
+  sessionFolderCollapsed?: Record<string, boolean>; // Collapsed session-tree folders (by path)
+  sessionPendingFolders?: string[]; // Folders created in the UI that have no sessions yet
   borderRadius: number; // Corner roundness (0–100, default 50)
   textScale?: TextScaleStop; // Browser-local text scale percentage
   customTheme?: ImportedCustomTheme;

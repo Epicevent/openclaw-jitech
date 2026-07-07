@@ -2147,6 +2147,7 @@ public struct SessionsAbortParams: Codable, Sendable {
 public struct SessionsPatchParams: Codable, Sendable {
     public let key: String
     public let label: AnyCodable?
+    public let folderpath: AnyCodable?
     public let thinkinglevel: AnyCodable?
     public let fastmode: AnyCodable?
     public let verboselevel: AnyCodable?
@@ -2172,6 +2173,7 @@ public struct SessionsPatchParams: Codable, Sendable {
     public init(
         key: String,
         label: AnyCodable?,
+        folderpath: AnyCodable?,
         thinkinglevel: AnyCodable?,
         fastmode: AnyCodable?,
         verboselevel: AnyCodable?,
@@ -2196,6 +2198,7 @@ public struct SessionsPatchParams: Codable, Sendable {
     {
         self.key = key
         self.label = label
+        self.folderpath = folderpath
         self.thinkinglevel = thinkinglevel
         self.fastmode = fastmode
         self.verboselevel = verboselevel
@@ -2222,6 +2225,7 @@ public struct SessionsPatchParams: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case key
         case label
+        case folderpath = "folderPath"
         case thinkinglevel = "thinkingLevel"
         case fastmode = "fastMode"
         case verboselevel = "verboseLevel"
