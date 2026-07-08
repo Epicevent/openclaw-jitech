@@ -2977,6 +2977,64 @@ describe("deliverOutboundPayloads", () => {
     expect(sendPayload).not.toHaveBeenCalled();
   });
 
+  it("delivers a fallback for an error payload with no visible content instead of dropping it (issue #32)", async () => {
+    const sendPayload = vi.fn();
+    const sendText = vi.fn().mockResolvedValue({ channel: "matrix", messageId: "mx-1" });
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "matrix",
+          source: "test",
+          plugin: createOutboundTestPlugin({
+            id: "matrix",
+            outbound: { deliveryMode: "direct", sendPayload, sendText },
+          }),
+        },
+      ]),
+    );
+
+    const results = await deliverOutboundPayloads({
+      cfg: {},
+      channel: "matrix",
+      to: "!room:1",
+      payloads: [{ text: "", isError: true }],
+    });
+
+    // The empty error must surface to the customer, not be silently suppressed.
+    expect(results).toEqual([{ channel: "matrix", messageId: "mx-1" }]);
+    const sentText = requireMockCallArg(sendText, "sendText").text as string;
+    expect(sentText).toContain("could not be completed");
+    expect(sendPayload).not.toHaveBeenCalled();
+  });
+
+  it("still drops a non-error payload with no visible content", async () => {
+    const sendPayload = vi.fn();
+    const sendText = vi.fn().mockResolvedValue({ channel: "matrix", messageId: "mx-1" });
+    setActivePluginRegistry(
+      createTestRegistry([
+        {
+          pluginId: "matrix",
+          source: "test",
+          plugin: createOutboundTestPlugin({
+            id: "matrix",
+            outbound: { deliveryMode: "direct", sendPayload, sendText },
+          }),
+        },
+      ]),
+    );
+
+    const results = await deliverOutboundPayloads({
+      cfg: {},
+      channel: "matrix",
+      to: "!room:1",
+      payloads: [{ text: "" }],
+    });
+
+    expect(results).toEqual([]);
+    expect(sendText).not.toHaveBeenCalled();
+    expect(sendPayload).not.toHaveBeenCalled();
+  });
+
   it("routes text-only error payloads through sendPayload when the adapter opts in", async () => {
     const sendPayload = vi.fn().mockResolvedValue({ channel: "matrix", messageId: "mx-1" });
     const sendText = vi.fn();

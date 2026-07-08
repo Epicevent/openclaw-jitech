@@ -188,6 +188,20 @@ describe("normalizeReplyPayloadsForDelivery", () => {
     ]);
   });
 
+  it("keeps an error payload with no visible content and gives it fallback text (issue #32)", () => {
+    const delivered = projectOutboundPayloadPlanForDelivery(
+      createOutboundPayloadPlan([{ text: "", isError: true }]),
+    );
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.text).toContain("could not be completed");
+  });
+
+  it("still drops a non-error payload with no visible content", () => {
+    expect(
+      projectOutboundPayloadPlanForDelivery(createOutboundPayloadPlan([{ text: "" }])),
+    ).toStrictEqual([]);
+  });
+
   it("drops bare silent replies for direct conversations", () => {
     expect(
       projectOutboundPayloadPlanForDelivery(

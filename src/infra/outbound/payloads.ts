@@ -16,7 +16,16 @@ import {
   type MessagePresentation,
   type ReplyPayloadDelivery,
 } from "../../interactive/payload.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { type SilentReplyConversationType } from "../../shared/silent-reply-policy.js";
+
+const log = createSubsystemLogger("outbound/payloads");
+
+// Last-resort text for an error payload that would otherwise be dropped for
+// having no visible content. A failed run must always tell the customer
+// something rather than vanish into silence (issue #32).
+export const EMPTY_ERROR_PAYLOAD_FALLBACK_TEXT =
+  "⚠️ The request could not be completed because of a provider error. Please try again, or use /new to start a fresh session.";
 
 export type NormalizedOutboundPayload = {
   text: string;
@@ -159,14 +168,25 @@ function createOutboundPayloadPlanEntry(
     replyToCurrent: payload.replyToCurrent || parsed.replyToCurrent,
     audioAsVoice: Boolean(payload.audioAsVoice || parsed.audioAsVoice),
   };
-  if (!isRenderablePayload(normalizedPayload) && !isSilent) {
+  const renderable = isRenderablePayload(normalizedPayload);
+  if (!renderable && !isSilent && payload.isError !== true) {
     return null;
   }
-  const hasChannelData = hasReplyChannelData(normalizedPayload.channelData);
+  // Never silently drop an error payload: a failed run that produced no visible
+  // text or media would otherwise vanish here and the customer would see only
+  // silence (issue #32). Substitute a fallback so the failure always surfaces.
+  const deliveredPayload =
+    !renderable && !isSilent && payload.isError === true
+      ? { ...normalizedPayload, text: EMPTY_ERROR_PAYLOAD_FALLBACK_TEXT }
+      : normalizedPayload;
+  if (deliveredPayload !== normalizedPayload) {
+    log.warn("error payload had no visible content; substituting fallback text");
+  }
+  const hasChannelData = hasReplyChannelData(deliveredPayload.channelData);
   return {
-    payload: normalizedPayload,
-    hasPresentation: hasMessagePresentationBlocks(normalizedPayload.presentation),
-    hasInteractive: hasInteractiveReplyBlocks(normalizedPayload.interactive),
+    payload: deliveredPayload,
+    hasPresentation: hasMessagePresentationBlocks(deliveredPayload.presentation),
+    hasInteractive: hasInteractiveReplyBlocks(deliveredPayload.interactive),
     hasChannelData,
     isSilent,
   };
