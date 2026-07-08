@@ -171,6 +171,7 @@ import {
 import type { RunEmbeddedPiAgentParams } from "./run/params.js";
 import { buildEmbeddedRunPayloads } from "./run/payloads.js";
 import { handleRetryLimitExhaustion } from "./run/retry-limit.js";
+import { withSessionFileMutex } from "./run/session-file-mutex.js";
 import {
   buildBeforeModelResolveAttachments,
   resolveEffectiveRuntimeModel,
@@ -1382,145 +1383,154 @@ export async function runEmbeddedPiAgent(
           } else {
             parentAbortSignal?.addEventListener("abort", relayParentAbort, { once: true });
           }
-          const rawAttempt = await runEmbeddedAttemptWithBackend({
-            sessionId: activeSessionId,
-            sessionKey: resolvedSessionKey,
-            sandboxSessionKey: params.sandboxSessionKey,
-            trigger: params.trigger,
-            memoryFlushWritePath: params.memoryFlushWritePath,
-            messageChannel: params.messageChannel,
-            messageProvider: params.messageProvider,
-            agentAccountId: params.agentAccountId,
-            messageTo: params.messageTo,
-            messageThreadId: params.messageThreadId,
-            groupId: params.groupId,
-            groupChannel: params.groupChannel,
-            groupSpace: params.groupSpace,
-            memberRoleIds: params.memberRoleIds,
-            spawnedBy: params.spawnedBy,
-            isCanonicalWorkspace,
-            senderId: params.senderId,
-            senderName: params.senderName,
-            senderUsername: params.senderUsername,
-            senderE164: params.senderE164,
-            senderIsOwner: params.senderIsOwner,
-            currentChannelId: params.currentChannelId,
-            currentThreadTs: params.currentThreadTs,
-            currentMessageId: params.currentMessageId,
-            replyToMode: params.replyToMode,
-            hasRepliedRef: params.hasRepliedRef,
-            sessionFile: activeSessionFile,
-            workspaceDir: resolvedWorkspace,
-            agentDir,
-            config: params.config,
-            allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
-            contextEngine,
-            contextTokenBudget: ctxInfo.tokens,
-            contextWindowInfo: ctxInfo,
-            skillsSnapshot: params.skillsSnapshot,
-            prompt,
-            transcriptPrompt: params.transcriptPrompt,
-            currentInboundEventKind: params.currentInboundEventKind,
-            currentInboundContext: params.currentInboundContext,
-            images: params.images,
-            imageOrder: params.imageOrder,
-            clientTools: params.clientTools,
-            disableTools: params.disableTools,
-            provider,
-            modelId,
-            // Use the harness selected before model/auth setup for the actual
-            // attempt too. Otherwise plugin-owned transports can skip PI auth
-            // bootstrap but drift back to PI when the attempt is created.
-            agentHarnessId: agentHarness.id,
-            runtimePlan,
-            model: applyAuthHeaderOverride(
-              applyLocalNoAuthHeaderOverride(effectiveModel, apiKeyInfo),
-              // When runtime auth exchange produced a different credential
-              // (runtimeAuthState is set), the exchanged token lives in
-              // authStorage and the SDK will pick it up automatically.
-              // Skip header injection to avoid leaking the pre-exchange key.
-              runtimeAuthState ? null : apiKeyInfo,
-              params.config,
-            ),
-            resolvedApiKey: resolvedStreamApiKey,
-            authProfileId: lastProfileId,
-            authProfileIdSource: lockedProfileId ? "user" : "auto",
-            initialReplayState: accumulatedReplayState,
-            authStorage,
-            authProfileStore: runAttemptAuthProfileStore,
-            // Codex builds OpenClaw tools inside its harness. Keep transport
-            // auth scoped while letting tool construction see plugin creds.
-            toolAuthProfileStore: agentHarness.id === "codex" ? attemptAuthProfileStore : undefined,
-            modelRegistry,
-            agentId: workspaceResolution.agentId,
-            legacyBeforeAgentStartResult,
-            thinkLevel,
-            onToolOutcome: observePostCompactionToolOutcome,
-            onRunProgress: notifyRunProgress,
-            fastMode: params.fastMode,
-            verboseLevel: params.verboseLevel,
-            reasoningLevel: params.reasoningLevel,
-            toolResultFormat: resolvedToolResultFormat,
-            toolProgressDetail: params.toolProgressDetail,
-            execOverrides: params.execOverrides,
-            bashElevated: params.bashElevated,
-            timeoutMs: params.timeoutMs,
-            runTimeoutOverrideMs: params.runTimeoutOverrideMs,
-            runId: params.runId,
-            abortSignal: attemptAbortController.signal,
-            replyOperation: params.replyOperation,
-            shouldEmitToolResult: params.shouldEmitToolResult,
-            shouldEmitToolOutput: params.shouldEmitToolOutput,
-            onPartialReply: params.onPartialReply,
-            onAssistantMessageStart: params.onAssistantMessageStart,
-            onBlockReply: params.onBlockReply,
-            onBlockReplyFlush: params.onBlockReplyFlush,
-            blockReplyBreak: params.blockReplyBreak,
-            blockReplyChunking: params.blockReplyChunking,
-            onReasoningStream: params.onReasoningStream,
-            onReasoningEnd: params.onReasoningEnd,
-            onToolResult: params.onToolResult,
-            onAgentEvent: params.onAgentEvent,
-            onExecutionPhase: params.onExecutionPhase,
-            extraSystemPrompt: params.extraSystemPrompt,
-            sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
-            inputProvenance: params.inputProvenance,
-            streamParams: params.streamParams,
-            modelRun: params.modelRun,
-            promptMode: params.promptMode,
-            ownerNumbers: params.ownerNumbers,
-            enforceFinalTag: params.enforceFinalTag,
-            silentExpected: params.silentExpected,
-            bootstrapContextMode: params.bootstrapContextMode,
-            bootstrapContextRunKind: params.bootstrapContextRunKind,
-            jobId: params.jobId,
-            toolsAllow: params.toolsAllow,
-            ownerOnlyToolAllowlist: params.ownerOnlyToolAllowlist,
-            disableMessageTool: params.disableMessageTool,
-            forceMessageTool: params.forceMessageTool,
-            enableHeartbeatTool: params.enableHeartbeatTool,
-            forceHeartbeatTool: params.forceHeartbeatTool,
-            requireExplicitMessageTarget: params.requireExplicitMessageTarget,
-            internalEvents: params.internalEvents,
-            bootstrapPromptWarningSignaturesSeen,
-            bootstrapPromptWarningSignature:
-              bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1],
-            suppressNextUserMessagePersistence,
-            suppressTranscriptOnlyAssistantPersistence:
-              params.suppressTranscriptOnlyAssistantPersistence,
-            suppressAssistantErrorPersistence: params.suppressAssistantErrorPersistence,
-            onUserMessagePersisted,
-            onAssistantErrorMessagePersisted: params.onAssistantErrorMessagePersisted,
-          })
-            .catch((err: unknown): never => {
-              throw postCompactionAbortError ?? err;
+          // Serialize the whole attempt (prompt included) against any other
+          // in-process run on the same session file. The cross-process write lock is
+          // released during the prompt, so it alone cannot stop a second run from
+          // writing mid-prompt and tripping the takeover/EEXIST blackout (issue #35).
+          const rawAttempt = await withSessionFileMutex(activeSessionFile, () =>
+            runEmbeddedAttemptWithBackend({
+              sessionId: activeSessionId,
+              sessionKey: resolvedSessionKey,
+              sandboxSessionKey: params.sandboxSessionKey,
+              trigger: params.trigger,
+              memoryFlushWritePath: params.memoryFlushWritePath,
+              messageChannel: params.messageChannel,
+              messageProvider: params.messageProvider,
+              agentAccountId: params.agentAccountId,
+              messageTo: params.messageTo,
+              messageThreadId: params.messageThreadId,
+              groupId: params.groupId,
+              groupChannel: params.groupChannel,
+              groupSpace: params.groupSpace,
+              memberRoleIds: params.memberRoleIds,
+              spawnedBy: params.spawnedBy,
+              isCanonicalWorkspace,
+              senderId: params.senderId,
+              senderName: params.senderName,
+              senderUsername: params.senderUsername,
+              senderE164: params.senderE164,
+              senderIsOwner: params.senderIsOwner,
+              currentChannelId: params.currentChannelId,
+              currentThreadTs: params.currentThreadTs,
+              currentMessageId: params.currentMessageId,
+              replyToMode: params.replyToMode,
+              hasRepliedRef: params.hasRepliedRef,
+              sessionFile: activeSessionFile,
+              workspaceDir: resolvedWorkspace,
+              agentDir,
+              config: params.config,
+              allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
+              contextEngine,
+              contextTokenBudget: ctxInfo.tokens,
+              contextWindowInfo: ctxInfo,
+              skillsSnapshot: params.skillsSnapshot,
+              prompt,
+              transcriptPrompt: params.transcriptPrompt,
+              currentInboundEventKind: params.currentInboundEventKind,
+              currentInboundContext: params.currentInboundContext,
+              images: params.images,
+              imageOrder: params.imageOrder,
+              clientTools: params.clientTools,
+              disableTools: params.disableTools,
+              provider,
+              modelId,
+              // Use the harness selected before model/auth setup for the actual
+              // attempt too. Otherwise plugin-owned transports can skip PI auth
+              // bootstrap but drift back to PI when the attempt is created.
+              agentHarnessId: agentHarness.id,
+              runtimePlan,
+              model: applyAuthHeaderOverride(
+                applyLocalNoAuthHeaderOverride(effectiveModel, apiKeyInfo),
+                // When runtime auth exchange produced a different credential
+                // (runtimeAuthState is set), the exchanged token lives in
+                // authStorage and the SDK will pick it up automatically.
+                // Skip header injection to avoid leaking the pre-exchange key.
+                runtimeAuthState ? null : apiKeyInfo,
+                params.config,
+              ),
+              resolvedApiKey: resolvedStreamApiKey,
+              authProfileId: lastProfileId,
+              authProfileIdSource: lockedProfileId ? "user" : "auto",
+              initialReplayState: accumulatedReplayState,
+              authStorage,
+              authProfileStore: runAttemptAuthProfileStore,
+              // Codex builds OpenClaw tools inside its harness. Keep transport
+              // auth scoped while letting tool construction see plugin creds.
+              toolAuthProfileStore:
+                agentHarness.id === "codex" ? attemptAuthProfileStore : undefined,
+              modelRegistry,
+              agentId: workspaceResolution.agentId,
+              legacyBeforeAgentStartResult,
+              thinkLevel,
+              onToolOutcome: observePostCompactionToolOutcome,
+              onRunProgress: notifyRunProgress,
+              fastMode: params.fastMode,
+              verboseLevel: params.verboseLevel,
+              reasoningLevel: params.reasoningLevel,
+              toolResultFormat: resolvedToolResultFormat,
+              toolProgressDetail: params.toolProgressDetail,
+              execOverrides: params.execOverrides,
+              bashElevated: params.bashElevated,
+              timeoutMs: params.timeoutMs,
+              runTimeoutOverrideMs: params.runTimeoutOverrideMs,
+              runId: params.runId,
+              abortSignal: attemptAbortController.signal,
+              replyOperation: params.replyOperation,
+              shouldEmitToolResult: params.shouldEmitToolResult,
+              shouldEmitToolOutput: params.shouldEmitToolOutput,
+              onPartialReply: params.onPartialReply,
+              onAssistantMessageStart: params.onAssistantMessageStart,
+              onBlockReply: params.onBlockReply,
+              onBlockReplyFlush: params.onBlockReplyFlush,
+              blockReplyBreak: params.blockReplyBreak,
+              blockReplyChunking: params.blockReplyChunking,
+              onReasoningStream: params.onReasoningStream,
+              onReasoningEnd: params.onReasoningEnd,
+              onToolResult: params.onToolResult,
+              onAgentEvent: params.onAgentEvent,
+              onExecutionPhase: params.onExecutionPhase,
+              extraSystemPrompt: params.extraSystemPrompt,
+              sourceReplyDeliveryMode: params.sourceReplyDeliveryMode,
+              inputProvenance: params.inputProvenance,
+              streamParams: params.streamParams,
+              modelRun: params.modelRun,
+              promptMode: params.promptMode,
+              ownerNumbers: params.ownerNumbers,
+              enforceFinalTag: params.enforceFinalTag,
+              silentExpected: params.silentExpected,
+              bootstrapContextMode: params.bootstrapContextMode,
+              bootstrapContextRunKind: params.bootstrapContextRunKind,
+              jobId: params.jobId,
+              toolsAllow: params.toolsAllow,
+              ownerOnlyToolAllowlist: params.ownerOnlyToolAllowlist,
+              disableMessageTool: params.disableMessageTool,
+              forceMessageTool: params.forceMessageTool,
+              enableHeartbeatTool: params.enableHeartbeatTool,
+              forceHeartbeatTool: params.forceHeartbeatTool,
+              requireExplicitMessageTarget: params.requireExplicitMessageTarget,
+              internalEvents: params.internalEvents,
+              bootstrapPromptWarningSignaturesSeen,
+              bootstrapPromptWarningSignature:
+                bootstrapPromptWarningSignaturesSeen[
+                  bootstrapPromptWarningSignaturesSeen.length - 1
+                ],
+              suppressNextUserMessagePersistence,
+              suppressTranscriptOnlyAssistantPersistence:
+                params.suppressTranscriptOnlyAssistantPersistence,
+              suppressAssistantErrorPersistence: params.suppressAssistantErrorPersistence,
+              onUserMessagePersisted,
+              onAssistantErrorMessagePersisted: params.onAssistantErrorMessagePersisted,
             })
-            .finally(() => {
-              parentAbortSignal?.removeEventListener?.("abort", relayParentAbort);
-              if (postCompactionAbortController === attemptAbortController) {
-                postCompactionAbortController = undefined;
-              }
-            });
+              .catch((err: unknown): never => {
+                throw postCompactionAbortError ?? err;
+              })
+              .finally(() => {
+                parentAbortSignal?.removeEventListener?.("abort", relayParentAbort);
+                if (postCompactionAbortController === attemptAbortController) {
+                  postCompactionAbortController = undefined;
+                }
+              }),
+          );
           if (postCompactionAbortError) {
             throw postCompactionAbortError;
           }
