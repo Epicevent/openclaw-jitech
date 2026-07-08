@@ -87,6 +87,7 @@ import {
   resolveStoredSessionKeyForAgentStore,
 } from "./session-store-key.js";
 import {
+  isEmptyTranscriptTombstone,
   readRecentSessionUsageFromTranscript,
   readSessionTitleFieldsFromTranscriptAsync,
   readSessionTitleFieldsFromTranscript,
@@ -2290,7 +2291,18 @@ export async function listSessionsFromStoreAsync(params: {
     rowContext: hasSpawnedByFilter ? getRowContext() : undefined,
     defaultLimit: SESSIONS_LIST_DEFAULT_LIMIT,
   });
-  const { entries, totalCount, limitApplied } = selection;
+  const { entries: selectedEntries, totalCount, limitApplied } = selection;
+  // Drop empty-transcript tombstones (issue #35): a failed first write can leave a
+  // 0-byte session file whose store entry still has a fresh updatedAt, so it would
+  // otherwise surface as the most-recent session and read as "history gone".
+  const entries = selectedEntries.filter(([key, entry]) => {
+    if (!entry?.sessionId) {
+      return true;
+    }
+    const parsed = parseAgentSessionKey(key);
+    const agentId = parsed?.agentId ? normalizeAgentId(parsed.agentId) : resolveDefaultAgentId(cfg);
+    return !isEmptyTranscriptTombstone(entry.sessionId, storePath, entry.sessionFile, agentId);
+  });
 
   const sessions: GatewaySessionRow[] = [];
   for (let i = 0; i < entries.length; i++) {

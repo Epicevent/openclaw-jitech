@@ -1007,6 +1007,32 @@ function findExistingTranscriptPath(
   return candidates.find((p) => fs.existsSync(p)) ?? null;
 }
 
+/**
+ * A session whose transcript file exists but is exactly 0 bytes is a failed-write
+ * tombstone (issue #35): the file was created but not even the session header was
+ * written. A real session always has at least a header line, so an exactly-empty
+ * file uniquely identifies the empty shell that must not surface as a live session
+ * (it would otherwise show as the most-recent session and read as "history gone").
+ * Any error, or a non-empty / absent file, is treated as "not a tombstone" so a
+ * real session is never hidden.
+ */
+export function isEmptyTranscriptTombstone(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile?: string,
+  agentId?: string,
+): boolean {
+  try {
+    const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
+    if (!filePath) {
+      return false;
+    }
+    return fs.statSync(filePath).size === 0;
+  } catch {
+    return false;
+  }
+}
+
 function withOpenTranscriptFd<T>(filePath: string, read: (fd: number) => T | null): T | null {
   let fd: number | null = null;
   try {
