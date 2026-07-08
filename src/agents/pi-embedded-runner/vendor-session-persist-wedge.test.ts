@@ -8,21 +8,18 @@
 // forever and every subsequent persist re-throws EEXIST. The session is wedged:
 // no message it produces from that point on can ever land on disk.
 //
-// This test asserts the DESIRED behavior: the second manager recovers by
-// appending to the existing file instead of dying on EEXIST. Against the
-// current UNPATCHED vendor it fails — hence `it.fails`.
-//
-// NOTE (Wave 2 status): the planned fix was a pnpm patch of the vendor
-// `_persist`, but this repo's package-patch guard (scripts/check-package-
-// patches.mjs) forbids NEW pnpm patches by policy — only two legacy patches
-// are allowlisted. So the vendor cannot be patched here without a governance
-// decision. The wedge's *in-process* trigger is already made impossible by the
-// session-file mutex (run.ts / #40 + the Wave 1 all-writers extension), which
-// serializes every writer on one file so two managers never race the "wx"
-// create concurrently. This test stays `it.fails` to keep the underlying
-// vendor bug documented and visible; the policy-compliant options to close it
-// for good (our-layer header pre-creation, upstreaming the fix, or an
-// allowlist exception) are an owner decision — see the handoff report.
+// This test asserts the post-surgery behavior: the second manager recovers by
+// appending to the existing file instead of dying on EEXIST. It passes because
+// of the Wave 2 fork-local pnpm patch of the vendor `_persist`
+// (patches/@earendil-works__pi-coding-agent@0.78.1.patch, allowlisted in
+// scripts/check-package-patches.mjs — that guard is inherited from upstream
+// and its "publish a new version" remedy is unavailable to this fork; the
+// owner approved the exception on 2026-07-09). If a vendor bump drops the
+// patch, pnpm fails the install; if the upstream bug is ever fixed upstream,
+// retire the patch, the allowlist entry, and keep this test as the regression
+// guard. The wedge's in-process trigger is independently prevented by the
+// session-file mutex (#40 + Wave 1); the patch is defense-in-depth against
+// cross-process races and any future mutex-bypassing path.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,8 +67,8 @@ function countAssistantLines(file: string): number {
 }
 
 describe("vendor session _persist wedge (issue #35)", () => {
-  it.fails(
-    "second manager on the same session file wedges on EEXIST (unpatched vendor; documents the bug)",
+  it(
+    "second manager on the same session file recovers on EEXIST instead of wedging (fork patch)",
     () => {
       const a = openManagerOnSharedFile();
       const b = openManagerOnSharedFile();
@@ -83,9 +80,8 @@ describe("vendor session _persist wedge (issue #35)", () => {
       a.appendMessage(assistantMessage("from A"));
       expect(existsSync(sessionFile)).toBe(true);
 
-      // B now writes: the unpatched vendor does openSync("wx") → EEXIST → throws
-      // and stays flushed=false forever. The desired (asserted) behavior is
-      // recovery-by-append; against the unpatched vendor it fails — it.fails.
+      // B now writes: the patched vendor catches EEXIST on its "wx" create and
+      // falls back to append instead of throwing and staying unflushed forever.
       expect(() => b.appendMessage(assistantMessage("from B"))).not.toThrow();
 
       // And a subsequent B message must also land, proving B is not wedged.
