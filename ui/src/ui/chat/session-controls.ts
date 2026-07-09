@@ -764,9 +764,13 @@ function resolveSessionScopedOptionLabel(
 
   const label = normalizeOptionalString(row.label) ?? "";
   const displayName = normalizeOptionalString(row.displayName) ?? "";
-  if ((label && label !== key) || (displayName && displayName !== key)) {
-    return resolveSessionDisplayName(key, row);
-  }
+  const named =
+    (label && label !== key) || (displayName && displayName !== key)
+      ? resolveSessionDisplayName(key, row)
+      : base;
 
-  return base;
+  // Keep the picker consistent with the sidebar folder tree: a session filed
+  // under a folder shows its location here too.
+  const folderPath = normalizeOptionalString(row.folderPath);
+  return folderPath ? `${folderPath} / ${named}` : named;
 }
