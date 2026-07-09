@@ -1085,6 +1085,17 @@ export async function runEmbeddedPiAgent(
       const rateLimitProfileRotationLimit = resolveRateLimitProfileRotationLimit(params.config);
       let activeSessionId = params.sessionId;
       let activeSessionFile = params.sessionFile;
+      // Serialize any session-file-mutating maintenance (compaction, transcript
+      // truncation) on the SAME file mutex that guards the attempt at line ~1390.
+      // Compaction runs in this loop OUTSIDE the attempt wrap, so without this a
+      // concurrent run's attempt on the same file could overlap our compaction
+      // rewrite — the uncovered path #40 left open (issue #35 / #41). The key is
+      // read at call time, so a compaction that rotates activeSessionFile locks
+      // the file it actually touches. Not re-entrant, but these calls only run
+      // between attempts (never while the attempt wrap holds the mutex), so no
+      // self-deadlock. See run.session-file-serialization.test.ts.
+      const withActiveSessionFileMutex = <T>(fn: () => Promise<T>): Promise<T> =>
+        withSessionFileMutex(activeSessionFile, fn);
       let suppressNextUserMessagePersistence = params.suppressNextUserMessagePersistence ?? false;
       // Pi owns JSONL persistence; this marker only lets the outer retry avoid
       // replaying the same inbound channel message after overflow compaction.
@@ -1782,19 +1793,21 @@ export async function runEmbeddedPiAgent(
                 // run-level abort signal through, so a hung plugin compact()
                 // cannot stall timeout recovery indefinitely. A timeout/abort
                 // surfaces as a thrown error handled by the catch below.
-                timeoutCompactResult = await compactContextEngineWithSafetyTimeout(
-                  contextEngine,
-                  {
-                    sessionId: activeSessionId,
-                    sessionKey: params.sessionKey,
-                    sessionFile: activeSessionFile,
-                    tokenBudget: ctxInfo.tokens,
-                    force: true,
-                    compactionTarget: "budget",
-                    runtimeContext: timeoutCompactionRuntimeContext,
-                  },
-                  resolveCompactionTimeoutMs(params.config),
-                  params.abortSignal,
+                timeoutCompactResult = await withActiveSessionFileMutex(() =>
+                  compactContextEngineWithSafetyTimeout(
+                    contextEngine,
+                    {
+                      sessionId: activeSessionId,
+                      sessionKey: params.sessionKey,
+                      sessionFile: activeSessionFile,
+                      tokenBudget: ctxInfo.tokens,
+                      force: true,
+                      compactionTarget: "budget",
+                      runtimeContext: timeoutCompactionRuntimeContext,
+                    },
+                    resolveCompactionTimeoutMs(params.config),
+                    params.abortSignal,
+                  ),
                 );
               } catch (compactErr) {
                 log.warn(
@@ -1967,35 +1980,39 @@ export async function runEmbeddedPiAgent(
                 // run-level abort signal through, so a hung plugin compact()
                 // cannot stall overflow recovery indefinitely. A timeout/abort
                 // surfaces as a thrown error handled by the catch below.
-                compactResult = await compactContextEngineWithSafetyTimeout(
-                  contextEngine,
-                  {
-                    sessionId: activeSessionId,
-                    sessionKey: params.sessionKey,
-                    sessionFile: activeSessionFile,
-                    tokenBudget: ctxInfo.tokens,
-                    ...(observedOverflowTokens !== undefined
-                      ? { currentTokenCount: observedOverflowTokens }
-                      : {}),
-                    force: true,
-                    compactionTarget: "budget",
-                    runtimeContext: overflowCompactionRuntimeContext,
-                  },
-                  resolveCompactionTimeoutMs(params.config),
-                  params.abortSignal,
+                compactResult = await withActiveSessionFileMutex(() =>
+                  compactContextEngineWithSafetyTimeout(
+                    contextEngine,
+                    {
+                      sessionId: activeSessionId,
+                      sessionKey: params.sessionKey,
+                      sessionFile: activeSessionFile,
+                      tokenBudget: ctxInfo.tokens,
+                      ...(observedOverflowTokens !== undefined
+                        ? { currentTokenCount: observedOverflowTokens }
+                        : {}),
+                      force: true,
+                      compactionTarget: "budget",
+                      runtimeContext: overflowCompactionRuntimeContext,
+                    },
+                    resolveCompactionTimeoutMs(params.config),
+                    params.abortSignal,
+                  ),
                 );
                 if (compactResult.ok && compactResult.compacted) {
                   adoptCompactionTranscript(compactResult);
-                  await runContextEngineMaintenance({
-                    contextEngine,
-                    sessionId: activeSessionId,
-                    sessionKey: params.sessionKey,
-                    sessionFile: activeSessionFile,
-                    reason: "compaction",
-                    runtimeContext: overflowCompactionRuntimeContext,
-                    config: params.config,
-                    agentId: sessionAgentId,
-                  });
+                  await withActiveSessionFileMutex(() =>
+                    runContextEngineMaintenance({
+                      contextEngine,
+                      sessionId: activeSessionId,
+                      sessionKey: params.sessionKey,
+                      sessionFile: activeSessionFile,
+                      reason: "compaction",
+                      runtimeContext: overflowCompactionRuntimeContext,
+                      config: params.config,
+                      agentId: sessionAgentId,
+                    }),
+                  );
                 }
               } catch (compactErr) {
                 log.warn(
@@ -2018,18 +2035,20 @@ export async function runEmbeddedPiAgent(
                   lastCompactionTokensAfter = Math.floor(compactResult.result.tokensAfter);
                 }
                 if (preflightRecovery?.route === "compact_then_truncate") {
-                  const truncResult = await truncateOversizedToolResultsInSession({
-                    sessionFile: activeSessionFile,
-                    contextWindowTokens: ctxInfo.tokens,
-                    maxCharsOverride: resolveLiveToolResultMaxChars({
+                  const truncResult = await withActiveSessionFileMutex(() =>
+                    truncateOversizedToolResultsInSession({
+                      sessionFile: activeSessionFile,
                       contextWindowTokens: ctxInfo.tokens,
-                      cfg: params.config,
-                      agentId: sessionAgentId,
+                      maxCharsOverride: resolveLiveToolResultMaxChars({
+                        contextWindowTokens: ctxInfo.tokens,
+                        cfg: params.config,
+                        agentId: sessionAgentId,
+                      }),
+                      sessionId: activeSessionId,
+                      sessionKey: params.sessionKey,
+                      config: params.config,
                     }),
-                    sessionId: activeSessionId,
-                    sessionKey: params.sessionKey,
-                    config: params.config,
-                  });
+                  );
                   if (truncResult.truncated) {
                     log.info(
                       `[context-overflow-precheck] post-compaction tool-result truncation succeeded for ` +
@@ -2084,14 +2103,16 @@ export async function runEmbeddedPiAgent(
                   `[context-overflow-recovery] Attempting tool result truncation for ${provider}/${modelId} ` +
                     `(contextWindow=${contextWindowTokens} tokens)`,
                 );
-                const truncResult = await truncateOversizedToolResultsInSession({
-                  sessionFile: activeSessionFile,
-                  contextWindowTokens,
-                  maxCharsOverride: toolResultMaxChars,
-                  sessionId: activeSessionId,
-                  sessionKey: params.sessionKey,
-                  config: params.config,
-                });
+                const truncResult = await withActiveSessionFileMutex(() =>
+                  truncateOversizedToolResultsInSession({
+                    sessionFile: activeSessionFile,
+                    contextWindowTokens,
+                    maxCharsOverride: toolResultMaxChars,
+                    sessionId: activeSessionId,
+                    sessionKey: params.sessionKey,
+                    config: params.config,
+                  }),
+                );
                 if (truncResult.truncated) {
                   log.info(
                     `[context-overflow-recovery] Truncated ${truncResult.truncatedCount} tool result(s); retrying prompt`,

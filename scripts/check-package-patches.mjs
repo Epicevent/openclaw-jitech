@@ -12,6 +12,18 @@ const ALLOWED_PATCHED_DEPENDENCIES = new Map([
     "patches/@agentclientprotocol__claude-agent-acp@0.33.1.patch",
   ],
   ["baileys@7.0.0-rc12", "patches/baileys@7.0.0-rc12.patch"],
+  // Fork-local (JI) exception, owner-approved 2026-07-09: fixes the vendor
+  // _persist EEXIST wedge behind issue #35 (a second SessionManager on the
+  // same session file stays flushed=false forever and every write re-throws
+  // EEXIST — a permanent customer write blackout). This guard is inherited
+  // from upstream, whose "upstream the fix and publish" remedy is unavailable
+  // to this fork (we cannot publish @earendil-works packages). Retirement
+  // path: upstream fix + version bump, then remove this entry and the patch.
+  // Guarded by src/agents/pi-embedded-runner/vendor-session-persist-wedge.test.ts.
+  [
+    "@earendil-works/pi-coding-agent@0.78.1",
+    "patches/@earendil-works__pi-coding-agent@0.78.1.patch",
+  ],
 ]);
 
 const ALLOWED_PATCH_FILES = new Set(["patches/.gitkeep", ...ALLOWED_PATCHED_DEPENDENCIES.values()]);

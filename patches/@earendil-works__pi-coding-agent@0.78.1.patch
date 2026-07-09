@@ -1,0 +1,36 @@
+diff --git a/dist/core/session-manager.js b/dist/core/session-manager.js
+index bbbe84a43b105e6742b04291f66d78485c51804c..007f241492339974e6c4701a9b1c0ae6a0c5e798 100644
+--- a/dist/core/session-manager.js
++++ b/dist/core/session-manager.js
+@@ -649,7 +649,30 @@ export class SessionManager {
+             return;
+         }
+         if (!this.flushed) {
+-            const fd = openSync(this.sessionFile, "wx");
++            let fd;
++            try {
++                fd = openSync(this.sessionFile, "wx");
++            }
++            catch (err) {
++                // JI-PATCH(#35): the session file already exists — another writer
++                // created it first (a cross-process race, or an aliased session
++                // resolving to the same file). The upstream code left flushed
++                // false here and EVERY subsequent _persist re-threw EEXIST,
++                // wedging the session into a permanent write blackout (no message
++                // it produced could ever land on disk). Recover instead: adopt the
++                // existing file by appending our buffered entries, and mark flushed
++                // so future writes append normally. In a true race this may add a
++                // duplicate header — a recoverable, reindex-able cosmetic cost,
++                // versus a total customer blackout. Aliasing prevention itself
++                // lives one layer up (the in-process session-file mutex); this is
++                // defense-in-depth so the failure mode can never be catastrophic.
++                if (err && err.code === "EEXIST") {
++                    fd = openSync(this.sessionFile, "a");
++                }
++                else {
++                    throw err;
++                }
++            }
+             try {
+                 for (const e of this.fileEntries) {
+                     writeFileSync(fd, `${JSON.stringify(e)}\n`);

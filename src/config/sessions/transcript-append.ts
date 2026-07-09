@@ -191,11 +191,22 @@ async function ensureTranscriptHeader(
     timestamp: new Date().toISOString(),
     cwd: params.cwd ?? process.cwd(),
   };
-  await fs.writeFile(transcriptPath, `${JSON.stringify(header)}\n`, {
-    encoding: "utf-8",
-    mode: 0o600,
-    flag: stat?.isFile() ? "w" : "wx",
-  });
+  try {
+    await fs.writeFile(transcriptPath, `${JSON.stringify(header)}\n`, {
+      encoding: "utf-8",
+      mode: 0o600,
+      flag: stat?.isFile() ? "w" : "wx",
+    });
+  } catch (err) {
+    // TOCTOU: between the stat above and this "wx" write, another writer (a
+    // second process, or a concurrent append) may have created the header. The
+    // only goal here is that a header exists — so a lost race is success, not
+    // failure. Tolerate EEXIST instead of letting it wedge the append (the same
+    // O_EXCL failure class as the vendor _persist bug in issue #35).
+    if ((err as NodeJS.ErrnoException)?.code !== "EEXIST") {
+      throw err;
+    }
+  }
 }
 
 async function resolveTranscriptAppendQueueKey(transcriptPath: string): Promise<string> {
