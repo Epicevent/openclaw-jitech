@@ -13,6 +13,7 @@ import {
   cloneSessionStoreRecord,
   isSessionStoreCacheEnabled,
   readSessionStoreCache,
+  recordPersistedSessionStoreEntryCount,
   setSerializedSessionStore,
   writeSessionStoreCache,
 } from "./store-cache.js";
@@ -33,7 +34,41 @@ export type LoadSessionStoreOptions = {
   maintenanceConfig?: ResolvedSessionMaintenanceConfig;
   runMaintenance?: boolean;
   clone?: boolean;
+  /**
+   * Writer-path safety: when the store file EXISTS on disk but cannot be
+   * read or parsed, throw SessionStoreUnreadableError instead of silently
+   * returning an empty store. A silently-empty load must never become the
+   * base of a read-modify-write save — the atomic writer would then replace
+   * the full index with a near-empty one, losing every session in one
+   * perfectly clean clobber (issue #38). Readers may keep the lenient {}
+   * fallback; writers must not.
+   *
+   * Two cases stay lenient even in strict mode: a MISSING file (legitimately
+   * empty store on first run), and valid JSON with a non-record SHAPE (e.g.
+   * a legacy array-backed store) — that content is definitively not a
+   * session record, and the product intentionally recovers from it by
+   * resetting. Only read/parse failures — where intact record content may
+   * still exist on disk — are refused.
+   */
+  strict?: boolean;
 };
+
+export type SessionStoreLoadFailureReason = "read" | "parse" | "shape";
+
+/** The session store file exists but could not be loaded (see strict option). */
+export class SessionStoreUnreadableError extends Error {
+  readonly storePath: string;
+  readonly reason: SessionStoreLoadFailureReason;
+  constructor(storePath: string, reason: SessionStoreLoadFailureReason, cause?: unknown) {
+    super(
+      `session store exists but is unreadable (${reason}): ${storePath} — refusing to treat it as empty`,
+      cause !== undefined ? { cause } : undefined,
+    );
+    this.name = "SessionStoreUnreadableError";
+    this.storePath = storePath;
+    this.reason = reason;
+  }
+}
 
 const log = createSubsystemLogger("sessions/store");
 
@@ -366,6 +401,8 @@ export function loadSessionStore(
   let fileStat = getFileStatSnapshot(storePath);
   let mtimeMs = fileStat?.mtimeMs;
   let serializedFromDisk: string | undefined;
+  let loadFailure: SessionStoreLoadFailureReason | undefined;
+  let loadFailureCause: unknown;
   const maxReadAttempts = process.platform === "win32" ? 3 : 1;
   const retryBuf = maxReadAttempts > 1 ? new Int32Array(new SharedArrayBuffer(4)) : undefined;
   for (let attempt = 0; attempt < maxReadAttempts; attempt += 1) {
@@ -379,16 +416,49 @@ export function loadSessionStore(
       if (isSessionStoreRecord(parsed)) {
         store = parsed;
         serializedFromDisk = raw;
+        loadFailure = undefined;
+        // Bookkeeping for the stale-base shrink guard (#38): remember how many
+        // entries this process last saw on disk. No extra I/O — piggybacks on
+        // the read that just happened.
+        recordPersistedSessionStoreEntryCount(storePath, Object.keys(parsed).length);
+      } else {
+        loadFailure = "shape";
       }
       fileStat = getFileStatSnapshot(storePath) ?? fileStat;
       mtimeMs = fileStat?.mtimeMs;
       break;
-    } catch {
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+        // Missing file = legitimately empty store (first run). Not a failure.
+        loadFailure = undefined;
+        break;
+      }
+      loadFailure = err instanceof SyntaxError ? "parse" : "read";
+      loadFailureCause = err;
       if (attempt < maxReadAttempts - 1) {
         Atomics.wait(retryBuf!, 0, 0, 50);
         continue;
       }
     }
+  }
+
+  if (loadFailure) {
+    // The file exists but could not be loaded. Never present this as a clean
+    // empty store: don't cache it as truth, warn loudly, and throw for strict
+    // (writer) callers so the failure cannot become the base of a read-
+    // modify-write save that would atomically clobber the full index (#38).
+    // Shape failures (valid JSON, non-record — e.g. legacy array stores) stay
+    // lenient even for writers: that content is definitively not a session
+    // record and the product intentionally recovers from it by resetting.
+    log.warn(
+      `session store load fell back to empty (${loadFailure}): ${storePath}` +
+        (loadFailureCause ? ` — ${String(loadFailureCause)}` : ""),
+    );
+    if (opts.strict && loadFailure !== "shape") {
+      throw new SessionStoreUnreadableError(storePath, loadFailure, loadFailureCause);
+    }
+    setSerializedSessionStore(storePath, undefined);
+    return {};
   }
 
   const migrated = applySessionStoreMigrations(store);
