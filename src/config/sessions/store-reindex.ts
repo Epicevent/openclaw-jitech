@@ -20,7 +20,6 @@
 //    re-enter under best-effort `agent:<id>:dashboard:<sessionId>` /
 //    `agent:<id>:subagent:<sessionId>` keys: listed and openable, but not
 //    re-bound to their old delivery routes.
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
