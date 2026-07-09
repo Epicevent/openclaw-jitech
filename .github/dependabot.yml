@@ -49,69 +49,11 @@ updates:
           - patch
     open-pull-requests-limit: 5
 
-  # Swift Package Manager - macOS app
-  - package-ecosystem: swift
-    directory: /apps/macos
-    schedule:
-      interval: daily
-    cooldown:
-      default-days: 2
-    groups:
-      swift-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
-
-  # Swift Package Manager - shared MoltbotKit
-  - package-ecosystem: swift
-    directory: /apps/shared/MoltbotKit
-    schedule:
-      interval: daily
-    cooldown:
-      default-days: 2
-    groups:
-      swift-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
-
-  # Swift Package Manager - Swabble
-  - package-ecosystem: swift
-    directory: /apps/swabble
-    schedule:
-      interval: daily
-    cooldown:
-      default-days: 2
-    groups:
-      swift-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
-
-  # Gradle - Android app
-  - package-ecosystem: gradle
-    directory: /apps/android
-    schedule:
-      interval: daily
-    cooldown:
-      default-days: 2
-    groups:
-      android-deps:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-    open-pull-requests-limit: 5
+  # Fork note (JI): the Swift (apps/macos, apps/shared/MoltbotKit, apps/swabble)
+  # and Gradle (apps/android) ecosystems inherited from upstream are removed —
+  # this fork builds and ships the server image only. Mobile client dependency
+  # bumps arrive via upstream sync instead of fork-local dependabot PRs. Same
+  # inherited-CI adaptation practice as the job-level repo guards.
 
   # Docker base images
   - package-ecosystem: docker
