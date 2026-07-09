@@ -148,7 +148,7 @@ type SaveSessionStoreOptions = {
 };
 
 // ============================================================================
-// Session store integrity: stale-base shrink guard + generation backups (#38)
+// Session store integrity: stale-base shrink guard (#38)
 //
 // The index is append-mostly. When a writer's view of the store ("base") holds
 // far fewer entries than what is durably on disk, saving that view would let
@@ -156,16 +156,21 @@ type SaveSessionStoreOptions = {
 // clean, unrecoverable clobber (the oc1 94→16 incident shape). The strict
 // writer load upstream refuses silently-empty loads; this guard is the second
 // net for stale bases the load path cannot see (cross-process snapshots,
-// cache anomalies, unknown unknowns). Generation backups are the last resort:
-// a rotating copy taken before overwrites so any surviving corruption has an
-// immediate restore point.
+// cache anomalies, unknown unknowns).
+//
+// Deliberately NO periodic backups on the save path: store-rotation backups
+// were removed upstream on purpose (hot oversized stores would blow up disk —
+// store.pruning.integration.test.ts pins that they stay gone), and the index
+// is derived data whose real restore path is reindex-from-transcripts. The
+// only copy ever taken is a forensic snapshot when the guard REFUSES a save —
+// at most once per pathological event, preserving what the buggy writer tried
+// to persist over.
 // ============================================================================
 
 const SHRINK_GUARD_MIN_PREVIOUS_ENTRIES = 20;
 const SHRINK_GUARD_MIN_LOSS = 10;
 const SHRINK_GUARD_MAX_LOSS_RATIO = 0.5;
 const SESSION_STORE_BACKUP_SLOTS = 3;
-const SESSION_STORE_BACKUP_MIN_INTERVAL_MS = 30 * 60 * 1000;
 
 /** A save was blocked because its base view lost most of the on-disk index. */
 export class SessionStoreMassShrinkError extends Error {
@@ -191,18 +196,12 @@ export class SessionStoreMassShrinkError extends Error {
 // process has never observed the store (no prior load or save), the guard
 // stands down; the strict writer load covers the unreadable-file case.
 
-function rotateSessionStoreBackup(storePath: string, opts?: { force?: boolean }): void {
+function rotateForensicSessionStoreBackup(storePath: string): void {
   try {
     if (!fs.existsSync(storePath)) {
       return;
     }
     const backupPath = (n: number) => `${storePath}.bak.${n}`;
-    if (!opts?.force && fs.existsSync(backupPath(1))) {
-      const age = Date.now() - fs.statSync(backupPath(1)).mtimeMs;
-      if (age < SESSION_STORE_BACKUP_MIN_INTERVAL_MS) {
-        return;
-      }
-    }
     for (let n = SESSION_STORE_BACKUP_SLOTS - 1; n >= 1; n -= 1) {
       if (fs.existsSync(backupPath(n))) {
         fs.rmSync(backupPath(n + 1), { force: true });
@@ -211,8 +210,8 @@ function rotateSessionStoreBackup(storePath: string, opts?: { force?: boolean })
     }
     fs.copyFileSync(storePath, backupPath(1));
   } catch (err) {
-    // Backups are best-effort and must never block a save.
-    log.warn(`session store backup rotation failed for ${storePath}: ${String(err)}`);
+    // Forensic backups are best-effort and must never block the guard.
+    log.warn(`session store forensic backup failed for ${storePath}: ${String(err)}`);
   }
 }
 
@@ -236,10 +235,10 @@ function assertSessionStoreBaseNotStale(
   if (loss < blockThreshold) {
     return;
   }
-  rotateSessionStoreBackup(storePath, { force: true });
+  rotateForensicSessionStoreBackup(storePath);
   log.error(
     `session store shrink guard tripped: base=${baseCount} persisted=${previousCount} ` +
-      `at ${storePath} — save refused, backup rotated`,
+      `at ${storePath} — save refused, forensic backup rotated`,
   );
   throw new SessionStoreMassShrinkError(storePath, previousCount, baseCount);
 }
@@ -501,11 +500,6 @@ async function saveSessionStoreUnlocked(
     recordPersistedSessionStoreEntryCount(storePath, entryCount);
     return;
   }
-
-  // Content is about to change on disk: keep a rotating generation backup
-  // (interval-limited) so any corruption that slips past the guards has an
-  // immediate restore point.
-  rotateSessionStoreBackup(storePath);
 
   // Windows: keep retry semantics because rename can fail while readers hold locks.
   if (process.platform === "win32") {

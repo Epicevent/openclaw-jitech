@@ -14,8 +14,11 @@
 //     Intentional mutator deletions are exempt: the guard checks the base,
 //     not the mutated result.
 //
-// Plus generation backups: content-changing saves keep a rotating
-// sessions.json.bak.N restore point (interval-limited).
+// Deliberately NO periodic backups on the save path — upstream removed store-
+// rotation backups on purpose (store.pruning.integration.test.ts pins that
+// they stay gone), and the index is derived data whose real restore path is
+// reindex-from-transcripts. Only the guard's refusal takes a forensic
+// sessions.json.bak.N snapshot, at most once per pathological event.
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -140,18 +143,25 @@ describe("stale-base shrink guard (issue #38 net 2)", () => {
   });
 });
 
-describe("generation backups", () => {
-  it("rotates a backup before a content-changing save", async () => {
+describe("no periodic backups (upstream decision preserved)", () => {
+  it("ordinary content-changing saves leave no sessions.json.bak.* files", async () => {
     await seedStore(30);
     await updateSessionStore(storePath, (store) => {
       store["agent:main:test:extra"] = { sessionId: "sid-extra" } as SessionEntry;
     });
-    expect(fs.existsSync(`${storePath}.bak.1`)).toBe(true);
-    // The backup holds a valid pre-change snapshot.
+    const backups = fs.readdirSync(dir).filter((f) => f.startsWith("sessions.json.bak."));
+    expect(backups).toHaveLength(0);
+  });
+
+  it("the forensic backup taken on guard refusal holds the pre-clobber snapshot", async () => {
+    await seedStore(40);
+    await expect(
+      saveSessionStore(storePath, makeStore(2, "agent:main:stale"), { skipMaintenance: true }),
+    ).rejects.toBeInstanceOf(SessionStoreMassShrinkError);
     const backup = JSON.parse(fs.readFileSync(`${storePath}.bak.1`, "utf-8")) as Record<
       string,
       unknown
     >;
-    expect(Object.keys(backup).length).toBeGreaterThanOrEqual(30);
+    expect(Object.keys(backup)).toHaveLength(40);
   });
 });

@@ -450,10 +450,8 @@ export function loadSessionStore(
     // Shape failures (valid JSON, non-record — e.g. legacy array stores) stay
     // lenient even for writers: that content is definitively not a session
     // record and the product intentionally recovers from it by resetting.
-    log.warn(
-      `session store load fell back to empty (${loadFailure}): ${storePath}` +
-        (loadFailureCause ? ` — ${String(loadFailureCause)}` : ""),
-    );
+    const causeText = loadFailureCause instanceof Error ? ` — ${loadFailureCause.message}` : "";
+    log.warn(`session store load fell back to empty (${loadFailure}): ${storePath}${causeText}`);
     if (opts.strict && loadFailure !== "shape") {
       throw new SessionStoreUnreadableError(storePath, loadFailure, loadFailureCause);
     }
