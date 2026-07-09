@@ -264,10 +264,20 @@ function resolveSidebarSessionRows(state: AppViewState): GatewaySessionRow[] {
     .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
 }
 
+// Release pacing (server-decided, hello.uiFeatures): when the session-folder
+// UI is not revealed for this deployment, the sidebar renders the pre-folder
+// recent-5 list and nav groups keep their pre-folder expanded defaults.
+// folderPath data keeps persisting server-side either way.
+export function isSessionFolderUiEnabled(state: AppViewState): boolean {
+  return state.hello?.uiFeatures?.sessionFolders === true;
+}
+
 function renderSidebarSessions(state: AppViewState) {
   const collapsed = state.settings.navCollapsed;
   const busy = isSidebarSessionBusy(state);
-  const rows = collapsed ? [] : resolveSidebarSessionRows(state);
+  const foldersEnabled = isSessionFolderUiEnabled(state);
+  const allRows = collapsed ? [] : resolveSidebarSessionRows(state);
+  const rows = foldersEnabled ? allRows : allRows.slice(0, 5);
   const newSessionDisabled = !state.connected || state.sessionsLoading || busy || !state.client;
   const newSessionTitle = !state.connected
     ? "Connect to create a new session"
@@ -301,16 +311,38 @@ function renderSidebarSessions(state: AppViewState) {
       </button>
       ${collapsed || rows.length === 0
         ? nothing
-        : html`
-            <div class="sidebar-recent-sessions" aria-label=${t("chat.sidebar.folders.treeLabel")}>
-              ${renderSessionFolderTree(state, rows, renderSidebarRecentSession)}
-              ${state.sidebarRenameError && !state.sidebarRenameKey
-                ? html`<div class="sidebar-recent-session__rename-error" role="alert">
-                    ${resolveSidebarLabelErrorMessage(state.sidebarRenameError)}
-                  </div>`
-                : nothing}
-            </div>
-          `}
+        : foldersEnabled
+          ? html`
+              <div
+                class="sidebar-recent-sessions"
+                aria-label=${t("chat.sidebar.folders.treeLabel")}
+              >
+                ${renderSessionFolderTree(state, rows, renderSidebarRecentSession)}
+                ${state.sidebarRenameError && !state.sidebarRenameKey
+                  ? html`<div class="sidebar-recent-session__rename-error" role="alert">
+                      ${resolveSidebarLabelErrorMessage(state.sidebarRenameError)}
+                    </div>`
+                  : nothing}
+              </div>
+            `
+          : html`
+              <div
+                class="sidebar-recent-sessions"
+                aria-label=${t("overview.cards.recentSessions")}
+              >
+                <div class="sidebar-recent-sessions__label">
+                  ${t("usage.sessions.recentShort")}
+                </div>
+                <div class="sidebar-recent-sessions__list">
+                  ${rows.map((row) => renderSidebarRecentSession(state, row))}
+                </div>
+                ${state.sidebarRenameError && !state.sidebarRenameKey
+                  ? html`<div class="sidebar-recent-session__rename-error" role="alert">
+                      ${resolveSidebarLabelErrorMessage(state.sidebarRenameError)}
+                    </div>`
+                  : nothing}
+              </div>
+            `}
     </section>
   `;
 }
@@ -1888,7 +1920,13 @@ export function renderApp(state: AppViewState) {
                 ${TAB_GROUPS.map((group) => {
                   // Sessions(chat) and settings stay open on first load; operational
                   // groups start collapsed. User toggles persist via settings.
-                  const collapsedByDefault = group.label !== "chat" && group.label !== "settings";
+                  // Collapse-by-default shipped in the same visual bundle as the
+                  // folder tree — release pacing gates them together so an
+                  // unrevealed deployment looks identical to the previous one.
+                  const collapsedByDefault =
+                    isSessionFolderUiEnabled(state) &&
+                    group.label !== "chat" &&
+                    group.label !== "settings";
                   const isGroupCollapsed =
                     state.settings.navGroupsCollapsed[group.label] ?? collapsedByDefault;
                   const showItems = navCollapsed || !isGroupCollapsed;

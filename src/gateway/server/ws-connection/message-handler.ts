@@ -1700,6 +1700,12 @@ export function attachGatewayWsMessageHandler(params: GatewayWsMessageHandlerPar
             connId,
           },
           features: { methods: gatewayMethods, events },
+          // Release pacing: every connection learns which UI features this
+          // deployment reveals (config-driven, default off) — unlike the
+          // operator-scoped config snapshot, this reaches customer sessions.
+          uiFeatures: {
+            sessionFolders: getRuntimeConfig().ui?.sessionFolders === true,
+          },
           snapshot,
           ...(Object.keys(pluginSurfaceUrls).length > 0 ? { pluginSurfaceUrls } : {}),
           auth: {

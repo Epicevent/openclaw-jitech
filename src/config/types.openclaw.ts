@@ -125,6 +125,14 @@ export type OpenClawConfig = {
       /** Assistant avatar (emoji, short text, or image URL/data URI). */
       avatar?: string;
     };
+    /**
+     * Show the session folder tree UI (sidebar tree, drag & drop, folder path
+     * in the session picker, collapsed-by-default nav groups). Default OFF:
+     * feature visibility is release-paced per slot — ship protections in the
+     * image, reveal features by flipping this flag, no redeploy needed.
+     * folderPath data is persisted regardless of this flag.
+     */
+    sessionFolders?: boolean;
   };
   secrets?: SecretsConfig;
   skills?: SkillsConfig;
