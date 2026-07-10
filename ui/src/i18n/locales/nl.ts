@@ -59,6 +59,7 @@ export const nl: TranslationMap = {
     loadApprovals: "Goedkeuringen laden",
     settingsSections: "Instellingensecties",
     version: "Versie",
+    devBuild: "Development",
     docs: "Docs",
     theme: "Thema",
     colorMode: "Kleurmodus",

@@ -59,6 +59,7 @@ export const th: TranslationMap = {
     loadApprovals: "โหลด approvals",
     settingsSections: "ส่วนการตั้งค่า",
     version: "เวอร์ชัน",
+    devBuild: "Development",
     docs: "เอกสาร",
     theme: "ธีม",
     colorMode: "โหมดสี",

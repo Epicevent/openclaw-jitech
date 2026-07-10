@@ -59,6 +59,7 @@ export const uk: TranslationMap = {
     loadApprovals: "Завантажити схвалення",
     settingsSections: "Розділи налаштувань",
     version: "Версія",
+    devBuild: "Development",
     docs: "Документація",
     theme: "Тема",
     colorMode: "Колірний режим",

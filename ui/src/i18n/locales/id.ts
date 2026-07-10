@@ -59,6 +59,7 @@ export const id: TranslationMap = {
     loadApprovals: "Muat persetujuan",
     settingsSections: "Bagian pengaturan",
     version: "Versi",
+    devBuild: "Development",
     docs: "Dokumen",
     theme: "Tema",
     colorMode: "Mode warna",

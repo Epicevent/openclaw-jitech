@@ -59,6 +59,7 @@ export const ar: TranslationMap = {
     loadApprovals: "تحميل الموافقات",
     settingsSections: "أقسام الإعدادات",
     version: "الإصدار",
+    devBuild: "Development",
     docs: "المستندات",
     theme: "السمة",
     colorMode: "وضع اللون",

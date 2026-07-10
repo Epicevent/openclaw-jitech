@@ -59,6 +59,7 @@ export const zh_TW: TranslationMap = {
     loadApprovals: "載入核准項目",
     settingsSections: "設定區段",
     version: "版本",
+    devBuild: "Development",
     docs: "文檔",
     theme: "主題",
     colorMode: "色彩模式",
