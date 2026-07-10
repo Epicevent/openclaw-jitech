@@ -1,6 +1,7 @@
 import type { ChannelAccountSnapshot } from "../../channels/plugins/types.public.js";
 import type { ChannelHealthSummary, HealthSummary } from "../../commands/health.types.js";
 import { getStatusSummary } from "../../commands/status.js";
+import { getModelHealthSnapshot } from "../../infra/model-health.js";
 import { getGatewayModelPricingHealth } from "../model-pricing-cache-state.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { ChannelRuntimeSnapshot } from "../server-channel-runtime.types.js";
@@ -123,10 +124,14 @@ export const healthHandlers: GatewayRequestHandlers = {
     ) {
       respond(
         true,
-        mergeCachedHealthRuntimeState({
-          cached,
-          eventLoop: context.getEventLoopHealth?.(),
-        }),
+        {
+          ...mergeCachedHealthRuntimeState({
+            cached,
+            eventLoop: context.getEventLoopHealth?.(),
+          }),
+          // Always live, never cached: process-local counters (issue #32).
+          modelHealth: getModelHealthSnapshot(),
+        },
         undefined,
         { cached: true },
       );
@@ -137,7 +142,7 @@ export const healthHandlers: GatewayRequestHandlers = {
     }
     try {
       const snap = await refreshHealthSnapshot({ probe: wantsProbe, includeSensitive });
-      respond(true, snap, undefined);
+      respond(true, { ...snap, modelHealth: getModelHealthSnapshot() }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
     }

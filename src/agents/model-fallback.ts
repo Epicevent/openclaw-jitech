@@ -5,6 +5,7 @@ import {
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { emitFailoverEvent } from "../infra/diagnostic-events.js";
 import { formatErrorMessage } from "../infra/errors.js";
+import { recordModelCallFailure, recordModelCallSuccess } from "../infra/model-health.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isCommandLaneTaskTimeoutError } from "../process/command-queue.js";
 import { createLazyImportLoader } from "../shared/lazy-promise.js";
@@ -962,6 +963,20 @@ export async function runWithModelFallback<T>(
   const observeFailedCandidate = async (
     failedAttempt: Parameters<typeof recordFailedCandidateAttempt>[0],
   ) => {
+    // Passive health recording + the one greppable failure line (issue #32).
+    // Every failed candidate passes through here, so this is the single choke.
+    const describedForHealth = describeFailoverError(failedAttempt.error);
+    recordModelCallFailure({
+      provider: failedAttempt.candidate.provider,
+      model: failedAttempt.candidate.model,
+      ...(describedForHealth.status !== undefined ? { status: describedForHealth.status } : {}),
+      ...(describedForHealth.code !== undefined ? { code: describedForHealth.code } : {}),
+      ...(describedForHealth.reason !== undefined ? { reason: describedForHealth.reason } : {}),
+      ...(failedAttempt.sessionId !== undefined ? { sessionId: failedAttempt.sessionId } : {}),
+      ...(failedAttempt.lane !== undefined ? { lane: failedAttempt.lane } : {}),
+      attempt: failedAttempt.attempt,
+      totalCandidates: failedAttempt.total,
+    });
     if (!params.onFallbackStep && !isModelFallbackDecisionLogEnabled()) {
       appendFailedCandidateAttempt(failedAttempt);
       return;
@@ -1194,6 +1209,7 @@ export async function runWithModelFallback<T>(
           `Model "${sanitizeForLog(notFoundAttempt.provider)}/${sanitizeForLog(notFoundAttempt.model)}" not found. Fell back to "${sanitizeForLog(candidate.provider)}/${sanitizeForLog(candidate.model)}".`,
         );
       }
+      recordModelCallSuccess({ provider: candidate.provider, model: candidate.model });
       return attemptRun.success;
     }
     const err = attemptRun.error;
