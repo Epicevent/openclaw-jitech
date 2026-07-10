@@ -16,8 +16,10 @@ import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./d
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
   dropSessionStoreObjectCache,
+  getPersistedSessionStoreEntryCount,
   getSerializedSessionStore,
   isSessionStoreCacheEnabled,
+  recordPersistedSessionStoreEntryCount,
   setSerializedSessionStore,
   takeMutableSessionStoreCache,
   writeSessionStoreCache,
@@ -49,7 +51,11 @@ export {
   getSessionStoreWriterQueueSizeForTest,
 } from "./store-writer-state.js";
 export { withSessionStoreWriterForTest } from "./store-writer.js";
-export { loadSessionStore } from "./store-load.js";
+export {
+  loadSessionStore,
+  SessionStoreUnreadableError,
+  type SessionStoreLoadFailureReason,
+} from "./store-load.js";
 export { normalizeStoreSessionKey, resolveSessionStoreEntry } from "./store-entry.js";
 
 const log = createSubsystemLogger("sessions/store");
@@ -115,6 +121,14 @@ export type { ResolvedSessionMaintenanceConfig, SessionMaintenanceWarning };
 type SaveSessionStoreOptions = {
   /** Skip pruning, capping, and rotation (e.g. during one-time migrations). */
   skipMaintenance?: boolean;
+  /**
+   * Bypass the stale-base shrink guard for callers that intentionally persist
+   * a store much smaller than what is on disk (bulk clears). Almost nothing
+   * should need this — intentional deletions through updateSessionStore
+   * mutators are already exempt because the guard checks the loaded BASE, not
+   * the mutated result.
+   */
+  skipShrinkGuard?: boolean;
   /** Active session key for warn-only maintenance. */
   activeSessionKey?: string;
   /**
@@ -132,6 +146,102 @@ type SaveSessionStoreOptions = {
   /** Fully resolved maintenance settings when the caller already has config loaded. */
   maintenanceConfig?: ResolvedSessionMaintenanceConfig;
 };
+
+// ============================================================================
+// Session store integrity: stale-base shrink guard (#38)
+//
+// The index is append-mostly. When a writer's view of the store ("base") holds
+// far fewer entries than what is durably on disk, saving that view would let
+// the atomic writer replace the full index with a near-empty one — a perfectly
+// clean, unrecoverable clobber (the oc1 94→16 incident shape). The strict
+// writer load upstream refuses silently-empty loads; this guard is the second
+// net for stale bases the load path cannot see (cross-process snapshots,
+// cache anomalies, unknown unknowns).
+//
+// Deliberately NO periodic backups on the save path: store-rotation backups
+// were removed upstream on purpose (hot oversized stores would blow up disk —
+// store.pruning.integration.test.ts pins that they stay gone), and the index
+// is derived data whose real restore path is reindex-from-transcripts. The
+// only copy ever taken is a forensic snapshot when the guard REFUSES a save —
+// at most once per pathological event, preserving what the buggy writer tried
+// to persist over.
+// ============================================================================
+
+const SHRINK_GUARD_MIN_PREVIOUS_ENTRIES = 20;
+const SHRINK_GUARD_MIN_LOSS = 10;
+const SHRINK_GUARD_MAX_LOSS_RATIO = 0.5;
+const SESSION_STORE_BACKUP_SLOTS = 3;
+
+/** A save was blocked because its base view lost most of the on-disk index. */
+export class SessionStoreMassShrinkError extends Error {
+  readonly storePath: string;
+  readonly previousCount: number;
+  readonly baseCount: number;
+  constructor(storePath: string, previousCount: number, baseCount: number) {
+    super(
+      `refusing to save session store: writer base has ${baseCount} entries but ` +
+        `${previousCount} are persisted at ${storePath} — stale or corrupted base ` +
+        `would clobber the index (#38). A backup was rotated to ${storePath}.bak.1.`,
+    );
+    this.name = "SessionStoreMassShrinkError";
+    this.storePath = storePath;
+    this.previousCount = previousCount;
+    this.baseCount = baseCount;
+  }
+}
+
+// Entry-count bookkeeping lives in store-cache.ts and is recorded by loads and
+// saves that already touch the disk — the guard itself never reads the disk,
+// preserving the "warm mutable cache needs no disk I/O" invariant. When this
+// process has never observed the store (no prior load or save), the guard
+// stands down; the strict writer load covers the unreadable-file case.
+
+function rotateForensicSessionStoreBackup(storePath: string): void {
+  try {
+    if (!fs.existsSync(storePath)) {
+      return;
+    }
+    const backupPath = (n: number) => `${storePath}.bak.${n}`;
+    for (let n = SESSION_STORE_BACKUP_SLOTS - 1; n >= 1; n -= 1) {
+      if (fs.existsSync(backupPath(n))) {
+        fs.rmSync(backupPath(n + 1), { force: true });
+        fs.renameSync(backupPath(n), backupPath(n + 1));
+      }
+    }
+    fs.copyFileSync(storePath, backupPath(1));
+  } catch (err) {
+    // Forensic backups are best-effort and must never block the guard.
+    log.warn(`session store forensic backup failed for ${storePath}: ${String(err)}`);
+  }
+}
+
+function assertSessionStoreBaseNotStale(
+  storePath: string,
+  baseCount: number,
+  opts?: SaveSessionStoreOptions,
+): void {
+  if (opts?.skipShrinkGuard) {
+    return;
+  }
+  const previousCount = getPersistedSessionStoreEntryCount(storePath);
+  if (previousCount === undefined || previousCount < SHRINK_GUARD_MIN_PREVIOUS_ENTRIES) {
+    return;
+  }
+  const loss = previousCount - baseCount;
+  const blockThreshold = Math.max(
+    SHRINK_GUARD_MIN_LOSS,
+    Math.ceil(previousCount * SHRINK_GUARD_MAX_LOSS_RATIO),
+  );
+  if (loss < blockThreshold) {
+    return;
+  }
+  rotateForensicSessionStoreBackup(storePath);
+  log.error(
+    `session store shrink guard tripped: base=${baseCount} persisted=${previousCount} ` +
+      `at ${storePath} — save refused, forensic backup rotated`,
+  );
+  throw new SessionStoreMassShrinkError(storePath, previousCount, baseCount);
+}
 
 function updateSessionStoreWriteCaches(params: {
   storePath: string;
@@ -165,7 +275,10 @@ function loadMutableSessionStoreForWriter(storePath: string): Record<string, Ses
       return cached;
     }
   }
-  return loadSessionStore(storePath, { skipCache: true, clone: false });
+  // strict: a writer must never adopt a silently-empty store as its read-
+  // modify-write base — an unreadable-but-existing index file throws here
+  // instead of being clobbered on the subsequent save (#38).
+  return loadSessionStore(storePath, { skipCache: true, clone: false, strict: true });
 }
 
 function resolveMutableSessionStoreKey(
@@ -230,8 +343,16 @@ async function saveSessionStoreUnlocked(
   storePath: string,
   store: Record<string, SessionEntry>,
   opts?: SaveSessionStoreOptions,
+  /**
+   * Entry count of the store as the writer LOADED it, before any caller
+   * mutation. Intentional mutator deletions are legitimate; a base that is
+   * missing most of the on-disk index is not. Defaults to the incoming
+   * store's count for direct saves (where the argument IS the base).
+   */
+  baseCount?: number,
 ): Promise<void> {
   normalizeSessionStore(store);
+  assertSessionStoreBaseNotStale(storePath, baseCount ?? Object.keys(store).length, opts);
 
   if (!opts?.skipMaintenance) {
     // Resolve maintenance config once (avoids repeated getRuntimeConfig() calls).
@@ -373,8 +494,10 @@ async function saveSessionStoreUnlocked(
 
   await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
   const json = JSON.stringify(store, null, 2);
+  const entryCount = Object.keys(store).length;
   if (getSerializedSessionStore(storePath) === json) {
     updateSessionStoreWriteCaches({ storePath, store, serialized: json });
+    recordPersistedSessionStoreEntryCount(storePath, entryCount);
     return;
   }
 
@@ -383,6 +506,7 @@ async function saveSessionStoreUnlocked(
     for (let i = 0; i < 5; i++) {
       try {
         await writeSessionStoreAtomic({ storePath, store, serialized: json });
+        recordPersistedSessionStoreEntryCount(storePath, entryCount);
         return;
       } catch (err) {
         const code = getErrorCode(err);
@@ -403,6 +527,7 @@ async function saveSessionStoreUnlocked(
 
   try {
     await writeSessionStoreAtomic({ storePath, store, serialized: json });
+    recordPersistedSessionStoreEntryCount(storePath, entryCount);
   } catch (err) {
     const code = getErrorCode(err);
 
@@ -411,6 +536,7 @@ async function saveSessionStoreUnlocked(
       // Best-effort: try a direct write (recreating the parent dir), otherwise ignore.
       try {
         await writeSessionStoreAtomic({ storePath, store, serialized: json });
+        recordPersistedSessionStoreEntryCount(storePath, entryCount);
       } catch (err2) {
         const code2 = getErrorCode(err2);
         if (code2 === "ENOENT") {
@@ -442,6 +568,10 @@ export async function updateSessionStore<T>(
 ): Promise<T> {
   return await runExclusiveSessionStoreWrite(storePath, async () => {
     const store = loadMutableSessionStoreForWriter(storePath);
+    // Shrink-guard base: the store as loaded, BEFORE the mutator runs.
+    // Deletions the mutator makes are intentional; a base that is missing
+    // most of the on-disk index is the #38 clobber and must not be saved.
+    const baseCount = Object.keys(store).length;
     const previousAcpByKey = collectAcpMetadataSnapshot(store);
     const result = await mutator(store);
     preserveExistingAcpMetadata({
@@ -449,7 +579,7 @@ export async function updateSessionStore<T>(
       nextStore: store,
       allowDropSessionKeys: opts?.allowDropAcpMetaSessionKeys,
     });
-    await saveSessionStoreUnlocked(storePath, store, opts);
+    await saveSessionStoreUnlocked(storePath, store, opts, baseCount);
     return result;
   });
 }

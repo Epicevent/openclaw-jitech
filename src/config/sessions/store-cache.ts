@@ -33,9 +33,23 @@ export function isSessionStoreCacheEnabled(): boolean {
   return isCacheEnabled(getSessionStoreTtl());
 }
 
+// Last entry count this process observed on disk (per store path), recorded by
+// successful loads and saves. Powers the stale-base shrink guard (#38) without
+// any extra disk reads — pure bookkeeping on I/O that already happens.
+const SESSION_STORE_PERSISTED_COUNTS = new Map<string, number>();
+
+export function recordPersistedSessionStoreEntryCount(storePath: string, count: number): void {
+  SESSION_STORE_PERSISTED_COUNTS.set(storePath, count);
+}
+
+export function getPersistedSessionStoreEntryCount(storePath: string): number | undefined {
+  return SESSION_STORE_PERSISTED_COUNTS.get(storePath);
+}
+
 export function clearSessionStoreCaches(): void {
   SESSION_STORE_CACHE.clear();
   SESSION_STORE_SERIALIZED_CACHE.clear();
+  SESSION_STORE_PERSISTED_COUNTS.clear();
 }
 
 export function invalidateSessionStoreCache(storePath: string): void {

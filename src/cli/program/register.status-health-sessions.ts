@@ -287,6 +287,53 @@ export function registerStatusHealthSessionsCommands(program: Command) {
     });
 
   sessionsCmd
+    .command("reindex")
+    .description("Rebuild missing session-store entries from transcript files (issue #38)")
+    .option("--store <path>", "Path to session store (default: resolved from config)")
+    .option("--agent <id>", "Agent id for recovered keys (default: configured default agent)")
+    .option("--all-agents", "Reindex across all configured agents", false)
+    .option("--write", "Apply the additions (default is a dry-run report)", false)
+    .option("--json", "Output JSON", false)
+    .addHelpText(
+      "after",
+      () =>
+        `\n${theme.heading("Examples:")}\n${formatHelpExamples([
+          ["openclaw sessions reindex", "Dry-run: report recoverable orphan transcripts."],
+          ["openclaw sessions reindex --write", "Re-register orphans into sessions.json."],
+          ["openclaw sessions reindex --agent work --write", "Recover one agent's store."],
+        ])}\n\n${theme.muted(
+          "Additive only — existing entries are never modified. Recovered sessions get " +
+            "best-effort dashboard/subagent keys; original channel routing, labels, and " +
+            "folders are not recoverable from transcripts. Prefer running while the " +
+            "gateway is idle or stopped: a concurrent gateway save can drop just-added " +
+            "entries (never damage existing ones).",
+        )}`,
+    )
+    .action(async (opts, command) => {
+      const parentOpts = command.parent?.opts() as
+        | {
+            store?: string;
+            agent?: string;
+            allAgents?: boolean;
+            json?: boolean;
+          }
+        | undefined;
+      await runCommandWithRuntime(defaultRuntime, async () => {
+        const { sessionsReindexCommand } = await import("../../commands/sessions-reindex.js");
+        await sessionsReindexCommand(
+          {
+            store: (opts.store as string | undefined) ?? parentOpts?.store,
+            agent: (opts.agent as string | undefined) ?? parentOpts?.agent,
+            allAgents: Boolean(opts.allAgents || parentOpts?.allAgents),
+            write: Boolean(opts.write),
+            json: Boolean(opts.json || parentOpts?.json),
+          },
+          defaultRuntime,
+        );
+      });
+    });
+
+  sessionsCmd
     .command("export-trajectory")
     .description("Export a redacted trajectory bundle for a stored session")
     .option("--session-key <key>", "Session key to export")
