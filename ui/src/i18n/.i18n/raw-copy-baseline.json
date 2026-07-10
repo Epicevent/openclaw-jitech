@@ -2921,6 +2921,13 @@
       "text": "Send test"
     },
     {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/ui/views/config.ts",
+      "text": "Sidebar sessions"
+    },
+    {
       "count": 2,
       "kind": "html-text",
       "name": "text",

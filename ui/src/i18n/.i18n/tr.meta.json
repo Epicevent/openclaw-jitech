@@ -9,17 +9,19 @@
     "chat.sidebar.folders.newSubfolder",
     "chat.sidebar.folders.rename",
     "chat.sidebar.folders.renamePlaceholder",
+    "chat.sidebar.folders.showLess",
+    "chat.sidebar.folders.showMore",
     "chat.sidebar.rename.action",
     "chat.sidebar.rename.errorDuplicate",
     "chat.sidebar.rename.errorGeneric",
     "chat.sidebar.rename.placeholder"
   ],
-  "generatedAt": "2026-07-10T03:27:26.365Z",
+  "generatedAt": "2026-07-10T05:46:40.910Z",
   "locale": "tr",
   "model": "claude-opus-4-7",
   "provider": "anthropic",
-  "sourceHash": "f301b65501f06fc6bb7741e470200df93e3cf3c2b0753a9a15399f3c6f30cc65",
-  "totalKeys": 1133,
+  "sourceHash": "703ca98566ef6b503ca88d7b4c1b7093ce8d63b333c09e98acee8962cd34bdfc",
+  "totalKeys": 1135,
   "translatedKeys": 1120,
   "workflow": 1
 }
