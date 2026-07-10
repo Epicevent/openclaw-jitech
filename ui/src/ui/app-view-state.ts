@@ -282,6 +282,8 @@ export type AppViewState = {
   sidebarFolderEditPath: string | null;
   /** Parent path receiving a new folder ("" = root, null = not creating). */
   sidebarFolderCreateParent: string | null;
+  /** Show-all override for the capped root session list (transient). */
+  sidebarRootSessionsExpanded: boolean;
   threadsLoading: boolean;
   threadsResult: SessionsListResult | null;
   threadsError: string | null;
@@ -452,6 +454,7 @@ export type AppViewState = {
     clearCustomTheme: () => void;
     setBorderRadius: (value: number) => void;
     setTextScale: (value: number) => void;
+    setSidebarSessionLimit: (value: number) => void;
     applySettings: (next: UiSettings) => void;
     applyLocalUserIdentity?: (next: { name?: string | null; avatar?: string | null }) => void;
     loadOverview: (opts?: { refresh?: boolean }) => Promise<void>;

@@ -407,6 +407,7 @@ export class OpenClawApp extends LitElement {
   @state() sidebarSuggestKey: string | null = null;
   @state() sidebarFolderEditPath: string | null = null;
   @state() sidebarFolderCreateParent: string | null = null;
+  @state() sidebarRootSessionsExpanded = false;
   @state() sessionsFilterActive = DEFAULT_SESSIONS_FILTERS.activeMinutes;
   @state() sessionsFilterLimit = DEFAULT_SESSIONS_FILTERS.limit;
   @state() sessionsIncludeGlobal = true;
@@ -905,6 +906,16 @@ export class OpenClawApp extends LitElement {
       ...this.settings,
       textScale: value as typeof this.settings.textScale,
     });
+    this.requestUpdate();
+  }
+
+  setSidebarSessionLimit(value: number) {
+    applySettingsInternal(this as unknown as Parameters<typeof applySettingsInternal>[0], {
+      ...this.settings,
+      sidebarSessionLimit: value,
+    });
+    // Changing the cap re-collapses an expanded root list so the new limit shows.
+    this.sidebarRootSessionsExpanded = false;
     this.requestUpdate();
   }
 

@@ -46,7 +46,9 @@ export type WebPushUiState = {
   loading: boolean;
 };
 
-export type ConfigProps = {
+export const SIDEBAR_SESSION_LIMIT_STOPS = [5, 10, 20, 0] as const;
+
+type ConfigProps = {
   raw: string;
   originalRaw: string;
   valid: boolean | null;
@@ -100,6 +102,8 @@ export type ConfigProps = {
   setBorderRadius: (value: number) => void;
   textScale: number;
   setTextScale: (value: number) => void;
+  sidebarSessionLimit: number;
+  setSidebarSessionLimit: (value: number) => void;
   gatewayUrl: string;
   assistantName: string;
   configPath?: string | null;
@@ -1091,6 +1095,27 @@ function renderAppearanceSection(props: ConfigProps) {
                 >
                   <span class="settings-text-scale__sample">${TEXT_SCALE_LABELS[stop]}</span>
                   <span class="settings-text-scale__label">${stop}%</span>
+                </button>
+              `,
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-appearance__section">
+        <h3 class="settings-appearance__heading">Sidebar sessions</h3>
+        <div class="settings-text-scale">
+          <div class="settings-text-scale__options">
+            ${SIDEBAR_SESSION_LIMIT_STOPS.map(
+              (stop) => html`
+                <button
+                  type="button"
+                  class="settings-text-scale__btn ${stop === props.sidebarSessionLimit
+                    ? "active"
+                    : ""}"
+                  @click=${() => props.setSidebarSessionLimit(stop)}
+                >
+                  <span class="settings-text-scale__label">${stop === 0 ? "All" : String(stop)}</span>
                 </button>
               `,
             )}
