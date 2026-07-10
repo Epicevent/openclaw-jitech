@@ -45,6 +45,8 @@ export type HealthSummary = {
   eventLoop?: import("../gateway/server/event-loop-health.js").GatewayEventLoopHealth;
   plugins?: PluginHealthSummary;
   modelPricing?: ModelPricingHealthSummary;
+  /** Passive model-call/session-store health counters (issue #32). */
+  modelHealth?: import("../infra/model-health.js").ModelHealthSnapshot;
   channels: Record<string, ChannelHealthSummary>;
   channelOrder: string[];
   channelLabels: Record<string, string>;

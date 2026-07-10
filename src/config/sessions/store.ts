@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { MsgContext } from "../../auto-reply/templating.js";
 import { writeTextAtomic } from "../../infra/json-files.js";
+import { recordSessionStoreSaveFailure } from "../../infra/model-health.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
   deliveryContextFromChannelRoute,
@@ -654,7 +655,15 @@ async function writeSessionStoreAtomic(params: {
   store: Record<string, SessionEntry>;
   serialized: string;
 }): Promise<void> {
-  await writeTextAtomic(params.storePath, params.serialized, { durable: false, mode: 0o600 });
+  try {
+    await writeTextAtomic(params.storePath, params.serialized, { durable: false, mode: 0o600 });
+  } catch (err) {
+    // Greppable line + health counter (issue #32): a store that silently
+    // cannot be written is exactly the failure class that stayed invisible
+    // during the oc1 incident. Recording must not swallow the error.
+    recordSessionStoreSaveFailure({ storePath: params.storePath, error: err });
+    throw err;
+  }
   updateSessionStoreWriteCaches({
     storePath: params.storePath,
     store: params.store,
