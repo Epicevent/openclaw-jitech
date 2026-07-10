@@ -395,7 +395,7 @@ export function renderSessionFolderTree(
                 state.sidebarRootSessionsExpanded = true;
               }}
             >
-              ${t("chat.sidebar.folders.showMore", { count: hiddenRootCount })}
+              ${t("chat.sidebar.folders.showMore", { count: String(hiddenRootCount) })}
             </button>
           `
         : nothing}

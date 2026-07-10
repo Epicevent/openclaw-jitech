@@ -46,9 +46,9 @@ export type WebPushUiState = {
   loading: boolean;
 };
 
-export const SIDEBAR_SESSION_LIMIT_STOPS = [5, 10, 20, 0] as const;
+const SIDEBAR_SESSION_LIMIT_STOPS = [5, 10, 20, 0] as const;
 
-type ConfigProps = {
+export type ConfigProps = {
   raw: string;
   originalRaw: string;
   valid: boolean | null;

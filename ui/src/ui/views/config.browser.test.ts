@@ -59,6 +59,8 @@ describe("config view", () => {
     setBorderRadius: vi.fn(),
     textScale: 100,
     setTextScale: vi.fn(),
+    sidebarSessionLimit: 5,
+    setSidebarSessionLimit: vi.fn(),
     gatewayUrl: "",
     assistantName: "OpenClaw",
   });
