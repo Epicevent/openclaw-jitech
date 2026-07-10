@@ -76,7 +76,7 @@ function skipReasonForTranscriptName(name: string): string | undefined {
   if (/\.trajectory\.jsonl$/i.test(name)) {
     return "trajectory artifact";
   }
-  if (/-topic-/.test(name)) {
+  if (name.includes("-topic-")) {
     return "telegram topic thread (key unrecoverable)";
   }
   return undefined;
