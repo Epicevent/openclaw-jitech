@@ -340,6 +340,16 @@ export function renderSessionFolderTree(
   const tree = buildSessionFolderTree(rows, pendingFolders(state));
   const rootHandlers = dropHandlers(state, null);
   const actionsDisabled = !state.connected || !state.client || state.sidebarRenameBusy;
+  // Cap applies to ROOT-LEVEL sessions only: folders are the user's own
+  // organization, so their contents always render in full. 0 = unlimited
+  // (upstream's original sidebar showed the 5 most recent; the cap restores
+  // that default while the tree keeps every foldered session reachable).
+  const rootLimit = state.settings.sidebarSessionLimit ?? 5;
+  const rootExpanded = state.sidebarRootSessionsExpanded;
+  const visibleRootSessions =
+    rootLimit > 0 && !rootExpanded ? tree.sessions.slice(0, rootLimit) : tree.sessions;
+  const hiddenRootCount = tree.sessions.length - visibleRootSessions.length;
+  const showCollapseControl = rootLimit > 0 && rootExpanded && tree.sessions.length > rootLimit;
 
   return html`
     <div class="session-tree" aria-label=${t("chat.sidebar.folders.treeLabel")}>
@@ -365,7 +375,7 @@ export function renderSessionFolderTree(
       </div>
       ${state.sidebarFolderCreateParent === "" ? renderCreateFolderEditor(state, "") : nothing}
       ${tree.children.map((child) => renderFolderNode(state, child, renderRow))}
-      ${tree.sessions.map(
+      ${visibleRootSessions.map(
         (row) => html`
           <div
             class="session-tree__item"
@@ -376,6 +386,32 @@ export function renderSessionFolderTree(
           </div>
         `,
       )}
+      ${hiddenRootCount > 0
+        ? html`
+            <button
+              type="button"
+              class="session-tree__show-more"
+              @click=${() => {
+                state.sidebarRootSessionsExpanded = true;
+              }}
+            >
+              ${t("chat.sidebar.folders.showMore", { count: String(hiddenRootCount) })}
+            </button>
+          `
+        : nothing}
+      ${showCollapseControl
+        ? html`
+            <button
+              type="button"
+              class="session-tree__show-more"
+              @click=${() => {
+                state.sidebarRootSessionsExpanded = false;
+              }}
+            >
+              ${t("chat.sidebar.folders.showLess")}
+            </button>
+          `
+        : nothing}
     </div>
   `;
 }

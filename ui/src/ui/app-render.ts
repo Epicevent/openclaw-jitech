@@ -1319,6 +1319,8 @@ export function renderApp(state: AppViewState) {
     setBorderRadius: (value) => state.setBorderRadius(value),
     textScale: state.settings.textScale ?? 100,
     setTextScale: (value) => state.setTextScale(value),
+    sidebarSessionLimit: state.settings.sidebarSessionLimit ?? 5,
+    setSidebarSessionLimit: (value) => state.setSidebarSessionLimit(value),
     gatewayUrl: state.settings.gatewayUrl,
     assistantName: state.assistantName,
     configPath: state.configSnapshot?.path ?? null,

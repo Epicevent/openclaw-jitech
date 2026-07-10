@@ -1100,6 +1100,8 @@ export const ko: TranslationMap = {
         renamePlaceholder: "폴더 이름",
         delete: "폴더 삭제",
         deleteConfirm: "이 폴더를 삭제할까요? 안의 세션은 최상위로 이동합니다.",
+        showMore: "{count}개 더 보기",
+        showLess: "접기",
       },
     },
     composer: {

@@ -1075,6 +1075,8 @@ export const zh_TW: TranslationMap = {
         renamePlaceholder: "Folder name",
         delete: "Delete folder",
         deleteConfirm: "Delete this folder? Sessions inside move back to the top level.",
+        showMore: "Show {count} more",
+        showLess: "Show less",
       },
     },
     composer: {

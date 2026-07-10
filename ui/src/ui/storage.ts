@@ -91,6 +91,7 @@ export type UiSettings = {
   chatAutoScroll?: ChatAutoScrollMode;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
   navCollapsed: boolean; // Collapsible sidebar state
+  sidebarSessionLimit?: number; // Root-level (unfoldered) sessions shown in the sidebar; 0 = unlimited
   navWidth: number; // Sidebar width when expanded (240–400px)
   navGroupsCollapsed: Record<string, boolean>; // Which nav groups are collapsed
   sessionFolderCollapsed?: Record<string, boolean>; // Collapsed session-tree folders (by path)
@@ -236,6 +237,7 @@ export function loadSettings(): UiSettings {
     chatAutoScroll: "near-bottom",
     splitRatio: 0.6,
     navCollapsed: false,
+    sidebarSessionLimit: 5,
     navWidth: 220,
     navGroupsCollapsed: {},
     borderRadius: 50,
@@ -288,6 +290,12 @@ export function loadSettings(): UiSettings {
           : defaults.splitRatio,
       navCollapsed:
         typeof parsed.navCollapsed === "boolean" ? parsed.navCollapsed : defaults.navCollapsed,
+      sidebarSessionLimit:
+        typeof parsed.sidebarSessionLimit === "number" &&
+        Number.isInteger(parsed.sidebarSessionLimit) &&
+        parsed.sidebarSessionLimit >= 0
+          ? parsed.sidebarSessionLimit
+          : defaults.sidebarSessionLimit,
       navWidth:
         typeof parsed.navWidth === "number" && parsed.navWidth >= 200 && parsed.navWidth <= 400
           ? parsed.navWidth
@@ -420,6 +428,7 @@ function persistSettings(next: UiSettings) {
     chatAutoScroll: normalizeChatAutoScrollMode(next.chatAutoScroll),
     splitRatio: next.splitRatio,
     navCollapsed: next.navCollapsed,
+    sidebarSessionLimit: next.sidebarSessionLimit,
     navWidth: next.navWidth,
     navGroupsCollapsed: next.navGroupsCollapsed,
     borderRadius: next.borderRadius,
