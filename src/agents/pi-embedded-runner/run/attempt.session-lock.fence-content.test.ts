@@ -1,10 +1,11 @@
 // W1b fix: the takeover fence must decide on CONTENT, not stat metadata.
-// On a network filesystem the stat fields (mtime/ctime, sometimes ino) drift on
-// attribute-cache revalidation with no writer, which falsely aborted real turns
-// (issue #35 — same code trips on a NAS-backed slot, never on a local one). The
-// fence now re-hashes the baseline byte span: benign jitter re-arms and
-// continues; a genuine content takeover (append / rewrite / truncate) still
-// throws.
+// Ground truth from a reproducing slot: the transcript grows by this run's own
+// IN-PLACE appends (size 6750->7905->...; ino constant; ctime==mtime moving
+// with size) — a stat-only fence mis-read those own appends as a foreign
+// takeover and aborted the turn (issue #35). The fence now re-hashes the
+// baseline byte span: any tail-preserving growth (an append — ours or a queued
+// follow-up) re-arms and continues; only a destructive rewrite or truncation
+// still throws.
 import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,15 +59,15 @@ describe("session fence content confirmation (issue #35 W1b)", () => {
     expect(controller.hasSessionTakeover()).toBe(false);
   });
 
-  it("trips on a foreign append (size grew, baseline bytes intact)", async () => {
+  it("re-arms (does not trip) on an in-place append — the run's own turn growth", async () => {
     const controller = await makeController();
     await controller.releaseForPrompt();
-    appendFileSync(sessionFile, `${JSON.stringify({ type: "message", id: "foreign" })}\n`);
+    // Simulate the run appending its next transcript entry (tool result /
+    // streamed reply). Baseline bytes stay intact; the file only grows.
+    appendFileSync(sessionFile, `${JSON.stringify({ type: "message", id: "own-append" })}\n`);
 
-    await expect(controller.withSessionWriteLock(async () => "ok")).rejects.toBeInstanceOf(
-      EmbeddedAttemptSessionTakeoverError,
-    );
-    expect(controller.hasSessionTakeover()).toBe(true);
+    await expect(controller.withSessionWriteLock(async () => "ok")).resolves.toBe("ok");
+    expect(controller.hasSessionTakeover()).toBe(false);
   });
 
   it("trips on an in-place rewrite of the same size (baseline bytes changed)", async () => {
