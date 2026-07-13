@@ -10,6 +10,7 @@ import {
   parseAssistantTextSignature,
   resolveAssistantMessagePhase,
 } from "../shared/chat-message-content.js";
+import { sanitizeAssistantVisibleTextWithProfile } from "../shared/text/assistant-visible-text.js";
 import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { stripEnvelopeFromMessages } from "./chat-sanitize.js";
 import { isSuppressedControlReplyText } from "./control-reply-text.js";
@@ -71,9 +72,25 @@ export function isToolHistoryBlockType(type: unknown): boolean {
   );
 }
 
+// Strip the model's <think>/<final> reasoning scaffolding from assistant text
+// for history display, mirroring the streaming delivery path. The stored
+// transcript keeps the raw model output (with <final>...</final>); the live
+// stream sanitizes via the "delivery" profile, but chat.history did not, so
+// re-opening a conversation showed raw <think></think><final>...</final> tags
+// and left inline images (e.g. ![](data:image/...;base64,...)) trapped inside
+// the raw <final> block instead of rendering. The "history" profile is the
+// designed counterpart: strict reasoning strip (drop <think> blocks, unwrap
+// <final> tags while keeping their content), no whitespace trim, code-span
+// examples preserved. A no-reasoning-tag answer is returned unchanged, so
+// plain answers from non-reasoning providers are never touched. See issue #57.
+function stripAssistantReasoningForHistory(text: string): { text: string; changed: boolean } {
+  const cleaned = sanitizeAssistantVisibleTextWithProfile(text, "history");
+  return { text: cleaned, changed: cleaned !== text };
+}
+
 function sanitizeChatHistoryContentBlock(
   block: unknown,
-  opts?: { preserveExactToolPayload?: boolean; maxChars?: number },
+  opts?: { preserveExactToolPayload?: boolean; maxChars?: number; stripReasoning?: boolean },
 ): { block: unknown; changed: boolean } {
   if (!block || typeof block !== "object") {
     return { block, changed: false };
@@ -82,27 +99,34 @@ function sanitizeChatHistoryContentBlock(
   let changed = false;
   const preserveExactToolPayload =
     opts?.preserveExactToolPayload === true || isToolHistoryBlockType(entry.type);
+  const stripReasoning = opts?.stripReasoning === true && !preserveExactToolPayload;
   const maxChars = opts?.maxChars ?? DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS;
   if (typeof entry.text === "string") {
-    const stripped = stripInlineDirectiveTagsForDisplay(entry.text);
+    const reasoned = stripReasoning
+      ? stripAssistantReasoningForHistory(entry.text)
+      : { text: entry.text, changed: false };
+    const stripped = stripInlineDirectiveTagsForDisplay(reasoned.text);
     if (preserveExactToolPayload) {
       entry.text = stripped.text;
       changed ||= stripped.changed;
     } else {
       const res = truncateChatHistoryText(stripped.text, maxChars);
       entry.text = res.text;
-      changed ||= stripped.changed || res.truncated;
+      changed ||= reasoned.changed || stripped.changed || res.truncated;
     }
   }
   if (typeof entry.content === "string") {
-    const stripped = stripInlineDirectiveTagsForDisplay(entry.content);
+    const reasoned = stripReasoning
+      ? stripAssistantReasoningForHistory(entry.content)
+      : { text: entry.content, changed: false };
+    const stripped = stripInlineDirectiveTagsForDisplay(reasoned.text);
     if (preserveExactToolPayload) {
       entry.content = stripped.text;
       changed ||= stripped.changed;
     } else {
       const res = truncateChatHistoryText(stripped.text, maxChars);
       entry.content = res.text;
-      changed ||= stripped.changed || res.truncated;
+      changed ||= reasoned.changed || stripped.changed || res.truncated;
     }
   }
   if (typeof entry.partialJson === "string" && !preserveExactToolPayload) {
@@ -282,6 +306,8 @@ function sanitizeChatHistoryMessage(
     typeof entry.tool_name === "string" ||
     typeof entry.toolCallId === "string" ||
     typeof entry.tool_call_id === "string";
+  // Only assistant text carries the model's <think>/<final> scaffolding (issue #57).
+  const stripReasoning = role === "assistant";
 
   if ("details" in entry) {
     delete entry.details;
@@ -319,18 +345,22 @@ function sanitizeChatHistoryMessage(
   }
 
   if (typeof entry.content === "string") {
-    const stripped = stripInlineDirectiveTagsForDisplay(entry.content);
+    const reasoned =
+      stripReasoning && !preserveExactToolPayload
+        ? stripAssistantReasoningForHistory(entry.content)
+        : { text: entry.content, changed: false };
+    const stripped = stripInlineDirectiveTagsForDisplay(reasoned.text);
     if (preserveExactToolPayload) {
       entry.content = stripped.text;
       changed ||= stripped.changed;
     } else {
       const res = truncateChatHistoryText(stripped.text, maxChars);
       entry.content = res.text;
-      changed ||= stripped.changed || res.truncated;
+      changed ||= reasoned.changed || stripped.changed || res.truncated;
     }
   } else if (Array.isArray(entry.content)) {
     const updated = entry.content.map((block) =>
-      sanitizeChatHistoryContentBlock(block, { preserveExactToolPayload, maxChars }),
+      sanitizeChatHistoryContentBlock(block, { preserveExactToolPayload, maxChars, stripReasoning }),
     );
     if (updated.some((item) => item.changed)) {
       entry.content = updated.map((item) => item.block);
@@ -355,14 +385,18 @@ function sanitizeChatHistoryMessage(
   }
 
   if (typeof entry.text === "string") {
-    const stripped = stripInlineDirectiveTagsForDisplay(entry.text);
+    const reasoned =
+      stripReasoning && !preserveExactToolPayload
+        ? stripAssistantReasoningForHistory(entry.text)
+        : { text: entry.text, changed: false };
+    const stripped = stripInlineDirectiveTagsForDisplay(reasoned.text);
     if (preserveExactToolPayload) {
       entry.text = stripped.text;
       changed ||= stripped.changed;
     } else {
       const res = truncateChatHistoryText(stripped.text, maxChars);
       entry.text = res.text;
-      changed ||= stripped.changed || res.truncated;
+      changed ||= reasoned.changed || stripped.changed || res.truncated;
     }
   }
 
