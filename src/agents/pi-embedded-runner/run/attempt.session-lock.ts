@@ -385,19 +385,30 @@ export async function createEmbeddedAttemptSessionLockController(params: {
     // rewrote or truncated this session's history while our prompt lock was
     // released (e.g. a foreign compaction rebuilding the file). It must NOT
     // fire on the ordinary case, which a stat-only check cannot tell apart:
-    // this run appends its own entries (user turn, tool results, streamed
-    // reply) to the transcript IN PLACE, growing size + bumping mtime/ctime on
-    // every step. Ground truth from a reproducing slot (issue #35 W1b):
-    // size 6750->7905->9180->...; ino constant; ctime==mtime moving with size —
-    // pure in-place append by this very run, no foreign writer, no metadata
-    // jitter. So the decision is made on CONTENT, not stat: the bytes that
-    // existed at the baseline must still be there, and the file must not have
-    // shrunk. Any tail-preserving growth is an append (ours, or a queued
-    // follow-up in the same process) and is safe to adopt and continue.
+    // this run writes its own entries. Ground truth from the reproducing slot
+    // (issue #35 W1b), named by the delta diagnostic:
+    //   - `changed=file-created` — a fresh session's FIRST turn. The vendor
+    //     SessionManager buffers entries in memory until the first assistant
+    //     message, so at releaseForPrompt (before the prompt) the file does
+    //     not exist yet; the run's own first flush then creates it. Baseline
+    //     absent + file now present is this run creating its own transcript.
+    //   - later turns: in-place appends (size 6750->7905->...; ino constant;
+    //     ctime==mtime moving with size) — the run's own growth.
+    // The in-process session-file mutex (#40) is held across the whole attempt
+    // INCLUDING the prompt, so no second in-process run can create or write the
+    // file during the release window. So both shapes are benign. Only a
+    // destructive change (the file shrank, vanished, or its existing bytes were
+    // rewritten) is a real takeover.
     if (!baseline || !baseline.exists) {
-      // Armed with no file present — any later appearance is a real change we
-      // have no baseline bytes to confirm against.
-      tripTakeover(current);
+      // Armed before any flush; the file we now see is our own first write.
+      // No baseline bytes to confirm, but the mutex rules out a foreign
+      // creator — adopt and continue.
+      log.info(
+        `session-fence-rearmed file=${params.lockOptions.sessionFile} ` +
+          `changed=${describeSessionFileFingerprintDelta(baseline, current)}`,
+      );
+      fenceFingerprint = current;
+      return;
     }
     if (!current.exists || current.size < baseline.size) {
       tripTakeover(current); // truncated / replaced by a shorter file

@@ -94,6 +94,19 @@ describe("session fence content confirmation (issue #35 W1b)", () => {
     );
   });
 
+  it("re-arms on file-created — a fresh session's first flush (armed before the file existed)", async () => {
+    // Fresh session: the vendor buffers entries until the first assistant
+    // message, so the transcript does not exist when the fence arms.
+    rmSync(sessionFile, { force: true });
+    const controller = await makeController();
+    await controller.releaseForPrompt(); // baseline = { exists: false }
+    // The run's own first flush now creates the transcript.
+    writeFileSync(sessionFile, `${JSON.stringify({ type: "session", id: "s1" })}\n`);
+
+    await expect(controller.withSessionWriteLock(async () => "ok")).resolves.toBe("ok");
+    expect(controller.hasSessionTakeover()).toBe(false);
+  });
+
   it("does not trip when the fence was never armed", async () => {
     const controller = await makeController();
     appendFileSync(sessionFile, "noise\n");
