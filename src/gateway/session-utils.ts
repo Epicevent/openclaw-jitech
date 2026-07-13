@@ -2163,7 +2163,14 @@ function filterSessionEntries(params: {
 
   if (activeMinutes !== undefined) {
     const cutoff = now - activeMinutes * 60_000;
-    entries = entries.filter(([, entry]) => (entry?.updatedAt ?? 0) >= cutoff);
+    // A session filed into a folder is a deliberate "keep" signal: never hide it
+    // by the recency window. Organizing a session should keep it visible in the
+    // sidebar regardless of how long it has been idle. Loose (unfoldered)
+    // sessions still fall off after the window as before.
+    entries = entries.filter(
+      ([, entry]) =>
+        (entry?.updatedAt ?? 0) >= cutoff || Boolean(normalizeOptionalString(entry?.folderPath)),
+    );
   }
 
   return entries;

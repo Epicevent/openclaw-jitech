@@ -447,6 +447,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* When the session list (folders + recent) is taller than the sidebar, the
+     body must scroll so the bottom stays reachable instead of being clipped by
+     the sidebar's `overflow: hidden`. Previously nothing here scrolled, so a
+     long list pushed its tail (and the nav below) off-screen with no scrollbar. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .sidebar-shell__footer {
