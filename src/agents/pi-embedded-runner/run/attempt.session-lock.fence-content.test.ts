@@ -59,15 +59,27 @@ describe("session fence content confirmation (issue #35 W1b)", () => {
     expect(controller.hasSessionTakeover()).toBe(false);
   });
 
-  it("re-arms (does not trip) on an in-place append — the run's own turn growth", async () => {
+  it("adopts a tail-preserving append and advances the baseline (own growth / legitimate same-process mirror)", async () => {
     const controller = await makeController();
     await controller.releaseForPrompt();
-    // Simulate the run appending its next transcript entry (tool result /
-    // streamed reply). Baseline bytes stay intact; the file only grows.
-    appendFileSync(sessionFile, `${JSON.stringify({ type: "message", id: "own-append" })}\n`);
+    // A tail-preserving append: the run's own next entry, or a legitimate
+    // same-process transcript mirror (cron delivery, cross-session send,
+    // gateway-injected marker) that holds the cross-process lock during the
+    // released prompt window. Baseline bytes stay intact; the file only grows.
+    appendFileSync(sessionFile, `${JSON.stringify({ type: "message", id: "append-1" })}\n`);
 
     await expect(controller.withSessionWriteLock(async () => "ok")).resolves.toBe("ok");
     expect(controller.hasSessionTakeover()).toBe(false);
+    // A second adopt also resolves.
+    appendFileSync(sessionFile, `${JSON.stringify({ type: "message", id: "append-2" })}\n`);
+    await expect(controller.withSessionWriteLock(async () => "ok2")).resolves.toBe("ok2");
+
+    // Prove the re-arm actually ADVANCED the baseline (not just skipped the
+    // check): truncating below the re-armed size must now trip.
+    writeFileSync(sessionFile, `${JSON.stringify({ type: "session", id: "s1" })}\n`);
+    await expect(controller.withSessionWriteLock(async () => "late")).rejects.toBeInstanceOf(
+      EmbeddedAttemptSessionTakeoverError,
+    );
   });
 
   it("trips on an in-place rewrite of the same size (baseline bytes changed)", async () => {
@@ -92,6 +104,19 @@ describe("session fence content confirmation (issue #35 W1b)", () => {
     await expect(controller.withSessionWriteLock(async () => "ok")).rejects.toBeInstanceOf(
       EmbeddedAttemptSessionTakeoverError,
     );
+  });
+
+  it("re-arms on file-created — a fresh session's first flush (armed before the file existed)", async () => {
+    // Fresh session: the vendor buffers entries until the first assistant
+    // message, so the transcript does not exist when the fence arms.
+    rmSync(sessionFile, { force: true });
+    const controller = await makeController();
+    await controller.releaseForPrompt(); // baseline = { exists: false }
+    // The run's own first flush now creates the transcript.
+    writeFileSync(sessionFile, `${JSON.stringify({ type: "session", id: "s1" })}\n`);
+
+    await expect(controller.withSessionWriteLock(async () => "ok")).resolves.toBe("ok");
+    expect(controller.hasSessionTakeover()).toBe(false);
   });
 
   it("does not trip when the fence was never armed", async () => {

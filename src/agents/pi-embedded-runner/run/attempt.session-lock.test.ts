@@ -160,7 +160,7 @@ describe("embedded attempt session lock lifecycle", () => {
     expect(events).toEqual(["acquire-1", "release", "events-drained", "acquire-2", "release"]);
   });
 
-  it("rejects post-prompt writes when another owner advances the session file", async () => {
+  it("rejects post-prompt writes when another owner rewrites the session history", async () => {
     const sessionFile = await createTempSessionFile();
     const release = vi.fn(async () => {});
     const acquireSessionWriteLock = vi.fn(async () => ({ release }));
@@ -170,7 +170,16 @@ describe("embedded attempt session lock lifecycle", () => {
     });
 
     await controller.releaseForPrompt();
-    await fs.appendFile(sessionFile, '{"type":"message","id":"takeover"}\n', "utf8");
+    // A genuine DESTRUCTIVE takeover: another owner rebuilt the transcript in
+    // place (e.g. a foreign legacy-transcript migration/compaction), changing
+    // the bytes that existed at the fence baseline. A plain tail-preserving
+    // append is a legitimate same-process mirror and is adopted, not rejected
+    // (covered in attempt.session-lock.fence-content.test.ts).
+    await fs.writeFile(
+      sessionFile,
+      '{"type":"session","id":"rebuilt-by-another-owner","compacted":true}\n',
+      "utf8",
+    );
 
     await expect(controller.withSessionWriteLock(() => "late-write")).rejects.toBeInstanceOf(
       EmbeddedAttemptSessionTakeoverError,
