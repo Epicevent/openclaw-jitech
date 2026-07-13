@@ -381,36 +381,39 @@ export async function createEmbeddedAttemptSessionLockController(params: {
     if (sameSessionFileFingerprint(baseline, current)) {
       return;
     }
-    // The fence exists to catch a genuine CONTENT takeover — a foreign writer
-    // that appended or rewrote conversation entries while our prompt lock was
-    // released. On a network filesystem the stat fields (mtime/ctime, sometimes
-    // ino) can drift on attribute-cache revalidation with NO writer, which
-    // would falsely abort the turn (issue #35 W1b: this is why the same code
-    // trips on a NAS-backed slot and never on a local one). So a stat mismatch
-    // is only decided by re-reading the bytes that existed at the baseline.
+    // The fence exists to catch a DESTRUCTIVE takeover: another run that
+    // rewrote or truncated this session's history while our prompt lock was
+    // released (e.g. a foreign compaction rebuilding the file). It must NOT
+    // fire on the ordinary case, which a stat-only check cannot tell apart:
+    // this run appends its own entries (user turn, tool results, streamed
+    // reply) to the transcript IN PLACE, growing size + bumping mtime/ctime on
+    // every step. Ground truth from a reproducing slot (issue #35 W1b):
+    // size 6750->7905->9180->...; ino constant; ctime==mtime moving with size —
+    // pure in-place append by this very run, no foreign writer, no metadata
+    // jitter. So the decision is made on CONTENT, not stat: the bytes that
+    // existed at the baseline must still be there, and the file must not have
+    // shrunk. Any tail-preserving growth is an append (ours, or a queued
+    // follow-up in the same process) and is safe to adopt and continue.
     if (!baseline || !baseline.exists) {
-      // No content baseline to confirm against — fall back to stat (arm point
-      // had no file, any appearance is a real change).
+      // Armed with no file present — any later appearance is a real change we
+      // have no baseline bytes to confirm against.
       tripTakeover(current);
     }
     if (!current.exists || current.size < baseline.size) {
       tripTakeover(current); // truncated / replaced by a shorter file
     }
     // Re-hash exactly the byte span the baseline covered; if those bytes are
-    // intact, no one rewrote our history in place.
+    // intact, no one rewrote our history in place — it was only appended to.
     const confirmation = await hashSessionFileRange(
       params.lockOptions.sessionFile,
       Number(baseline.size) - baseline.tail.length,
       baseline.tail.length,
     );
     if (confirmation.hash !== baseline.tail.hash || confirmation.length !== baseline.tail.length) {
-      tripTakeover(current); // our tail bytes changed = content rewritten
+      tripTakeover(current); // our history bytes changed = destructive rewrite
     }
-    if (current.size > baseline.size) {
-      tripTakeover(current); // history intact but bytes appended = foreign turn
-    }
-    // Baseline bytes intact and no growth: benign metadata jitter (network-FS
-    // attribute revalidation). Re-arm on the fresh stat and continue the turn.
+    // History intact, file only appended to (or stat drifted with no content
+    // change): benign. Re-arm on the fresh fingerprint and continue the turn.
     log.info(
       `session-fence-rearmed file=${params.lockOptions.sessionFile} ` +
         `changed=${describeSessionFileFingerprintDelta(baseline, current)}`,
