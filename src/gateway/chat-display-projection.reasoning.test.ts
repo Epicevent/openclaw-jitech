@@ -109,6 +109,34 @@ describe("chat.history hides internal inter-session tool deliveries (issue #60)"
     expect(joined).not.toContain("image_generate");
   });
 
+  it("keeps a media-bearing image_generate delivery but strips its envelope header (image must survive)", () => {
+    const out = projectChatDisplayMessages([
+      { role: "user", content: [{ type: "text", text: "별 이미지 만들어줘" }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "[Inter-session message] sourceSession=image_generate:abc sourceChannel=webchat " +
+              "sourceTool=image_generate isUser=false\nThis content was routed by OpenClaw from " +
+              "another session or internal tool.",
+          },
+          { type: "image", data: "/9j/2wBDAAUFBQUFBQUGBgUI" },
+        ],
+      },
+    ]);
+    // The alarming envelope header must be gone …
+    expect(out.map(projectedText).join("\n")).not.toContain("Inter-session message");
+    // … but the generated image block must still be present (NOT hidden with it).
+    const hasImage = out.some(
+      (m) =>
+        Array.isArray(m.content) &&
+        (m.content as Array<{ type?: string }>).some((b) => b?.type === "image"),
+    );
+    expect(hasImage).toBe(true);
+  });
+
   it("still keeps a genuine cross-session message (not a hideable tool)", () => {
     const out = projectChatDisplayMessages([
       {

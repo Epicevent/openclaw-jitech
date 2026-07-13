@@ -567,6 +567,72 @@ function hasTranscriptMediaPaths(message: Record<string, unknown>): boolean {
   return mediaPaths.some((value) => typeof value === "string" && value.trim());
 }
 
+const RENDERABLE_MEDIA_BLOCK_TYPES = new Set([
+  "image",
+  "image_url",
+  "input_image",
+  "audio",
+  "input_audio",
+  "video",
+  "file",
+]);
+
+// True when the message carries media a user would actually want to see — an image
+// content block (how image_generate delivers its result), an inline data: URI, a
+// channel MediaPath, or agent-generated attachments/mediaUrls. This is the guard that
+// keeps the #60 inter-session hide from ever swallowing the generated image itself
+// (the earlier MediaPaths-only guard missed the `type:"image"` block, so the image
+// vanished with the hidden envelope).
+function messageHasRenderableMedia(message: Record<string, unknown>): boolean {
+  if (hasTranscriptMediaPaths(message)) {
+    return true;
+  }
+  const content = message.content ?? message.text;
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      const type =
+        block && typeof block === "object" && typeof (block as { type?: unknown }).type === "string"
+          ? (block as { type: string }).type.toLowerCase()
+          : "";
+      if (RENDERABLE_MEDIA_BLOCK_TYPES.has(type)) {
+        return true;
+      }
+    }
+  }
+  if (extractProjectedText(content).includes("data:")) {
+    return true;
+  }
+  for (const key of ["mediaUrls", "attachments", "generatedAttachments"] as const) {
+    const value = message[key];
+    if (Array.isArray(value) && value.length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Drop content blocks that are purely the "[Inter-session message] …" provenance
+// envelope header, keeping the media/other blocks. Used when we KEEP a media-bearing
+// inter-session delivery (so the image shows) but must not leak the alarming header
+// text that reads like a message the user never sent (#60).
+function stripInterSessionHeaderBlocks(message: Record<string, unknown>): Record<string, unknown> {
+  const content = message.content;
+  if (!Array.isArray(content)) {
+    return message;
+  }
+  const filtered = content.filter((block) => {
+    const text =
+      block && typeof block === "object" && typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "";
+    return !text.includes(INTER_SESSION_PROMPT_PREFIX_BASE);
+  });
+  if (filtered.length === content.length) {
+    return message;
+  }
+  return { ...message, content: filtered };
+}
+
 function extractProjectedText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -770,7 +836,7 @@ function shouldHideProjectedHistoryMessage(message: Record<string, unknown>): bo
   if (
     roleContent.role === "user" &&
     isHideableInterSessionToolDeliveryMessage(message) &&
-    !hasTranscriptMediaPaths(message)
+    !messageHasRenderableMedia(message)
   ) {
     return true;
   }
@@ -821,6 +887,18 @@ function filterVisibleProjectedHistoryMessages(
     ) {
       changed = true;
       i++;
+      continue;
+    }
+    // A media-bearing inter-session tool delivery (e.g. image_generate's result):
+    // keep the media but strip the "[Inter-session message] …" envelope header block
+    // so the image renders without the alarming "message you never sent" text (#60).
+    if (
+      currentRoleContent?.role === "user" &&
+      isHideableInterSessionToolDeliveryMessage(current) &&
+      messageHasRenderableMedia(current)
+    ) {
+      visible.push(stripInterSessionHeaderBlocks(current));
+      changed = true;
       continue;
     }
     if (shouldHideProjectedHistoryMessage(current)) {
