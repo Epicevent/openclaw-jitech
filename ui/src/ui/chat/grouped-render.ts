@@ -140,17 +140,6 @@ function buildBase64ImageUrl(params: { data: string; mediaType?: string }): stri
     : `data:${params.mediaType ?? "image/png"};base64,${params.data}`;
 }
 
-// Infer an image media type from the leading base64 characters (the encoded magic
-// bytes) so a data URI declares the right type instead of defaulting to PNG.
-function sniffBase64ImageMediaType(data: string): string | undefined {
-  if (data.startsWith("/9j/")) return "image/jpeg";
-  if (data.startsWith("iVBORw0KGgo")) return "image/png";
-  if (data.startsWith("R0lGOD")) return "image/gif";
-  if (data.startsWith("UklGR")) return "image/webp";
-  if (data.startsWith("PHN2Zy") || data.startsWith("PD94bWw")) return "image/svg+xml";
-  return undefined;
-}
-
 function getFileExtension(url: string): string | undefined {
   const source = (() => {
     try {
@@ -266,21 +255,6 @@ function extractImages(message: unknown): ImageBlock[] {
           });
         } else if (typeof b.url === "string") {
           appendImageBlock(images, { url: b.url, ...imageMeta });
-        } else if (typeof b.data === "string") {
-          // Some tools (e.g. image_generate) emit the image as `{type:"image", data}`
-          // with the base64 directly on the block — no `source` wrapper. Render it
-          // too, sniffing the media type from the base64 magic bytes so a JPEG is not
-          // mislabeled as PNG.
-          appendImageBlock(images, {
-            url: buildBase64ImageUrl({
-              data: b.data,
-              mediaType:
-                (typeof b.media_type === "string" ? b.media_type : undefined) ??
-                (typeof b.mediaType === "string" ? b.mediaType : undefined) ??
-                sniffBase64ImageMediaType(b.data),
-            }),
-            ...imageMeta,
-          });
         }
       } else if (b.type === "image_url") {
         // OpenAI format

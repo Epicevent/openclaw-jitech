@@ -137,6 +137,20 @@ describe("chat.history hides internal inter-session tool deliveries (issue #60)"
     expect(hasImage).toBe(true);
   });
 
+  it("normalizes an inline {type:image,data,mimeType} block into renderable source.base64 (root fix)", () => {
+    const [msg] = projectChatDisplayMessages([
+      { role: "assistant", content: [{ type: "image", data: "/9j/2wBDAAUF", mimeType: "image/jpeg" }] },
+    ]);
+    const block = (msg.content as Array<Record<string, unknown>>).find((b) => b.type === "image");
+    expect(block).toBeTruthy();
+    // The base64 must NOT be gutted — it must survive under the shape the client renders.
+    expect(block?.data).toBeUndefined();
+    const source = block?.source as Record<string, unknown> | undefined;
+    expect(source?.type).toBe("base64");
+    expect(source?.data).toBe("/9j/2wBDAAUF");
+    expect(source?.media_type).toBe("image/jpeg");
+  });
+
   it("still keeps a genuine cross-session message (not a hideable tool)", () => {
     const out = projectChatDisplayMessages([
       {

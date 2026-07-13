@@ -88,6 +88,11 @@ function stripAssistantReasoningForHistory(text: string): { text: string; change
   return { text: cleaned, changed: cleaned !== text };
 }
 
+// Inline media (image_generate results, pasted images, voice notes) is normalized
+// into the display shape and passed through up to this size; only genuinely oversized
+// payloads keep the `omitted` placeholder valve so chat.history never balloons.
+const MAX_INLINE_MEDIA_BASE64_BYTES = 4 * 1024 * 1024;
+
 function sanitizeChatHistoryContentBlock(
   block: unknown,
   opts?: { preserveExactToolPayload?: boolean; maxChars?: number; stripReasoning?: boolean },
@@ -154,21 +159,49 @@ function sanitizeChatHistoryContentBlock(
   }
   const type = typeof entry.type === "string" ? entry.type : "";
   if (type === "image" && typeof entry.data === "string") {
+    // The internal model/tool image block carries base64 directly on the block
+    // ({type:"image", data, mimeType}) — the shape image_generate delivers. The
+    // dashboard renders images from the {type:"image", source:{type:"base64",
+    // media_type, data}} shape (the same shape a user-uploaded image already uses).
+    // Normalize into that shape HERE — the one place transcript content becomes
+    // display content — instead of deleting the data, which left the client an
+    // unrenderable {omitted:true} husk and made every generated image silently
+    // vanish. Only oversized payloads keep the omitted valve.
     const bytes = Buffer.byteLength(entry.data, "utf8");
-    delete entry.data;
-    entry.omitted = true;
-    entry.bytes = bytes;
+    if (bytes > MAX_INLINE_MEDIA_BASE64_BYTES) {
+      delete entry.data;
+      entry.omitted = true;
+      entry.bytes = bytes;
+    } else {
+      const mediaType =
+        typeof entry.mimeType === "string" && entry.mimeType.trim()
+          ? entry.mimeType.trim()
+          : typeof entry.media_type === "string" && entry.media_type.trim()
+            ? entry.media_type.trim()
+            : undefined;
+      entry.source = {
+        type: "base64",
+        ...(mediaType ? { media_type: mediaType } : {}),
+        data: entry.data,
+      };
+      delete entry.data;
+      delete entry.mimeType;
+    }
     changed = true;
   }
   if (type === "audio" && entry.source && typeof entry.source === "object") {
     const source = { ...(entry.source as Record<string, unknown>) };
     if (source.type === "base64" && typeof source.data === "string") {
       const bytes = Buffer.byteLength(source.data, "utf8");
-      delete source.data;
-      source.omitted = true;
-      source.bytes = bytes;
-      entry.source = source;
-      changed = true;
+      // Keep inline audio under the cap so it still plays after a history reload;
+      // only omit oversized payloads.
+      if (bytes > MAX_INLINE_MEDIA_BASE64_BYTES) {
+        delete source.data;
+        source.omitted = true;
+        source.bytes = bytes;
+        entry.source = source;
+        changed = true;
+      }
     }
   }
   return { block: changed ? entry : block, changed };
