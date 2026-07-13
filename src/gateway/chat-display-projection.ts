@@ -717,15 +717,39 @@ function mergeTtsSupplementMessages(
   return changed ? merged : messages;
 }
 
-function isSubagentAnnounceInterSessionUserMessage(message: Record<string, unknown>): boolean {
+// Inter-session deliveries from these internal tools are pure routing plumbing:
+// the tool's actual result (image, subagent summary, …) reaches the user through
+// the assistant's reply, while this record is just the `[Inter-session message]
+// …isUser=false…` envelope re-injected as a user turn for provenance tracking.
+// Rendering that envelope as a user ("You") bubble alarms people — it looks like a
+// message they never typed (issue #60). Hide it, exactly as subagent_announce
+// already was. A media guard at the call site keeps us from ever hiding a delivery
+// that actually carries the generated media itself.
+const HIDEABLE_INTER_SESSION_DELIVERY_TOOLS = new Set([
+  "subagent_announce",
+  "image_generate",
+  "music_generate",
+  "video_generate",
+]);
+
+function isHideableInterSessionToolDeliveryMessage(message: Record<string, unknown>): boolean {
   const provenance = normalizeInputProvenance(message.provenance);
-  if (provenance?.kind === "inter_session" && provenance.sourceTool === "subagent_announce") {
+  const provTool = provenance?.kind === "inter_session" ? provenance.sourceTool : undefined;
+  if (typeof provTool === "string" && HIDEABLE_INTER_SESSION_DELIVERY_TOOLS.has(provTool)) {
     return true;
   }
+  // Fallback for messages whose structured provenance was dropped: read the tool
+  // out of the envelope header text.
   const text = extractProjectedText(message.content ?? message.text);
-  return (
-    text.includes(INTER_SESSION_PROMPT_PREFIX_BASE) && text.includes("sourceTool=subagent_announce")
-  );
+  if (!text.includes(INTER_SESSION_PROMPT_PREFIX_BASE)) {
+    return false;
+  }
+  for (const tool of HIDEABLE_INTER_SESSION_DELIVERY_TOOLS) {
+    if (text.includes(`sourceTool=${tool}`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isDisplayHiddenProjectedMessage(message: Record<string, unknown>): boolean {
@@ -743,7 +767,11 @@ function shouldHideProjectedHistoryMessage(message: Record<string, unknown>): bo
   if (!roleContent) {
     return false;
   }
-  if (roleContent.role === "user" && isSubagentAnnounceInterSessionUserMessage(message)) {
+  if (
+    roleContent.role === "user" &&
+    isHideableInterSessionToolDeliveryMessage(message) &&
+    !hasTranscriptMediaPaths(message)
+  ) {
     return true;
   }
   if (

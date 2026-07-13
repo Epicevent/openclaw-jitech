@@ -1,9 +1,13 @@
 import { findCodeRegions, isInsideCode } from "./code-regions.js";
-import { findFinalTagMatches } from "./final-tags.js";
+import { findFinalTagMatches, stripBareTextWrapper } from "./final-tags.js";
 export type ReasoningTagMode = "strict" | "preserve";
 export type ReasoningTagTrim = "none" | "start" | "both";
 
-const QUICK_TAG_RE = /<\s*\/?\s*(?:(?:antml:)?(?:think(?:ing)?|thought)|antthinking|final)\b/i;
+// `text` is included only as a cheap gate so bare `<text>` scaffolds (#59) reach the
+// unwrap logic below; SVG `<text x=…>` also passes this gate but is then rejected by
+// parseBareTextTag (which requires an attribute-less body), so it is never stripped.
+const QUICK_TAG_RE =
+  /<\s*\/?\s*(?:(?:antml:)?(?:think(?:ing)?|thought)|antthinking|final|text)\b/i;
 const THINKING_TAG_RE =
   /<\s*(\/?)\s*(?:(?:antml:)?(?:think(?:ing)?|thought)|antthinking)\b[^<>]*>/gi;
 
@@ -41,13 +45,16 @@ export function stripReasoningTagsFromText(
   const mode = options?.mode ?? "strict";
   const trimMode = options?.trim ?? "both";
 
-  let cleaned = text;
+  // #59: first unwrap a whole-message bare <text>…</text> scaffold. SVG-safe — only
+  // strips when <text> brackets the ENTIRE content, so an embedded SVG <text x=…> and
+  // its bare </text> closer are left intact.
+  let cleaned = stripBareTextWrapper(text);
   const matches = findFinalTagMatches(cleaned);
   THINKING_TAG_RE.lastIndex = 0;
   const hasThinkingTag = THINKING_TAG_RE.test(cleaned);
   THINKING_TAG_RE.lastIndex = 0;
   if (matches.length === 0 && !hasThinkingTag) {
-    return text;
+    return cleaned === text ? text : cleaned;
   }
   if (matches.length > 0) {
     const finalMatches: Array<{ start: number; length: number; inCode: boolean }> = [];
