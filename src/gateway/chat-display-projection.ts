@@ -14,7 +14,16 @@ import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { stripEnvelopeFromMessages } from "./chat-sanitize.js";
 import { isSuppressedControlReplyText } from "./control-reply-text.js";
 
-export const DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS = 8_000;
+// Per-text-block cap for the dashboard chat.history projection. This is a
+// payload safety valve against pathological blocks (runaway output, a megabyte
+// of pasted text), NOT a limit on how much of a normal answer the customer may
+// read. The former 8_000 was aggressive enough to cut ordinary detailed answers
+// (a ~17k-char guide arrived as "...(truncated)..." in the dashboard while the
+// stored transcript was intact) — the reported customer bug. 100_000 chars
+// (~50 pages) comfortably fits any real reply yet still bounds a runaway block;
+// message COUNT is bounded separately by maxMessages, and gateway.webchat.
+// chatHistoryMaxChars can still override this per deployment.
+export const DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS = 100_000;
 
 type RoleContentMessage = {
   role: string;
