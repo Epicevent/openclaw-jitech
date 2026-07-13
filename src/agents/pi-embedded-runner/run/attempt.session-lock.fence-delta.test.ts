@@ -10,6 +10,7 @@ const base = {
   size: 500n,
   mtimeNs: 1000n,
   ctimeNs: 1000n,
+  tail: { length: 500, hash: "basehash" },
 };
 
 describe("describeSessionFileFingerprintDelta (issue #35 W1b)", () => {
