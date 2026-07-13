@@ -1,7 +1,47 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { isSessionWriteLockTimeoutError } from "../../session-write-lock-error.js";
 import type { acquireSessionWriteLock } from "../../session-write-lock.js";
+
+const log = createSubsystemLogger("session-lock");
+
+// Bytes of the file tail we hash to distinguish a real content change from
+// benign stat jitter. A session entry is one JSONL line; 4 KiB comfortably
+// covers a trailing entry, and reading our own just-written tail hits our
+// page cache so it stays self-consistent.
+const SESSION_FILE_TAIL_HASH_BYTES = 4096;
+
+async function hashSessionFileRange(
+  sessionFile: string,
+  position: number,
+  length: number,
+): Promise<{ length: number; hash: string }> {
+  if (length <= 0) {
+    return { length: 0, hash: createHash("sha256").digest("hex") };
+  }
+  const handle = await fs.open(sessionFile, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(length);
+    const { bytesRead } = await handle.read(buffer, 0, length, position);
+    return {
+      length: bytesRead,
+      hash: createHash("sha256").update(buffer.subarray(0, bytesRead)).digest("hex"),
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function hashSessionFileTail(
+  sessionFile: string,
+  size: bigint,
+): Promise<{ length: number; hash: string }> {
+  const numericSize = Number(size);
+  const length = Math.min(numericSize, SESSION_FILE_TAIL_HASH_BYTES);
+  return await hashSessionFileRange(sessionFile, numericSize - length, length);
+}
 
 type SessionLock = Awaited<ReturnType<typeof acquireSessionWriteLock>>;
 type AcquireSessionWriteLock = typeof acquireSessionWriteLock;
@@ -107,6 +147,8 @@ type SessionFileFingerprint =
       size: bigint;
       mtimeNs: bigint;
       ctimeNs: bigint;
+      /** sha256 of the last SESSION_FILE_TAIL_HASH_BYTES on-disk bytes. */
+      tail: { length: number; hash: string };
     };
 
 function sameSessionFileFingerprint(
@@ -128,6 +170,44 @@ function sameSessionFileFingerprint(
   );
 }
 
+// Name exactly which stat fields changed when the fence trips (issue #35 W1b).
+// A bare "session file changed" is unactionable; the delta discriminates the
+// concurrent writer's shape: `ino` changed = atomic temp+rename replacement;
+// `size`/`mtime` changed = an in-place append/rewrite; `ctime` only = a
+// metadata-only touch (open-for-write with no bytes, chmod). Greppable via
+// `session-fence-tripped`.
+export function describeSessionFileFingerprintDelta(
+  before: SessionFileFingerprint | undefined,
+  after: SessionFileFingerprint,
+): string {
+  if (!before) {
+    return "no-baseline";
+  }
+  if (before.exists !== after.exists) {
+    return before.exists ? "file-removed" : "file-created";
+  }
+  if (!before.exists || !after.exists) {
+    return "existence-toggled";
+  }
+  const parts: string[] = [];
+  if (before.dev !== after.dev) {
+    parts.push("dev");
+  }
+  if (before.ino !== after.ino) {
+    parts.push(`ino(${before.ino}->${after.ino})`);
+  }
+  if (before.size !== after.size) {
+    parts.push(`size(${before.size}->${after.size})`);
+  }
+  if (before.mtimeNs !== after.mtimeNs) {
+    parts.push("mtime");
+  }
+  if (before.ctimeNs !== after.ctimeNs) {
+    parts.push("ctime");
+  }
+  return parts.length > 0 ? parts.join(",") : "none";
+}
+
 async function readSessionFileFingerprint(sessionFile: string): Promise<SessionFileFingerprint> {
   try {
     const stat = await fs.stat(sessionFile, { bigint: true });
@@ -138,6 +218,7 @@ async function readSessionFileFingerprint(sessionFile: string): Promise<SessionF
       size: stat.size,
       mtimeNs: stat.mtimeNs,
       ctimeNs: stat.ctimeNs,
+      tail: await hashSessionFileTail(sessionFile, stat.size),
     };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -281,15 +362,60 @@ export async function createEmbeddedAttemptSessionLockController(params: {
     }
   }
 
+  function tripTakeover(current: SessionFileFingerprint): never {
+    takeoverDetected = true;
+    log.warn(
+      `session-fence-tripped file=${params.lockOptions.sessionFile} ` +
+        `changed=${describeSessionFileFingerprintDelta(fenceFingerprint, current)}`,
+    );
+    throw new EmbeddedAttemptSessionTakeoverError(params.lockOptions.sessionFile);
+  }
+
   async function assertSessionFileFence(): Promise<void> {
     if (!fenceActive) {
       return;
     }
+    const baseline = fenceFingerprint;
     const current = await readSessionFileFingerprint(params.lockOptions.sessionFile);
-    if (!sameSessionFileFingerprint(fenceFingerprint, current)) {
-      takeoverDetected = true;
-      throw new EmbeddedAttemptSessionTakeoverError(params.lockOptions.sessionFile);
+    // Fast path: nothing moved. Unchanged behavior on a local filesystem.
+    if (sameSessionFileFingerprint(baseline, current)) {
+      return;
     }
+    // The fence exists to catch a genuine CONTENT takeover — a foreign writer
+    // that appended or rewrote conversation entries while our prompt lock was
+    // released. On a network filesystem the stat fields (mtime/ctime, sometimes
+    // ino) can drift on attribute-cache revalidation with NO writer, which
+    // would falsely abort the turn (issue #35 W1b: this is why the same code
+    // trips on a NAS-backed slot and never on a local one). So a stat mismatch
+    // is only decided by re-reading the bytes that existed at the baseline.
+    if (!baseline || !baseline.exists) {
+      // No content baseline to confirm against — fall back to stat (arm point
+      // had no file, any appearance is a real change).
+      tripTakeover(current);
+    }
+    if (!current.exists || current.size < baseline.size) {
+      tripTakeover(current); // truncated / replaced by a shorter file
+    }
+    // Re-hash exactly the byte span the baseline covered; if those bytes are
+    // intact, no one rewrote our history in place.
+    const confirmation = await hashSessionFileRange(
+      params.lockOptions.sessionFile,
+      Number(baseline.size) - baseline.tail.length,
+      baseline.tail.length,
+    );
+    if (confirmation.hash !== baseline.tail.hash || confirmation.length !== baseline.tail.length) {
+      tripTakeover(current); // our tail bytes changed = content rewritten
+    }
+    if (current.size > baseline.size) {
+      tripTakeover(current); // history intact but bytes appended = foreign turn
+    }
+    // Baseline bytes intact and no growth: benign metadata jitter (network-FS
+    // attribute revalidation). Re-arm on the fresh stat and continue the turn.
+    log.info(
+      `session-fence-rearmed file=${params.lockOptions.sessionFile} ` +
+        `changed=${describeSessionFileFingerprintDelta(baseline, current)}`,
+    );
+    fenceFingerprint = current;
   }
 
   async function refreshSessionFileFence(): Promise<void> {
