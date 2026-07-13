@@ -1,7 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs/promises";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { isSessionWriteLockTimeoutError } from "../../session-write-lock-error.js";
 import type { acquireSessionWriteLock } from "../../session-write-lock.js";
+
+const log = createSubsystemLogger("session-lock");
 
 type SessionLock = Awaited<ReturnType<typeof acquireSessionWriteLock>>;
 type AcquireSessionWriteLock = typeof acquireSessionWriteLock;
@@ -126,6 +129,44 @@ function sameSessionFileFingerprint(
     left.mtimeNs === right.mtimeNs &&
     left.ctimeNs === right.ctimeNs
   );
+}
+
+// Name exactly which stat fields changed when the fence trips (issue #35 W1b).
+// A bare "session file changed" is unactionable; the delta discriminates the
+// concurrent writer's shape: `ino` changed = atomic temp+rename replacement;
+// `size`/`mtime` changed = an in-place append/rewrite; `ctime` only = a
+// metadata-only touch (open-for-write with no bytes, chmod). Greppable via
+// `session-fence-tripped`.
+export function describeSessionFileFingerprintDelta(
+  before: SessionFileFingerprint | undefined,
+  after: SessionFileFingerprint,
+): string {
+  if (!before) {
+    return "no-baseline";
+  }
+  if (before.exists !== after.exists) {
+    return before.exists ? "file-removed" : "file-created";
+  }
+  if (!before.exists || !after.exists) {
+    return "existence-toggled";
+  }
+  const parts: string[] = [];
+  if (before.dev !== after.dev) {
+    parts.push("dev");
+  }
+  if (before.ino !== after.ino) {
+    parts.push(`ino(${before.ino}->${after.ino})`);
+  }
+  if (before.size !== after.size) {
+    parts.push(`size(${before.size}->${after.size})`);
+  }
+  if (before.mtimeNs !== after.mtimeNs) {
+    parts.push("mtime");
+  }
+  if (before.ctimeNs !== after.ctimeNs) {
+    parts.push("ctime");
+  }
+  return parts.length > 0 ? parts.join(",") : "none";
 }
 
 async function readSessionFileFingerprint(sessionFile: string): Promise<SessionFileFingerprint> {
@@ -288,6 +329,12 @@ export async function createEmbeddedAttemptSessionLockController(params: {
     const current = await readSessionFileFingerprint(params.lockOptions.sessionFile);
     if (!sameSessionFileFingerprint(fenceFingerprint, current)) {
       takeoverDetected = true;
+      // Emit the field-level delta so the concurrent writer is identifiable in
+      // logs instead of an opaque takeover (issue #35 W1b).
+      log.warn(
+        `session-fence-tripped file=${params.lockOptions.sessionFile} ` +
+          `changed=${describeSessionFileFingerprintDelta(fenceFingerprint, current)}`,
+      );
       throw new EmbeddedAttemptSessionTakeoverError(params.lockOptions.sessionFile);
     }
   }
