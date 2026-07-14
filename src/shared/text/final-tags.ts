@@ -131,6 +131,36 @@ export function containsFinalTag(text: string): boolean {
   return findFinalTagMatches(text).length > 0;
 }
 
+/**
+ * Unwrap a whole-message bare `<text>…</text>` scaffold wrapper (issue #59). Some
+ * models wrap their final answer in `<text>…</text>` the way others use
+ * `<final>…</final>`, and it leaks into the dashboard as raw tags.
+ *
+ * We ONLY strip it when a bare `<text>` (no attributes) sits at the very start and a
+ * matching `</text>` at the very end — i.e. it brackets the ENTIRE content. That is
+ * the safe discriminator against SVG: attribute-checking alone is not enough because
+ * an SVG's *closing* `</text>` is also bare, so a naive per-tag strip would delete
+ * the closers of `<svg><text x=…>label</text></svg>` and corrupt the diagram. An
+ * embedded SVG never brackets the whole message, so this wrapper-only rule leaves it
+ * (opener, label, and closer) completely intact.
+ */
+export function stripBareTextWrapper(text: string): string {
+  const open = /^\s*<\s*text\s*>/i.exec(text);
+  if (!open) {
+    return text;
+  }
+  const close = /<\s*\/\s*text\s*>\s*$/i.exec(text);
+  if (!close) {
+    return text;
+  }
+  const innerStart = open[0].length;
+  const innerEnd = close.index;
+  if (innerEnd < innerStart) {
+    return text;
+  }
+  return text.slice(innerStart, innerEnd);
+}
+
 export function stripFinalTags(text: string): string {
   let output = "";
   let lastIndex = 0;

@@ -88,6 +88,11 @@ function stripAssistantReasoningForHistory(text: string): { text: string; change
   return { text: cleaned, changed: cleaned !== text };
 }
 
+// Inline media (image_generate results, pasted images, voice notes) is normalized
+// into the display shape and passed through up to this size; only genuinely oversized
+// payloads keep the `omitted` placeholder valve so chat.history never balloons.
+const MAX_INLINE_MEDIA_BASE64_BYTES = 4 * 1024 * 1024;
+
 function sanitizeChatHistoryContentBlock(
   block: unknown,
   opts?: { preserveExactToolPayload?: boolean; maxChars?: number; stripReasoning?: boolean },
@@ -154,21 +159,49 @@ function sanitizeChatHistoryContentBlock(
   }
   const type = typeof entry.type === "string" ? entry.type : "";
   if (type === "image" && typeof entry.data === "string") {
+    // The internal model/tool image block carries base64 directly on the block
+    // ({type:"image", data, mimeType}) — the shape image_generate delivers. The
+    // dashboard renders images from the {type:"image", source:{type:"base64",
+    // media_type, data}} shape (the same shape a user-uploaded image already uses).
+    // Normalize into that shape HERE — the one place transcript content becomes
+    // display content — instead of deleting the data, which left the client an
+    // unrenderable {omitted:true} husk and made every generated image silently
+    // vanish. Only oversized payloads keep the omitted valve.
     const bytes = Buffer.byteLength(entry.data, "utf8");
-    delete entry.data;
-    entry.omitted = true;
-    entry.bytes = bytes;
+    if (bytes > MAX_INLINE_MEDIA_BASE64_BYTES) {
+      delete entry.data;
+      entry.omitted = true;
+      entry.bytes = bytes;
+    } else {
+      const mediaType =
+        typeof entry.mimeType === "string" && entry.mimeType.trim()
+          ? entry.mimeType.trim()
+          : typeof entry.media_type === "string" && entry.media_type.trim()
+            ? entry.media_type.trim()
+            : undefined;
+      entry.source = {
+        type: "base64",
+        ...(mediaType ? { media_type: mediaType } : {}),
+        data: entry.data,
+      };
+      delete entry.data;
+      delete entry.mimeType;
+    }
     changed = true;
   }
   if (type === "audio" && entry.source && typeof entry.source === "object") {
     const source = { ...(entry.source as Record<string, unknown>) };
     if (source.type === "base64" && typeof source.data === "string") {
       const bytes = Buffer.byteLength(source.data, "utf8");
-      delete source.data;
-      source.omitted = true;
-      source.bytes = bytes;
-      entry.source = source;
-      changed = true;
+      // Keep inline audio under the cap so it still plays after a history reload;
+      // only omit oversized payloads.
+      if (bytes > MAX_INLINE_MEDIA_BASE64_BYTES) {
+        delete source.data;
+        source.omitted = true;
+        source.bytes = bytes;
+        entry.source = source;
+        changed = true;
+      }
     }
   }
   return { block: changed ? entry : block, changed };
@@ -567,6 +600,72 @@ function hasTranscriptMediaPaths(message: Record<string, unknown>): boolean {
   return mediaPaths.some((value) => typeof value === "string" && value.trim());
 }
 
+const RENDERABLE_MEDIA_BLOCK_TYPES = new Set([
+  "image",
+  "image_url",
+  "input_image",
+  "audio",
+  "input_audio",
+  "video",
+  "file",
+]);
+
+// True when the message carries media a user would actually want to see — an image
+// content block (how image_generate delivers its result), an inline data: URI, a
+// channel MediaPath, or agent-generated attachments/mediaUrls. This is the guard that
+// keeps the #60 inter-session hide from ever swallowing the generated image itself
+// (the earlier MediaPaths-only guard missed the `type:"image"` block, so the image
+// vanished with the hidden envelope).
+function messageHasRenderableMedia(message: Record<string, unknown>): boolean {
+  if (hasTranscriptMediaPaths(message)) {
+    return true;
+  }
+  const content = message.content ?? message.text;
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      const type =
+        block && typeof block === "object" && typeof (block as { type?: unknown }).type === "string"
+          ? (block as { type: string }).type.toLowerCase()
+          : "";
+      if (RENDERABLE_MEDIA_BLOCK_TYPES.has(type)) {
+        return true;
+      }
+    }
+  }
+  if (extractProjectedText(content).includes("data:")) {
+    return true;
+  }
+  for (const key of ["mediaUrls", "attachments", "generatedAttachments"] as const) {
+    const value = message[key];
+    if (Array.isArray(value) && value.length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Drop content blocks that are purely the "[Inter-session message] …" provenance
+// envelope header, keeping the media/other blocks. Used when we KEEP a media-bearing
+// inter-session delivery (so the image shows) but must not leak the alarming header
+// text that reads like a message the user never sent (#60).
+function stripInterSessionHeaderBlocks(message: Record<string, unknown>): Record<string, unknown> {
+  const content = message.content;
+  if (!Array.isArray(content)) {
+    return message;
+  }
+  const filtered = content.filter((block) => {
+    const text =
+      block && typeof block === "object" && typeof (block as { text?: unknown }).text === "string"
+        ? (block as { text: string }).text
+        : "";
+    return !text.includes(INTER_SESSION_PROMPT_PREFIX_BASE);
+  });
+  if (filtered.length === content.length) {
+    return message;
+  }
+  return { ...message, content: filtered };
+}
+
 function extractProjectedText(content: unknown): string {
   if (typeof content === "string") {
     return content;
@@ -717,15 +816,39 @@ function mergeTtsSupplementMessages(
   return changed ? merged : messages;
 }
 
-function isSubagentAnnounceInterSessionUserMessage(message: Record<string, unknown>): boolean {
+// Inter-session deliveries from these internal tools are pure routing plumbing:
+// the tool's actual result (image, subagent summary, …) reaches the user through
+// the assistant's reply, while this record is just the `[Inter-session message]
+// …isUser=false…` envelope re-injected as a user turn for provenance tracking.
+// Rendering that envelope as a user ("You") bubble alarms people — it looks like a
+// message they never typed (issue #60). Hide it, exactly as subagent_announce
+// already was. A media guard at the call site keeps us from ever hiding a delivery
+// that actually carries the generated media itself.
+const HIDEABLE_INTER_SESSION_DELIVERY_TOOLS = new Set([
+  "subagent_announce",
+  "image_generate",
+  "music_generate",
+  "video_generate",
+]);
+
+function isHideableInterSessionToolDeliveryMessage(message: Record<string, unknown>): boolean {
   const provenance = normalizeInputProvenance(message.provenance);
-  if (provenance?.kind === "inter_session" && provenance.sourceTool === "subagent_announce") {
+  const provTool = provenance?.kind === "inter_session" ? provenance.sourceTool : undefined;
+  if (typeof provTool === "string" && HIDEABLE_INTER_SESSION_DELIVERY_TOOLS.has(provTool)) {
     return true;
   }
+  // Fallback for messages whose structured provenance was dropped: read the tool
+  // out of the envelope header text.
   const text = extractProjectedText(message.content ?? message.text);
-  return (
-    text.includes(INTER_SESSION_PROMPT_PREFIX_BASE) && text.includes("sourceTool=subagent_announce")
-  );
+  if (!text.includes(INTER_SESSION_PROMPT_PREFIX_BASE)) {
+    return false;
+  }
+  for (const tool of HIDEABLE_INTER_SESSION_DELIVERY_TOOLS) {
+    if (text.includes(`sourceTool=${tool}`)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function isDisplayHiddenProjectedMessage(message: Record<string, unknown>): boolean {
@@ -743,7 +866,11 @@ function shouldHideProjectedHistoryMessage(message: Record<string, unknown>): bo
   if (!roleContent) {
     return false;
   }
-  if (roleContent.role === "user" && isSubagentAnnounceInterSessionUserMessage(message)) {
+  if (
+    roleContent.role === "user" &&
+    isHideableInterSessionToolDeliveryMessage(message) &&
+    !messageHasRenderableMedia(message)
+  ) {
     return true;
   }
   if (
@@ -793,6 +920,22 @@ function filterVisibleProjectedHistoryMessages(
     ) {
       changed = true;
       i++;
+      continue;
+    }
+    // A media-bearing inter-session tool delivery (e.g. image_generate's result):
+    // the media is the ASSISTANT's output — it only rides a role=user inter-session
+    // envelope for provenance tracking. Strip the "[Inter-session message] …" header
+    // block AND re-attribute the display to the assistant, so the generated image
+    // renders on the assistant side instead of as a "message you never sent" on the
+    // user side (#60). The underlying transcript role is untouched — this is display
+    // attribution only.
+    if (
+      currentRoleContent?.role === "user" &&
+      isHideableInterSessionToolDeliveryMessage(current) &&
+      messageHasRenderableMedia(current)
+    ) {
+      visible.push({ ...stripInterSessionHeaderBlocks(current), role: "assistant" });
+      changed = true;
       continue;
     }
     if (shouldHideProjectedHistoryMessage(current)) {

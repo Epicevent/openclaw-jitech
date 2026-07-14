@@ -58,4 +58,113 @@ describe("chat.history reasoning-tag stripping (issue #57)", () => {
     const out = projectedText(msg);
     expect(out).toContain("`<final>...</final>`");
   });
+
+  // Issue #59: some models wrap the final answer in a bare <text>…</text> scaffold.
+  it("unwraps a bare <text> scaffold wrapper (issue #59)", () => {
+    const [msg] = projectChatDisplayMessages([
+      assistantText("<text> 요청하신 이미지를 생성했습니다. </text>"),
+    ]);
+    const out = projectedText(msg);
+    expect(out).not.toContain("<text>");
+    expect(out).not.toContain("</text>");
+    expect(out).toContain("요청하신 이미지를 생성했습니다.");
+  });
+
+  it("must NOT strip SVG <text x=…> elements (issue #59 — would break diagrams)", () => {
+    const svg = '<svg width="20"><text x="1" y="2" fill="black">A</text><text x="5" y="6">B</text></svg>';
+    const [msg] = projectChatDisplayMessages([assistantText(`<text>Here:\n${svg}</text>`)]);
+    const out = projectedText(msg);
+    expect(out).not.toMatch(/^<text>/); // the bare wrapper is gone
+    expect(out).toContain(svg); // every attributed SVG <text …> survives verbatim
+  });
+
+  it("keeps a bare <text> that lives inside a code span (issue #59)", () => {
+    const [msg] = projectChatDisplayMessages([
+      assistantText("<text>Wrap answers in `<text>...</text>` like this.</text>"),
+    ]);
+    expect(projectedText(msg)).toContain("`<text>...</text>`");
+  });
+});
+
+describe("chat.history hides internal inter-session tool deliveries (issue #60)", () => {
+  it("hides an image_generate inter-session envelope rendered as a 'You' bubble", () => {
+    const out = projectChatDisplayMessages([
+      { role: "user", content: [{ type: "text", text: "빨간 원 이미지 만들어줘" }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "[Inter-session message] sourceSession=image_generate:abc sourceChannel=webchat " +
+              "sourceTool=image_generate isUser=false\nThis content was routed by OpenClaw from " +
+              "another session or internal tool.",
+          },
+        ],
+      },
+    ]);
+    const joined = out.map(projectedText).join("\n");
+    expect(joined).toContain("빨간 원 이미지 만들어줘"); // the real user turn stays
+    expect(joined).not.toContain("Inter-session message"); // the plumbing envelope is gone
+    expect(joined).not.toContain("image_generate");
+  });
+
+  it("keeps a media-bearing image_generate delivery but strips its envelope header (image must survive)", () => {
+    const out = projectChatDisplayMessages([
+      { role: "user", content: [{ type: "text", text: "별 이미지 만들어줘" }] },
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              "[Inter-session message] sourceSession=image_generate:abc sourceChannel=webchat " +
+              "sourceTool=image_generate isUser=false\nThis content was routed by OpenClaw from " +
+              "another session or internal tool.",
+          },
+          { type: "image", data: "/9j/2wBDAAUFBQUFBQUGBgUI" },
+        ],
+      },
+    ]);
+    // The alarming envelope header must be gone …
+    expect(out.map(projectedText).join("\n")).not.toContain("Inter-session message");
+    // … the generated image block must still be present (NOT hidden with it) …
+    const imgMsg = out.find(
+      (m) =>
+        Array.isArray(m.content) &&
+        (m.content as Array<{ type?: string }>).some((b) => b?.type === "image"),
+    );
+    expect(imgMsg).toBeTruthy();
+    // … and it must be re-attributed to the assistant side (not the user 'You' bubble).
+    expect(imgMsg?.role).toBe("assistant");
+  });
+
+  it("normalizes an inline {type:image,data,mimeType} block into renderable source.base64 (root fix)", () => {
+    const [msg] = projectChatDisplayMessages([
+      { role: "assistant", content: [{ type: "image", data: "/9j/2wBDAAUF", mimeType: "image/jpeg" }] },
+    ]);
+    const block = (msg.content as Array<Record<string, unknown>>).find((b) => b.type === "image");
+    expect(block).toBeTruthy();
+    // The base64 must NOT be gutted — it must survive under the shape the client renders.
+    expect(block?.data).toBeUndefined();
+    const source = block?.source as Record<string, unknown> | undefined;
+    expect(source?.type).toBe("base64");
+    expect(source?.data).toBe("/9j/2wBDAAUF");
+    expect(source?.media_type).toBe("image/jpeg");
+  });
+
+  it("still keeps a genuine cross-session message (not a hideable tool)", () => {
+    const out = projectChatDisplayMessages([
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: "[Inter-session message] sourceSession=agent:main:other sourceChannel=webchat\nHello from another session.",
+          },
+        ],
+      },
+    ]);
+    expect(out.map(projectedText).join("\n")).toContain("Hello from another session.");
+  });
 });
