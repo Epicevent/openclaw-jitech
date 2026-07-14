@@ -421,8 +421,50 @@ describe("injectTimestamp", () => {
 });
 
 describe("sanitizeChatHistoryMessages", () => {
-  it("redacts base64 audio content blocks from chat history", () => {
+  it("keeps small base64 audio content blocks so they still play after a history reload", () => {
     const data = Buffer.from("voice-bytes").toString("base64");
+    const result = sanitizeChatHistoryMessages([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Audio reply" },
+          {
+            type: "audio",
+            source: {
+              type: "base64",
+              media_type: "audio/mp3",
+              data,
+            },
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+
+    // Under the inline-media cap the block is preserved verbatim — the dashboard
+    // needs the base64 to replay the clip. (Pre-#62 this redacted all audio, which
+    // is why generated media silently vanished; only oversized payloads are omitted.)
+    expect(result).toEqual([
+      {
+        role: "assistant",
+        content: [
+          { type: "text", text: "Audio reply" },
+          {
+            type: "audio",
+            source: {
+              type: "base64",
+              media_type: "audio/mp3",
+              data,
+            },
+          },
+        ],
+        timestamp: 1,
+      },
+    ]);
+  });
+
+  it("redacts oversized base64 audio content blocks from chat history", () => {
+    const data = "Q".repeat(4 * 1024 * 1024 + 8); // over the 4 MiB inline-media cap
     const result = sanitizeChatHistoryMessages([
       {
         role: "assistant",
