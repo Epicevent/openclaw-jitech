@@ -128,13 +128,15 @@ describe("chat.history hides internal inter-session tool deliveries (issue #60)"
     ]);
     // The alarming envelope header must be gone …
     expect(out.map(projectedText).join("\n")).not.toContain("Inter-session message");
-    // … but the generated image block must still be present (NOT hidden with it).
-    const hasImage = out.some(
+    // … the generated image block must still be present (NOT hidden with it) …
+    const imgMsg = out.find(
       (m) =>
         Array.isArray(m.content) &&
         (m.content as Array<{ type?: string }>).some((b) => b?.type === "image"),
     );
-    expect(hasImage).toBe(true);
+    expect(imgMsg).toBeTruthy();
+    // … and it must be re-attributed to the assistant side (not the user 'You' bubble).
+    expect(imgMsg?.role).toBe("assistant");
   });
 
   it("normalizes an inline {type:image,data,mimeType} block into renderable source.base64 (root fix)", () => {

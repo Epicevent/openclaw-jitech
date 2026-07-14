@@ -923,14 +923,18 @@ function filterVisibleProjectedHistoryMessages(
       continue;
     }
     // A media-bearing inter-session tool delivery (e.g. image_generate's result):
-    // keep the media but strip the "[Inter-session message] …" envelope header block
-    // so the image renders without the alarming "message you never sent" text (#60).
+    // the media is the ASSISTANT's output — it only rides a role=user inter-session
+    // envelope for provenance tracking. Strip the "[Inter-session message] …" header
+    // block AND re-attribute the display to the assistant, so the generated image
+    // renders on the assistant side instead of as a "message you never sent" on the
+    // user side (#60). The underlying transcript role is untouched — this is display
+    // attribution only.
     if (
       currentRoleContent?.role === "user" &&
       isHideableInterSessionToolDeliveryMessage(current) &&
       messageHasRenderableMedia(current)
     ) {
-      visible.push(stripInterSessionHeaderBlocks(current));
+      visible.push({ ...stripInterSessionHeaderBlocks(current), role: "assistant" });
       changed = true;
       continue;
     }
