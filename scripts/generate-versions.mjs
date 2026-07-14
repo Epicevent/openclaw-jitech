@@ -34,16 +34,20 @@ function readHistory(file) {
   }
   const rows = [];
   for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
+    if (!line.trim()) {
+      continue;
+    }
     try {
       const e = JSON.parse(line);
-      if (e && typeof e.version === "string" && typeof e.commit === "string") rows.push(e);
+      if (e && typeof e.version === "string" && typeof e.commit === "string") {
+        rows.push(e);
+      }
     } catch {
       /* skip malformed line */
     }
   }
   // newest first
-  return rows.reverse();
+  return rows.toReversed();
 }
 
 function commitSubject(commit) {
@@ -70,19 +74,24 @@ function ghPr(number) {
 
 const prCache = new Map();
 const versions = readHistory(historyFile).map((e) => {
-  const row = { version: e.version, date: e.date ?? null };
-  if (safe) return row; // customer image: name + date only, nothing internal
+  const date = e.date ?? null;
+  if (safe) {
+    return { version: e.version, date }; // customer image: name + date only, nothing internal
+  }
 
   // owner/dev image: attach the ground-truth PR content
   const subject = commitSubject(e.commit);
   const pr = subject.match(/\(#(\d+)\)\s*$/)?.[1];
   let prData = null;
   if (pr) {
-    if (!prCache.has(pr)) prCache.set(pr, ghPr(pr));
+    if (!prCache.has(pr)) {
+      prCache.set(pr, ghPr(pr));
+    }
     prData = prCache.get(pr);
   }
   return {
-    ...row,
+    version: e.version,
+    date,
     commit: e.commit,
     shortCommit: e.commit.slice(0, 8),
     pr: pr ? Number.parseInt(pr, 10) : null,

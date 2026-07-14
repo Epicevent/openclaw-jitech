@@ -28,7 +28,9 @@ let already = false;
 try {
   const existing = fs.readFileSync(historyFile, "utf8");
   already = existing.split("\n").some((line) => {
-    if (!line.trim()) return false;
+    if (!line.trim()) {
+      return false;
+    }
     try {
       const e = JSON.parse(line);
       return e.version === version && e.commit === commit;
