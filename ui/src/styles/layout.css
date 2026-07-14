@@ -1164,10 +1164,17 @@
 .version-history {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: min(560px, 78vw);
   max-height: 60vh;
-  overflow: auto;
+  overflow-y: auto;
+  /* openclaw-modal-dialog is a bare transparent <dialog> + <slot> — the slotted
+     content must bring its own surface, or dark text lands on the dim backdrop
+     and is invisible. Mirror .exec-approval-card's card treatment. */
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
 }
 
 .version-history__cols {
@@ -1261,7 +1268,7 @@
 
 .version-row__body {
   margin: 0;
-  padding: 6px 12px 12px 130px;
+  padding: 8px 4px 6px 4px;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;

@@ -1,5 +1,6 @@
 import { html, nothing, type TemplateResult } from "lit";
 import type { AppViewState } from "../app-view-state.ts";
+import "../components/modal-dialog.ts";
 
 export type VersionEntry = {
   version: string;
