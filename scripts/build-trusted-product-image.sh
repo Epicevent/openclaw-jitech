@@ -47,6 +47,23 @@ echo "BUILD_SOURCE_COMMIT=${sha}"
 echo "BUILD_EXTENSIONS=${EXTENSIONS}"
 echo "BUILD_IMAGE_REF=${image_ref}"
 
+# Version-tracking: record THIS build in the forward-only history, then bake the timeline
+# into the build context (moved into dist/ by the Dockerfile). The clean-tree check above
+# has already passed; writing versions.json into the worktree now is intentional build
+# metadata (like dist/build-info.json), not source — the source-commit label stays $sha.
+# Default is the SAFE customer timeline (date + build name only); a customer image must
+# never carry internal PR prose. Set VERSIONS_MODE=owner for dev/ops preview images to
+# attach each build's PR title + body (ground truth via the commit's "(#NN)").
+hist="${BUILD_HISTORY_FILE:-${HOME}/.openclaw-build-history.jsonl}"
+node "${work}/scripts/record-build-version.mjs" "${TAG}" "${sha}" "${hist}"
+if [ "${VERSIONS_MODE:-customer}" = "owner" ]; then
+  ( cd "${work}" && node scripts/generate-versions.mjs "${hist}" "${work}/versions.json" )
+  echo "VERSIONS_MODE=owner"
+else
+  ( cd "${work}" && node scripts/generate-versions.mjs "${hist}" "${work}/versions.json" --safe )
+  echo "VERSIONS_MODE=customer"
+fi
+
 DOCKER_BUILDKIT=1 docker buildx build \
   --build-arg "OPENCLAW_EXTENSIONS=${EXTENSIONS}" \
   --build-arg "OPENCLAW_BUILD_VERSION=${TAG}" \

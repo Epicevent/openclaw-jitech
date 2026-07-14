@@ -186,6 +186,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
 import { renderOverview } from "./views/overview.ts";
+import { renderVersionHistoryModal } from "./views/version-history.ts";
 
 let pendingUpdate: (() => void) | undefined;
 
@@ -1959,8 +1960,14 @@ export function renderApp(state: AppViewState) {
                         <div class="sidebar-version" title=${footerText}>
                           ${!navCollapsed
                             ? html`
-                                <span class="sidebar-version__label">${t("common.version")}</span>
-                                <span class="sidebar-version__text">${footerText}</span>
+                                <button
+                                  type="button"
+                                  class="sidebar-version__btn"
+                                  @click=${() => state.openVersions()}
+                                >
+                                  <span class="sidebar-version__label">${t("common.version")}</span>
+                                  <span class="sidebar-version__text">${footerText}</span>
+                                </button>
                                 ${renderSidebarConnectionStatus(state)}
                               `
                             : html` ${renderSidebarConnectionStatus(state)} `}
@@ -3094,6 +3101,7 @@ export function renderApp(state: AppViewState) {
           : nothing}
       </main>
       ${renderExecApprovalPrompt(state)} ${renderGatewayUrlConfirmation(state)}
+      ${renderVersionHistoryModal(state)}
       ${renderDreamingRestartConfirmation({
         open: state.dreamingRestartConfirmOpen,
         loading: state.dreamingRestartConfirmLoading,

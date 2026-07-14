@@ -12,11 +12,17 @@ import {
   normalizeOptionalString,
   readStringValue,
 } from "../../shared/string-coerce.js";
+import { readVersionsForModuleUrl } from "../../versions-file.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import { broadcastPresenceSnapshot } from "../server/presence-events.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 export const systemHandlers: GatewayRequestHandlers = {
+  // Version-tracking timeline baked into the image (scripts/generate-versions.mjs).
+  // Owner/dev builds carry PR title+body; customer builds carry only {version,date}.
+  "system.versions": ({ respond }) => {
+    respond(true, readVersionsForModuleUrl(import.meta.url), undefined);
+  },
   "gateway.identity.get": ({ respond }) => {
     const identity = loadOrCreateDeviceIdentity();
     respond(

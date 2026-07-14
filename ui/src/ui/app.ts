@@ -65,6 +65,7 @@ import {
   type FallbackStatus,
 } from "./app-tool-stream.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import type { VersionsData } from "./views/version-history.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
 import {
@@ -413,6 +414,9 @@ export class OpenClawApp extends LitElement {
   @state() sessionsIncludeGlobal = true;
   @state() sessionsIncludeUnknown = false;
   @state() sessionsShowArchived = false;
+  @state() versionsOpen = false;
+  @state() versionsData: VersionsData | null = null;
+  @state() versionsExpanded: number | null = null;
   @state() sessionsFiltersCollapsed = false;
   @state() sessionsHideCron = true;
   @state() sessionsSearchQuery = "";
@@ -789,6 +793,34 @@ export class OpenClawApp extends LitElement {
       this.setChatMobileControlsOpen(false);
     }
     this.navDrawerOpen = false;
+  }
+
+  openVersions() {
+    this.versionsOpen = true;
+    this.versionsExpanded = null;
+    void this.loadVersions();
+  }
+
+  closeVersions() {
+    this.versionsOpen = false;
+  }
+
+  toggleVersionExpanded(index: number) {
+    this.versionsExpanded = this.versionsExpanded === index ? null : index;
+  }
+
+  private async loadVersions() {
+    if (!this.client) {
+      return;
+    }
+    try {
+      const res = await this.client.request<VersionsData>("system.versions", {});
+      if (res && Array.isArray(res.versions)) {
+        this.versionsData = res;
+      }
+    } catch {
+      // leave versionsData as-is → modal shows "기록 없음"
+    }
   }
 
   setChatMobileControlsOpen(
