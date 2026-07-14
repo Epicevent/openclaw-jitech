@@ -58,6 +58,22 @@ function commitSubject(commit) {
   }
 }
 
+function prNumberForCommit(commit) {
+  // Resolve the PR a commit belongs to even before it lands on the default branch
+  // (a branch build's commit has no "(#NN)" in its subject yet). Works for open and
+  // merged PRs; returns null with no gh auth / no association.
+  try {
+    const raw = execFileSync(
+      "gh",
+      ["api", `repos/Epicevent/openclaw-jitech/commits/${commit}/pulls`, "--jq", ".[0].number"],
+      { encoding: "utf8", env: process.env },
+    ).trim();
+    return /^\d+$/.test(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
 function ghPr(number) {
   try {
     const raw = execFileSync(
@@ -81,7 +97,7 @@ const versions = readHistory(historyFile).map((e) => {
 
   // owner/dev image: attach the ground-truth PR content
   const subject = commitSubject(e.commit);
-  const pr = subject.match(/\(#(\d+)\)\s*$/)?.[1];
+  const pr = subject.match(/\(#(\d+)\)\s*$/)?.[1] ?? prNumberForCommit(e.commit);
   let prData = null;
   if (pr) {
     if (!prCache.has(pr)) {
