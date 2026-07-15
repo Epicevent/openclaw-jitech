@@ -74,46 +74,25 @@ function prNumberForCommit(commit) {
   }
 }
 
-function ghPr(number) {
-  try {
-    const raw = execFileSync(
-      "gh",
-      ["pr", "view", String(number), "--json", "title,body,url"],
-      { encoding: "utf8", env: process.env },
-    );
-    const { title, body, url } = JSON.parse(raw);
-    return { title: title ?? null, body: body ?? null, url: url ?? null };
-  } catch {
-    return null; // PR not found / no gh auth → fall back to the commit subject
-  }
-}
-
-const prCache = new Map();
 const versions = readHistory(historyFile).map((e) => {
   const date = e.date ?? null;
   if (safe) {
     return { version: e.version, date }; // customer image: name + date only, nothing internal
   }
 
-  // owner/dev image: attach the ground-truth PR content
+  // owner/dev image: the "변경" is an owner-written one-line key point (e.note); the full
+  // detail lives behind the PR link (private repo → only the owner opens it). No
+  // AI-authored PR prose (title/body) is baked — the owner found that too noisy.
   const subject = commitSubject(e.commit);
   const pr = subject.match(/\(#(\d+)\)\s*$/)?.[1] ?? prNumberForCommit(e.commit);
-  let prData = null;
-  if (pr) {
-    if (!prCache.has(pr)) {
-      prCache.set(pr, ghPr(pr));
-    }
-    prData = prCache.get(pr);
-  }
   return {
     version: e.version,
     date,
+    note: e.note ?? null,
     commit: e.commit,
     shortCommit: e.commit.slice(0, 8),
     pr: pr ? Number.parseInt(pr, 10) : null,
-    title: prData?.title ?? subject ?? null,
-    body: prData?.body ?? null,
-    prUrl: prData?.url ?? null,
+    prUrl: pr ? `https://github.com/Epicevent/openclaw-jitech/pull/${pr}` : null,
     commitUrl: `https://github.com/Epicevent/openclaw-jitech/commit/${e.commit}`,
   };
 });
