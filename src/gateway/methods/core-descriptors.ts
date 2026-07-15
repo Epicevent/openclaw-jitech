@@ -143,6 +143,8 @@ export const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [
   { name: "sessions.delete", scope: "operator.admin" },
   { name: "sessions.compact", scope: "operator.admin" },
   { name: "last-heartbeat", scope: "operator.read" },
+  { name: "system.versions", scope: "operator.read" },
+  { name: "system.setVersionNote", scope: "operator.write" },
   { name: "set-heartbeats", scope: "operator.admin" },
   { name: "wake", scope: "operator.write" },
   { name: "node.pair.request", scope: "operator.pairing" },

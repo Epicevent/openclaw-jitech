@@ -1081,6 +1081,37 @@
   font-weight: 600;
 }
 
+.sidebar-version__btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.sidebar-version__btn:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.sidebar-version__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sidebar-version__btn .sidebar-version__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar-version__dot {
   width: 8px;
   height: 8px;
@@ -1128,6 +1159,182 @@
 
 .sidebar--collapsed .sidebar-version__status {
   margin-left: 0;
+}
+
+.version-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: min(560px, 78vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  /* openclaw-modal-dialog is a bare transparent <dialog> + <slot> — the slotted
+     content must bring its own surface, or dark text lands on the dim backdrop
+     and is invisible. Mirror .exec-approval-card's card treatment. */
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+.version-history__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -14px -14px 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.version-history__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.version-history__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.version-history__close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.version-history__close svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+
+.version-history__cols {
+  display: flex;
+  gap: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.version-history__cols span:nth-child(1) {
+  flex: 0 0 auto;
+  width: 118px;
+}
+
+.version-history__cols span:nth-child(2) {
+  flex: 0 0 auto;
+  width: 120px;
+}
+
+.version-history__cols span:nth-child(3) {
+  flex: 1 1 auto;
+}
+
+.version-history__empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.version-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+}
+
+.version-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.version-row__date {
+  flex: 0 0 auto;
+  width: 118px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.version-row__name {
+  flex: 0 0 auto;
+  width: 120px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-row__note-edit {
+  /* The human-readable "변경" — editable inline (owner types the patch note here,
+     saved live via system.setVersionNote). Blends into the row; a border appears on
+     hover/focus to signal it's editable. field-sizing grows it to the note. */
+  flex: 1 1 auto;
+  min-width: 0;
+  field-sizing: content;
+  min-height: 1.6em;
+  resize: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.version-row__note-edit:hover {
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.version-row__note-edit:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+}
+
+.version-row__note-edit::placeholder {
+  color: var(--muted);
+}
+
+.version-row__pr {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.version-row__pr:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .version-history__cols span:nth-child(2),
+  .version-row__name {
+    width: 84px;
+  }
 }
 
 /* Mode switch in sidebar — hidden on desktop, shown on mobile */

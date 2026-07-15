@@ -12,11 +12,38 @@ import {
   normalizeOptionalString,
   readStringValue,
 } from "../../shared/string-coerce.js";
+import { readVersionsForModuleUrl } from "../../versions-file.js";
+import { readVersionNotes, setVersionNote } from "../version-notes-store.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import { broadcastPresenceSnapshot } from "../server/presence-events.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 export const systemHandlers: GatewayRequestHandlers = {
+  // Version-tracking timeline baked into the image (scripts/generate-versions.mjs).
+  // Owner builds carry the PR link + the build-time note; customer builds carry only
+  // {version,date}. Owner-authored notes from version-notes.json overlay the baked note
+  // so the owner can edit patch notes live (system.setVersionNote) without a rebuild.
+  "system.versions": ({ respond }) => {
+    const data = readVersionsForModuleUrl(import.meta.url);
+    if (data.mode === "owner") {
+      const notes = readVersionNotes();
+      data.versions = data.versions.map((v) => ({
+        ...v,
+        note: notes[v.version] ?? v.note ?? null,
+      }));
+    }
+    respond(true, data, undefined);
+  },
+  "system.setVersionNote": ({ params, respond }) => {
+    const version = readStringValue(params.version);
+    const note = typeof params.note === "string" ? params.note : "";
+    if (!version) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "version required"));
+      return;
+    }
+    setVersionNote(version, note);
+    respond(true, { ok: true }, undefined);
+  },
   "gateway.identity.get": ({ respond }) => {
     const identity = loadOrCreateDeviceIdentity();
     respond(

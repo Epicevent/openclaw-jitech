@@ -123,6 +123,11 @@ RUN NODE_OPTIONS=--max-old-space-size=8192 pnpm_config_verify_deps_before_run=fa
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm_config_verify_deps_before_run=false pnpm ui:build
 RUN pnpm_config_verify_deps_before_run=false pnpm qa:lab:build
+# Version-tracking timeline: build-trusted-product-image.sh generates versions.json on the
+# host (git + gh access) and injects it into the build context. It lands at /app/versions.json
+# via `COPY . .`, but the final image copies only /app/dist, so move it into dist here. Absent
+# in plain CI builds → dist carries no versions.json and the gateway serves an empty timeline.
+RUN if [ -f versions.json ]; then cp versions.json dist/versions.json; fi
 
 # Prune dev dependencies and strip build-only metadata before copying
 # runtime assets into the final image.

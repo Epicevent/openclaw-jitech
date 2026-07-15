@@ -292,6 +292,9 @@ export type AppViewState = {
   sessionsIncludeGlobal: boolean;
   sessionsIncludeUnknown: boolean;
   sessionsShowArchived: boolean;
+  versionsOpen: boolean;
+  versionsData: import("./views/version-history.ts").VersionsData | null;
+  versionsExpanded: number | null;
   sessionsFiltersCollapsed: boolean;
   sessionsHideCron: boolean;
   sessionsSearchQuery: string;
@@ -441,6 +444,10 @@ export type AppViewState = {
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     connect: () => void;
+    openVersions: () => void;
+    closeVersions: () => void;
+    toggleVersionExpanded: (index: number) => void;
+    saveVersionNote: (version: string, note: string) => void;
     setTab: (tab: Tab) => void;
     setChatMobileControlsOpen: (
       open: boolean,
