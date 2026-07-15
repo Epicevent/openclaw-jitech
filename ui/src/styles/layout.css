@@ -1283,15 +1283,38 @@
   white-space: nowrap;
 }
 
-.version-row__note {
-  /* This is the human-readable "변경" description — the accessible explanation for
-     anyone without PR access. Show it in full (wrap), don't truncate. */
+.version-row__note-edit {
+  /* The human-readable "변경" — editable inline (owner types the patch note here,
+     saved live via system.setVersionNote). Blends into the row; a border appears on
+     hover/focus to signal it's editable. field-sizing grows it to the note. */
   flex: 1 1 auto;
   min-width: 0;
+  field-sizing: content;
+  min-height: 1.6em;
+  resize: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  padding: 3px 6px;
+  font: inherit;
   font-size: 13px;
   line-height: 1.45;
   color: var(--text);
   word-break: break-word;
+}
+
+.version-row__note-edit:hover {
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.version-row__note-edit:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+}
+
+.version-row__note-edit::placeholder {
+  color: var(--muted);
 }
 
 .version-row__pr {

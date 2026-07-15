@@ -24,13 +24,20 @@ function formatDate(iso: string | null): string {
   return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}` : iso.slice(0, 10);
 }
 
-function renderRow(v: VersionEntry, owner: boolean) {
+function renderRow(state: AppViewState, v: VersionEntry, owner: boolean) {
   return html`
     <div class="version-row">
       <span class="version-row__date">${formatDate(v.date)}</span>
       <span class="version-row__name">${v.version}</span>
       ${owner
-        ? html`<span class="version-row__note">${v.note ?? ""}</span>
+        ? html`<textarea
+              class="version-row__note-edit"
+              rows="1"
+              placeholder="변경 요약 입력…"
+              .value=${v.note ?? ""}
+              @change=${(e: Event) =>
+                state.saveVersionNote(v.version, (e.target as HTMLTextAreaElement).value)}
+            ></textarea>
             ${v.prUrl
               ? html`<a
                   class="version-row__pr"
@@ -71,7 +78,7 @@ export function renderVersionHistoryModal(state: AppViewState): TemplateResult |
         </div>
         ${versions.length === 0
           ? html`<div class="version-history__empty">기록 없음</div>`
-          : versions.map((v) => renderRow(v, owner))}
+          : versions.map((v) => renderRow(state, v, owner))}
       </div>
     </openclaw-modal-dialog>
   `;

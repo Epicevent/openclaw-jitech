@@ -447,6 +447,7 @@ export type AppViewState = {
     openVersions: () => void;
     closeVersions: () => void;
     toggleVersionExpanded: (index: number) => void;
+    saveVersionNote: (version: string, note: string) => void;
     setTab: (tab: Tab) => void;
     setChatMobileControlsOpen: (
       open: boolean,

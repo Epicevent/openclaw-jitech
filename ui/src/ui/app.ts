@@ -809,6 +809,19 @@ export class OpenClawApp extends LitElement {
     this.versionsExpanded = this.versionsExpanded === index ? null : index;
   }
 
+  saveVersionNote(version: string, note: string) {
+    const trimmed = note.trim();
+    if (this.versionsData) {
+      this.versionsData = {
+        ...this.versionsData,
+        versions: this.versionsData.versions.map((v) =>
+          v.version === version ? { ...v, note: trimmed || null } : v,
+        ),
+      };
+    }
+    void this.client?.request("system.setVersionNote", { version, note: trimmed });
+  }
+
   private async loadVersions() {
     if (!this.client) {
       return;

@@ -13,11 +13,10 @@ export type VersionEntry = {
   version: string;
   date: string | null;
   // owner-mode only fields (absent in customer/--safe builds):
+  note?: string | null;
   commit?: string;
   shortCommit?: string;
   pr?: number | null;
-  title?: string | null;
-  body?: string | null;
   prUrl?: string | null;
   commitUrl?: string;
 };
