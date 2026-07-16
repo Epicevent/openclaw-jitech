@@ -74,10 +74,16 @@ function prNumberForCommit(commit) {
   }
 }
 
-const versions = readHistory(historyFile).map((e) => {
+const history = readHistory(historyFile);
+// Customer/--safe: show ONLY builds the owner flagged as customer releases (CUSTOMER_RELEASE=1),
+// so internal dev iterations never reach customers. Owner mode shows every build.
+const source = safe ? history.filter((e) => e.customerRelease) : history;
+const versions = source.map((e) => {
   const date = e.date ?? null;
   if (safe) {
-    return { version: e.version, date }; // customer image: name + date only, nothing internal
+    // customer image: date + build name + the owner-written note (the accessible release
+    // description). No commit/PR/internal — just what the owner chose to show.
+    return { version: e.version, date, note: e.note ?? null };
   }
 
   // owner/dev image: the "변경" is an owner-written one-line key point (e.note); the full
