@@ -47,7 +47,7 @@ function renderRow(state: AppViewState, v: VersionEntry, owner: boolean) {
                   >PR #${v.pr} ↗</a
                 >`
               : nothing}`
-        : nothing}
+        : html`<span class="version-row__note-ro">${v.note ?? ""}</span>`}
     </div>
   `;
 }
@@ -74,7 +74,7 @@ export function renderVersionHistoryModal(state: AppViewState): TemplateResult |
           </button>
         </div>
         <div class="version-history__cols" aria-hidden="true">
-          <span>버전</span><span>빌드</span>${owner ? html`<span>변경</span>` : nothing}
+          <span>버전</span><span>빌드</span><span>변경</span>
         </div>
         ${versions.length === 0
           ? html`<div class="version-history__empty">기록 없음</div>`
