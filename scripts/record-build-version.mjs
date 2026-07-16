@@ -24,7 +24,16 @@ const historyFile =
 // Optional owner-written one-line key point (the "변경" shown in the modal). Supplied at
 // build time via BUILD_NOTE env or a 4th arg; absent for builds recorded before this.
 const note = process.env.BUILD_NOTE?.trim() || process.argv[5]?.trim() || undefined;
-const entry = { version, commit, date: new Date().toISOString(), ...(note ? { note } : {}) };
+// CUSTOMER_RELEASE=1 marks this build as a customer-facing release. Only these show in
+// customer/--safe mode (dev iterations stay owner-only); the owner curates by flagging.
+const customerRelease = process.env.CUSTOMER_RELEASE === "1";
+const entry = {
+  version,
+  commit,
+  date: new Date().toISOString(),
+  ...(note ? { note } : {}),
+  ...(customerRelease ? { customerRelease: true } : {}),
+};
 
 // De-dupe: a rebuild of the same version+commit shouldn't stack duplicate rows.
 let already = false;
