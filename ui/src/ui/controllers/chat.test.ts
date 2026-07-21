@@ -1287,10 +1287,10 @@ describe("loadChatHistory retry handling", () => {
 
     await loadChatHistory(state);
 
+    // No maxChars: the gateway owns the per-block cap (a client-sent value overrides it).
     expect(request).toHaveBeenCalledWith("chat.history", {
       sessionKey: "main",
       limit: 100,
-      maxChars: 4000,
     });
     expect(state.chatMessages).toEqual([
       { role: "assistant", content: [{ type: "text", text: "visible answer" }] },
