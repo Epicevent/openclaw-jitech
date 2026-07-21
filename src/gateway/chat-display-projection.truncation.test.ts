@@ -34,6 +34,20 @@ describe("chat.history display truncation cap", () => {
     expect(out.length).toBe(answer.length);
   });
 
+  it("does not truncate the largest block that actually exists in the fleet", () => {
+    // Measured 2026-07-17 across all 14 customer slots: the biggest single stored text
+    // block is 60,761 chars (oc14); nothing anywhere exceeds 100k. The default cap must
+    // stay above the real ceiling, or the field keeps seeing "(truncated)".
+    const FLEET_MAX_BLOCK_CHARS = 60_761;
+    expect(DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS).toBeGreaterThan(FLEET_MAX_BLOCK_CHARS);
+
+    const answer = "가".repeat(FLEET_MAX_BLOCK_CHARS);
+    const [projected] = projectChatDisplayMessages([assistantWith(answer)]);
+    const out = projectedText(projected);
+    expect(out).not.toContain("(truncated)");
+    expect(out.length).toBe(FLEET_MAX_BLOCK_CHARS);
+  });
+
   it("still truncates a pathological block beyond the cap (safety valve intact)", () => {
     const huge = "x".repeat(DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS + 5_000);
     const [projected] = projectChatDisplayMessages([assistantWith(huge)]);

@@ -218,10 +218,10 @@ describe("refreshChat", () => {
 
     expect(outcome).toBe("resolved");
     expect(host.chatLoading).toBe(true);
+    // No maxChars: the gateway owns the per-block cap (a client-sent value overrides it).
     expect(request).toHaveBeenCalledWith("chat.history", {
       sessionKey: "main",
       limit: 100,
-      maxChars: 4000,
     });
     expect(request).toHaveBeenCalledWith("models.list", { view: "configured" });
     const sessionsListPayload = findRequestPayload(
