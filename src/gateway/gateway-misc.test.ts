@@ -23,7 +23,7 @@ import type { SerializedEventPayload } from "./node-registry.js";
 import type { RequestFrame } from "./protocol/index.js";
 import { createGatewayBroadcaster } from "./server-broadcast.js";
 import { createChatRunRegistry } from "./server-chat.js";
-import { MAX_BUFFERED_BYTES } from "./server-constants.js";
+import { MAX_BUFFERED_BYTES, MAX_PAYLOAD_BYTES } from "./server-constants.js";
 import { handleNodeInvokeResult } from "./server-methods/nodes.handlers.invoke-result.js";
 import type { GatewayClient as GatewayMethodClient } from "./server-methods/types.js";
 import type { GatewayRequestContext, RespondFn } from "./server-methods/types.js";
@@ -108,7 +108,7 @@ describe("GatewayClient", () => {
     const opts = last?.opts as { maxPayload?: number } | undefined;
 
     expect(last?.url).toBe("ws://127.0.0.1:1");
-    expect(opts?.maxPayload).toBe(25 * 1024 * 1024);
+    expect(opts?.maxPayload).toBe(MAX_PAYLOAD_BYTES);
   });
 
   test("does not pass an explicit direct agent for loopback control-plane WebSocket connections", () => {

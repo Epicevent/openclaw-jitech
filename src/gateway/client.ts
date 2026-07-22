@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type ClientOptions, type CertMeta } from "ws";
+import { MAX_PAYLOAD_BYTES } from "./server-constants.js";
 import {
   clearDeviceAuthToken,
   loadDeviceAuthToken,
@@ -303,7 +304,7 @@ export class GatewayClient {
     // Allow node screen snapshots and other large responses.
     ensureInheritedManagedProxyRoutingActive();
     const wsOptions: FingerprintCheckingClientOptions = {
-      maxPayload: 25 * 1024 * 1024,
+      maxPayload: MAX_PAYLOAD_BYTES,
     };
     if (url.startsWith("wss://") && this.opts.tlsFingerprint) {
       wsOptions.rejectUnauthorized = false;
