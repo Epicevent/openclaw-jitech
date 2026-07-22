@@ -3,6 +3,7 @@ import {
   type GatewayUpdateAvailableEventPayload,
 } from "../../../src/gateway/events.js";
 import { ConnectErrorDetailCodes } from "../../../src/gateway/protocol/connect-error-details.js";
+import { setClientErrorSink } from "./client-error-reporter.ts";
 import {
   CHAT_SESSIONS_ACTIVE_MINUTES,
   CHAT_SESSIONS_REFRESH_LIMIT,
@@ -651,6 +652,11 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
     },
   });
   host.client = client;
+  // Route uncaught browser errors to the gateway log. Uses host.client at report time so
+  // it keeps working across reconnects; failures are swallowed to avoid feedback loops.
+  setClientErrorSink((report) => {
+    void host.client?.request("diagnostics.clientError", report).catch(() => {});
+  });
   previousClient?.stop();
   client.start();
 }

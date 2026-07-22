@@ -1,5 +1,9 @@
 import "./styles.css";
+import { installClientErrorReporter } from "./ui/client-error-reporter.ts";
 import "./ui/app.ts";
+
+// Register global error listeners before the app boots so early crashes are captured.
+installClientErrorReporter();
 
 type ViteImportMeta = ImportMeta & {
   readonly env?: {

@@ -97,6 +97,33 @@ describe("diagnostics gateway methods", () => {
     ]);
   });
 
+  it("logs a browser-reported client error and acks", async () => {
+    const warn = vi.fn();
+    const respond = vi.fn();
+    await diagnosticsHandlers["diagnostics.clientError"]({
+      req: { type: "req", id: "9", method: "diagnostics.clientError", params: {} },
+      params: {
+        source: "window.onerror",
+        message: "RangeError: Maximum call stack size exceeded",
+        stack: "at encode (chat.js:1)\nat send (chat.js:2)",
+        url: "https://oc1.ji-tech.co.kr/chat",
+      },
+      client: null,
+      isWebchatConnect: () => false,
+      context: { logGateway: { warn } } as never,
+      respond,
+    });
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls[0]?.[0] as string;
+    expect(logged).toContain("[client-error]");
+    expect(logged).toContain("RangeError: Maximum call stack size exceeded");
+    expect(logged).toContain("source=window.onerror");
+    expect(logged).toContain("url=https://oc1.ji-tech.co.kr/chat");
+    expect(logged).toContain("at encode (chat.js:1)");
+    expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+  });
+
   it("rejects invalid stability params", async () => {
     const respond = vi.fn();
     await diagnosticsHandlers["diagnostics.stability"]({
