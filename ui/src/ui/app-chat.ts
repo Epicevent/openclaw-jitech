@@ -85,7 +85,7 @@ export type ChatAbortOptions = {
   preserveDraft?: boolean;
 };
 
-export const CHAT_SESSIONS_ACTIVE_MINUTES = 120;
+export const CHAT_SESSIONS_ACTIVE_MINUTES = 5 * 24 * 60; // 5 days
 export const CHAT_SESSIONS_REFRESH_LIMIT = 100;
 export {
   handleChatDraftChange,

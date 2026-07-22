@@ -578,7 +578,7 @@ describe("refreshChat", () => {
         "sessions.list",
         "sessions list payload",
       );
-      expect(sessionsListPayload.activeMinutes).toBe(120);
+      expect(sessionsListPayload.activeMinutes).toBe(5 * 24 * 60); // 5 days
       expect(sessionsListPayload.agentId).toBe("main");
       expect(sessionsListPayload.includeGlobal).toBe(true);
       expect(sessionsListPayload.includeUnknown).toBe(true);
