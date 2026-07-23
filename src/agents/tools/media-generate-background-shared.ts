@@ -467,12 +467,15 @@ async function wakeMediaGenerationTaskCompletion(params: {
     }
   }
   if (delivery.error) {
-    log.error("Media generation completion wake failed; requester session was not woken", {
-      taskId: params.handle.taskId,
-      runId: params.handle.runId,
-      toolName: params.toolName,
-      error: delivery.error,
-    });
+    log.error(
+      `Media generation completion wake failed; requester session was not woken delivery=${JSON.stringify(delivery)}`,
+      {
+        taskId: params.handle.taskId,
+        runId: params.handle.runId,
+        toolName: params.toolName,
+        error: delivery.error,
+      },
+    );
   }
 }
 
