@@ -297,6 +297,44 @@ describe("resolveGoogleGeminiForwardCompatModel", () => {
     expect(model).toBeUndefined();
   });
 
+  it("resolves gemini-3.6-flash from the flash template when no dedicated 3.6 row exists", () => {
+    // Proves the "Unknown model: google/gemini-3.6-flash" gate is cleared: the resolver matches
+    // the new prefix and clones an existing flash template, keeping the requested id so the
+    // request is forwarded to the provider API under gemini-3.6-flash.
+    const model = resolveGoogleGeminiForwardCompatModel({
+      providerId: "google",
+      ctx: createContext({
+        provider: "google",
+        modelId: "gemini-3.6-flash",
+        models: [
+          createTemplateModel("google", "gemini-2.5-flash", {
+            contextWindow: 1_048_576,
+          }),
+        ],
+      }),
+    });
+
+    expectModelFields(model, {
+      provider: "google",
+      id: "gemini-3.6-flash",
+      api: "google-generative-ai",
+      input: ["text", "image"],
+      contextWindow: 1_048_576,
+    });
+  });
+
+  it("does not resolve gemini-3.6-flash-lite until a lite template exists (guarded from full-flash)", () => {
+    const model = resolveGoogleGeminiForwardCompatModel({
+      providerId: "google",
+      ctx: createContext({
+        provider: "google",
+        modelId: "gemini-3.6-flash-lite",
+        models: [createTemplateModel("google", "gemini-2.5-flash")],
+      }),
+    });
+    expect(model).toBeUndefined();
+  });
+
   it("resolves canonical Gemini CLI 3 flash from Google flash templates when the CLI row is missing", () => {
     const model = resolveGoogleGeminiForwardCompatModel({
       providerId: "google-gemini-cli",
@@ -506,6 +544,10 @@ describe("resolveGoogleGeminiForwardCompatModel", () => {
 
   it("treats gemini 3.5 flash as a modern google model", () => {
     expect(isModernGoogleModel("gemini-3.5-flash")).toBe(true);
+  });
+
+  it("treats gemini 3.6 flash as a modern google model", () => {
+    expect(isModernGoogleModel("gemini-3.6-flash")).toBe(true);
   });
 
   it("treats Gemini latest aliases as modern google models", () => {
