@@ -934,4 +934,105 @@ describe("normalizeAgentCommandReplyPayloads", () => {
       reason: "unknown_channel",
     });
   });
+
+  // Regression contract for the background-completion delivery-detection seam.
+  // `deliverAgentCommandResult` must forward the run result's messaging-tool
+  // evidence onto its return value; the gateway `agent` method returns that
+  // object whole as `payload.result`, and delivery detection reads these fields
+  // to confirm an agent-mediated completion (image/music/video/announce)
+  // actually delivered through the message tool. Dropping them here makes the
+  // detection gate report a false "did not deliver".
+  function resultWithMessagingEvidence(): RunResult {
+    return {
+      meta: { durationMs: 1 },
+      didSendViaMessagingTool: true,
+      messagingToolSentTexts: ["here you go"],
+      messagingToolSentMediaUrls: ["/tmp/agent-workspace/out/photo.png"],
+      messagingToolSentTargets: [{ channel: "slack", to: "#general" }],
+    } as unknown as RunResult;
+  }
+
+  it("forwards messaging-tool delivery evidence on the non-delivery return path", async () => {
+    const runtime = { log: vi.fn() };
+    const delivered = await deliverAgentCommandResult({
+      cfg: {} as OpenClawConfig,
+      deps: {} as CliDeps,
+      runtime: runtime as never,
+      opts: {
+        message: "test",
+        channel: "slack",
+      } as AgentCommandOpts,
+      outboundSession: undefined,
+      sessionEntry: undefined,
+      payloads: [{ text: "here you go" }],
+      result: resultWithMessagingEvidence(),
+    });
+
+    expect(delivered.didSendViaMessagingTool).toBe(true);
+    expect(delivered.messagingToolSentTexts).toStrictEqual(["here you go"]);
+    expect(delivered.messagingToolSentMediaUrls).toStrictEqual([
+      "/tmp/agent-workspace/out/photo.png",
+    ]);
+    expect(delivered.messagingToolSentTargets).toStrictEqual([
+      { channel: "slack", to: "#general" },
+    ]);
+  });
+
+  it("forwards messaging-tool delivery evidence on the delivered return path", async () => {
+    deliverOutboundPayloadsMock.mockResolvedValue([{ channel: "slack", messageId: "msg-1" }]);
+    const runtime = { log: vi.fn(), error: vi.fn() };
+    const delivered = await deliverAgentCommandResult({
+      cfg: {
+        agents: {
+          list: [{ id: "tester", workspace: "/tmp/agent-workspace" }],
+        },
+      } as OpenClawConfig,
+      deps: {} as CliDeps,
+      runtime: runtime as never,
+      opts: {
+        message: "go",
+        deliver: true,
+        replyChannel: "slack",
+        replyTo: "#general",
+      } as AgentCommandOpts,
+      outboundSession: {
+        key: "agent:tester:slack:direct:alice",
+        agentId: "tester",
+      } as never,
+      sessionEntry: undefined,
+      payloads: [{ text: "here you go" }],
+      result: resultWithMessagingEvidence(),
+    });
+
+    expect(delivered.deliverySucceeded).toBe(true);
+    expect(delivered.didSendViaMessagingTool).toBe(true);
+    expect(delivered.messagingToolSentMediaUrls).toStrictEqual([
+      "/tmp/agent-workspace/out/photo.png",
+    ]);
+    expect(delivered.messagingToolSentTargets).toStrictEqual([
+      { channel: "slack", to: "#general" },
+    ]);
+  });
+
+  it("omits messaging-tool evidence keys when the run reported none", async () => {
+    const runtime = { log: vi.fn() };
+    const delivered = await deliverAgentCommandResult({
+      cfg: {} as OpenClawConfig,
+      deps: {} as CliDeps,
+      runtime: runtime as never,
+      opts: {
+        message: "test",
+        channel: "slack",
+      } as AgentCommandOpts,
+      outboundSession: undefined,
+      sessionEntry: undefined,
+      payloads: [{ text: "hello" }],
+      result: createResult(),
+    });
+
+    expect("didSendViaMessagingTool" in delivered).toBe(false);
+    expect("messagingToolSentTexts" in delivered).toBe(false);
+    expect("messagingToolSentMediaUrls" in delivered).toBe(false);
+    expect("messagingToolSentTargets" in delivered).toBe(false);
+  });
 });
