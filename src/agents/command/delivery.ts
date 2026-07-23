@@ -69,6 +69,20 @@ export type AgentCommandDeliveryResult = {
   meta: EmbeddedPiRunMeta & AgentCommandResultMetaOverrides;
   deliverySucceeded?: boolean;
   deliveryStatus?: AgentCommandDeliveryStatus;
+  // Messaging-tool delivery evidence forwarded straight from the embedded run
+  // result. The gateway `agent` method returns this object whole as
+  // `payload.result`, and background-completion delivery detection
+  // (subagent-announce-delivery.ts, via getGatewayAgentResult() ->
+  // hasMessagingToolDeliveryEvidence()/hasDeliveredExpectedMedia()) reads these
+  // fields to confirm the completion agent actually sent through the message
+  // tool. Without forwarding them here the evidence is structurally dropped at
+  // this seam, so the gate never observes a successful send through the gateway
+  // transport and reports a false "did not deliver" for agent-mediated
+  // completions (image/music/video/subagent_announce).
+  didSendViaMessagingTool?: RunResult["didSendViaMessagingTool"];
+  messagingToolSentTexts?: RunResult["messagingToolSentTexts"];
+  messagingToolSentMediaUrls?: RunResult["messagingToolSentMediaUrls"];
+  messagingToolSentTargets?: RunResult["messagingToolSentTargets"];
 };
 
 const NESTED_LOG_PREFIX = "[agent:nested]";
@@ -367,11 +381,41 @@ export function normalizeAgentCommandReplyPayloads(params: {
   return normalizedPayloads;
 }
 
+// Carry the messaging-tool delivery evidence from the embedded run result onto
+// every AgentCommandDeliveryResult return path. Undefined fields are omitted so
+// the JSON shape stays minimal; the gateway detection gate treats absent and
+// falsy the same way.
+function messagingToolDeliveryEvidence(
+  result: RunResult,
+): Pick<
+  AgentCommandDeliveryResult,
+  | "didSendViaMessagingTool"
+  | "messagingToolSentTexts"
+  | "messagingToolSentMediaUrls"
+  | "messagingToolSentTargets"
+> {
+  return {
+    ...(result.didSendViaMessagingTool !== undefined
+      ? { didSendViaMessagingTool: result.didSendViaMessagingTool }
+      : {}),
+    ...(result.messagingToolSentTexts !== undefined
+      ? { messagingToolSentTexts: result.messagingToolSentTexts }
+      : {}),
+    ...(result.messagingToolSentMediaUrls !== undefined
+      ? { messagingToolSentMediaUrls: result.messagingToolSentMediaUrls }
+      : {}),
+    ...(result.messagingToolSentTargets !== undefined
+      ? { messagingToolSentTargets: result.messagingToolSentTargets }
+      : {}),
+  };
+}
+
 export async function deliverAgentCommandResult(
   params: DeliverAgentCommandResultParams,
 ): Promise<AgentCommandDeliveryResult> {
   const { cfg, deps, runtime, opts, outboundSession, sessionEntry, payloads, result } = params;
   const effectiveSessionKey = outboundSession?.key ?? opts.sessionKey;
+  const messagingToolEvidence = messagingToolDeliveryEvidence(result);
   const deliver = opts.deliver === true;
   const bestEffortDeliver = opts.bestEffortDeliver === true;
   const turnSourceChannel = opts.runContext?.messageChannel ?? opts.messageChannel;
@@ -614,6 +658,7 @@ export async function deliverAgentCommandResult(
     return {
       payloads: normalizedPayloads,
       meta: resultMeta,
+      ...messagingToolEvidence,
       ...(deliverySucceeded !== undefined ? { deliverySucceeded } : {}),
       ...(deliveryStatus ? { deliveryStatus } : {}),
     };
@@ -639,7 +684,7 @@ export async function deliverAgentCommandResult(
       logPayload(payload);
     }
     emitJsonEnvelope();
-    return { payloads: normalizedPayloads, meta: resultMeta };
+    return { payloads: normalizedPayloads, meta: resultMeta, ...messagingToolEvidence };
   }
   if (deliver && deliveryChannel && !isInternalMessageChannel(deliveryChannel)) {
     if (deliveryTarget && !deliveryStatus) {
@@ -682,5 +727,11 @@ export async function deliverAgentCommandResult(
   }
 
   emitJsonEnvelope(deliveryStatus);
-  return { payloads: normalizedPayloads, meta: resultMeta, deliverySucceeded, deliveryStatus };
+  return {
+    payloads: normalizedPayloads,
+    meta: resultMeta,
+    ...messagingToolEvidence,
+    deliverySucceeded,
+    deliveryStatus,
+  };
 }
