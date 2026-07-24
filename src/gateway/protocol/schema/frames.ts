@@ -88,6 +88,17 @@ export const HelloOkSchema = Type.Object(
       },
       { additionalProperties: false },
     ),
+    // Server-decided UI feature visibility for every connection (unlike the
+    // operator-scoped config snapshot). Feature releases are paced per slot:
+    // the image ships everything, config flags decide what customers see.
+    uiFeatures: Type.Optional(
+      Type.Object(
+        {
+          sessionFolders: Type.Optional(Type.Boolean()),
+        },
+        { additionalProperties: false },
+      ),
+    ),
     snapshot: SnapshotSchema,
     pluginSurfaceUrls: Type.Optional(Type.Record(NonEmptyString, NonEmptyString)),
     auth: Type.Object(
