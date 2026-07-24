@@ -2,7 +2,10 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
+import type { ProviderRuntimeModel } from "openclaw/plugin-sdk/plugin-entry";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createProviderDynamicModelContext } from "../test-support/provider-model-test-helpers.js";
+import { resolveGoogleGeminiForwardCompatModel } from "./provider-models.js";
 
 const { buildGuardedModelFetchMock, guardedFetchMock } = vi.hoisted(() => ({
   buildGuardedModelFetchMock: vi.fn(),
@@ -69,6 +72,15 @@ function buildGoogleVertexModel(
     maxTokens: 8192,
     ...overrides,
   };
+}
+
+function requireGoogleGenerativeAiModel(
+  model: ProviderRuntimeModel | undefined,
+): Model<"google-generative-ai"> {
+  if (!model || model.api !== "google-generative-ai") {
+    throw new Error("Expected a Google Generative AI model");
+  }
+  return model as Model<"google-generative-ai">;
 }
 
 function buildSseResponse(events: unknown[]): Response {
@@ -407,6 +419,58 @@ describe("google transport stream", () => {
     expect(result.content[2]).toHaveProperty("name", "lookup");
     expect(result.content[2]).toHaveProperty("arguments", { q: "hello" });
     expect(result.content[2]).toHaveProperty("thoughtSignature", "call_sig_1");
+  });
+
+  it("calculates Gemini 3.6 usage with its explicit standard pricing", async () => {
+    guardedFetchMock.mockResolvedValueOnce(
+      buildSseResponse([
+        {
+          modelVersion: "gemini-3.6-flash",
+          candidates: [{ content: { parts: [{ text: "answer" }] }, finishReason: "STOP" }],
+          usageMetadata: {
+            promptTokenCount: 600_000,
+            cachedContentTokenCount: 100_000,
+            candidatesTokenCount: 50_000,
+            totalTokenCount: 650_000,
+          },
+        },
+      ]),
+    );
+
+    const previewTemplate = buildGeminiModel({
+      id: "gemini-3-flash-preview",
+      name: "Gemini 3 Flash Preview",
+      cost: { input: 0.5, output: 3, cacheRead: 0.05, cacheWrite: 0 },
+      contextWindow: 1_048_576,
+      maxTokens: 65_536,
+    });
+    const model = requireGoogleGenerativeAiModel(
+      resolveGoogleGeminiForwardCompatModel({
+        providerId: "google",
+        ctx: createProviderDynamicModelContext({
+          provider: "google",
+          modelId: "gemini-3.6-flash",
+          models: [previewTemplate],
+        }),
+      }),
+    );
+
+    const streamFn = createGoogleGenerativeAiTransportStreamFn();
+    const stream = await Promise.resolve(
+      streamFn(model, { messages: [{ role: "user", content: "hello", timestamp: 0 }] } as never, {
+        apiKey: "gemini-api-key",
+      }),
+    );
+    const result = await stream.result();
+
+    expect(model.cost).toEqual({ input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite: 0 });
+    expect(result.usage.cost).toEqual({
+      input: 0.75,
+      output: 0.375,
+      cacheRead: 0.015,
+      cacheWrite: 0,
+      total: 1.14,
+    });
   });
 
   it("merges tool-call thought signatures from sibling SSE parts", async () => {

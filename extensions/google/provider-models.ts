@@ -32,12 +32,28 @@ const GEMINI_3_1_FLASH_TEMPLATE_IDS = ["gemini-3-flash-preview", "gemini-2.5-fla
 // gemini-3.5-flash has no dedicated catalog template yet; resolve it through the current Flash
 // lineage and fall back to 2.5-flash so the id is still sent to the provider API (which serves
 // gemini-3.5-flash) even before a dedicated 3.5 template row exists in the runtime catalog.
-const GEMINI_3_5_FLASH_TEMPLATE_IDS = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash"] as const;
+const GEMINI_3_5_FLASH_TEMPLATE_IDS = [
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+] as const;
 // gemini-3.6-flash has no dedicated catalog template yet; resolve it through the current Flash
 // lineage (3.6 -> 3.5 -> 3-flash-preview -> 2.5-flash) so it inherits the newest real flash row's
 // capabilities from the runtime catalog and the id is still sent to the provider API (which serves
 // gemini-3.6-flash) even before a dedicated 3.6 template row exists.
-const GEMINI_3_6_FLASH_TEMPLATE_IDS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash"] as const;
+const GEMINI_3_6_FLASH_TEMPLATE_IDS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+] as const;
+// Gemini Developer API standard pricing. Cache storage is time-based, not a per-token cache write.
+const GEMINI_3_6_FLASH_DEVELOPER_API_COST: ProviderRuntimeModel["cost"] = {
+  input: 1.5,
+  output: 7.5,
+  cacheRead: 0.15,
+  cacheWrite: 0,
+};
 const GEMINI_3_PRO_ANTIGRAVITY_TEMPLATE_IDS = ["gemini-3-pro-low", "gemini-3-pro-high"] as const;
 const GEMINI_3_FLASH_ANTIGRAVITY_TEMPLATE_IDS = ["gemini-3-flash"] as const;
 // Gemma uses the Gemini flash template as a forward-compat approximation
@@ -220,6 +236,9 @@ export function resolveGoogleGeminiForwardCompatModel(params: {
       cliTemplateIds: GEMINI_3_6_FLASH_TEMPLATE_IDS,
       antigravityTemplateIds: GEMINI_3_FLASH_ANTIGRAVITY_TEMPLATE_IDS,
     };
+    if (params.providerId === "google") {
+      patch = { cost: GEMINI_3_6_FLASH_DEVELOPER_API_COST };
+    }
   } else if (
     lower.startsWith(GEMINI_3_1_FLASH_PREFIX) ||
     lower.startsWith(GEMINI_3_FLASH_PREFIX) ||
