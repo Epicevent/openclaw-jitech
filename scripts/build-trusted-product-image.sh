@@ -51,9 +51,11 @@ echo "BUILD_IMAGE_REF=${image_ref}"
 # into the build context (moved into dist/ by the Dockerfile). The clean-tree check above
 # has already passed; writing versions.json into the worktree now is intentional build
 # metadata (like dist/build-info.json), not source — the source-commit label stays $sha.
-# Default is the SAFE customer timeline (date + build name only); a customer image must
-# never carry internal PR prose. Set VERSIONS_MODE=owner for dev/ops preview images to
-# attach each build's PR title + body (ground truth via the commit's "(#NN)").
+# Default is the safe customer timeline: customer-release builds plus their user-provided
+# one-line patch notes, without internal source metadata. Every customer-mode build must
+# set CUSTOMER_RELEASE=1 and provide BUILD_NOTE, so a shipped patch cannot bypass the
+# customer-visible note. VERSIONS_MODE=owner retains the legacy detailed-development data
+# shape with private source links.
 hist="${BUILD_HISTORY_FILE:-${HOME}/.openclaw-build-history.jsonl}"
 node "${work}/scripts/record-build-version.mjs" "${TAG}" "${sha}" "${hist}"
 if [ "${VERSIONS_MODE:-customer}" = "owner" ]; then

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ADMIN_SCOPE, READ_SCOPE, WRITE_SCOPE } from "../operator-scopes.js";
 import type { GatewayRequestHandler } from "../server-methods/types.js";
+import { listCoreGatewayMethodNames } from "./core-descriptors.js";
 import {
   createGatewayMethodRegistry,
   createPluginGatewayMethodDescriptors,
@@ -10,6 +11,13 @@ import {
 const handler: GatewayRequestHandler = ({ respond }) => respond(true, { ok: true });
 
 describe("gateway method registry", () => {
+  it("exposes version history as read-only product metadata", () => {
+    const methods = listCoreGatewayMethodNames();
+
+    expect(methods).toContain("system.versions");
+    expect(methods).not.toContain("system.setVersionNote");
+  });
+
   it("indexes handlers, scopes, startup state, and control-plane metadata", () => {
     const registry = createGatewayMethodRegistry([
       {

@@ -21,12 +21,26 @@ const historyFile =
   process.env.BUILD_HISTORY_FILE ??
   path.join(os.homedir(), ".openclaw-build-history.jsonl");
 
-// Optional owner-written one-line key point (the "변경" shown in the modal). Supplied at
-// build time via BUILD_NOTE env or a 4th arg; absent for builds recorded before this.
-const note = process.env.BUILD_NOTE?.trim() || process.argv[5]?.trim() || undefined;
+// User-provided one-line patch note shown in the product's "변경" column. Collapse
+// whitespace so build metadata cannot accidentally turn it into multi-line prose.
+const rawNote = process.env.BUILD_NOTE ?? process.argv[5];
+const note = rawNote?.replace(/\s+/g, " ").trim() || undefined;
 // CUSTOMER_RELEASE=1 marks this build as a customer-facing release. Only these show in
-// customer/--safe mode (dev iterations stay owner-only); the owner curates by flagging.
+// customer/--safe mode; development iterations remain outside the customer timeline.
 const customerRelease = process.env.CUSTOMER_RELEASE === "1";
+const versionsMode = process.env.VERSIONS_MODE ?? "customer";
+if (versionsMode !== "customer" && versionsMode !== "owner") {
+  console.error(`build-history: unsupported VERSIONS_MODE=${versionsMode}`);
+  process.exit(2);
+}
+if (versionsMode === "customer" && !customerRelease) {
+  console.error("build-history: customer builds require CUSTOMER_RELEASE=1");
+  process.exit(2);
+}
+if (customerRelease && !note) {
+  console.error("build-history: CUSTOMER_RELEASE=1 requires a non-empty BUILD_NOTE");
+  process.exit(2);
+}
 const entry = {
   version,
   commit,

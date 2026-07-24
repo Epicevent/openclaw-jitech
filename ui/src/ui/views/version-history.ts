@@ -6,7 +6,7 @@ import "../components/modal-dialog.ts";
 export type VersionEntry = {
   version: string;
   date: string | null;
-  /** Owner-written one-line key point (the "변경" cell); absent for older builds. */
+  /** User-provided one-line patch note shown in the "변경" cell. */
   note?: string | null;
   pr?: number | null;
   shortCommit?: string;
@@ -24,30 +24,17 @@ function formatDate(iso: string | null): string {
   return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}` : iso.slice(0, 10);
 }
 
-function renderRow(state: AppViewState, v: VersionEntry, owner: boolean) {
+function renderRow(v: VersionEntry, detailed: boolean) {
   return html`
     <div class="version-row">
       <span class="version-row__date">${formatDate(v.date)}</span>
       <span class="version-row__name">${v.version}</span>
-      ${owner
-        ? html`<textarea
-              class="version-row__note-edit"
-              rows="1"
-              placeholder="변경 요약 입력…"
-              .value=${v.note ?? ""}
-              @change=${(e: Event) =>
-                state.saveVersionNote(v.version, (e.target as HTMLTextAreaElement).value)}
-            ></textarea>
-            ${v.prUrl
-              ? html`<a
-                  class="version-row__pr"
-                  href=${v.prUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  >PR #${v.pr} ↗</a
-                >`
-              : nothing}`
-        : html`<span class="version-row__note-ro">${v.note ?? ""}</span>`}
+      <span class="version-row__note">${v.note ?? ""}</span>
+      ${detailed && v.prUrl
+        ? html`<a class="version-row__pr" href=${v.prUrl} target="_blank" rel="noopener noreferrer"
+            >PR #${v.pr} ↗</a
+          >`
+        : nothing}
     </div>
   `;
 }
@@ -58,7 +45,7 @@ export function renderVersionHistoryModal(state: AppViewState): TemplateResult |
   }
   const data = state.versionsData;
   const versions = data?.versions ?? [];
-  const owner = data?.mode === "owner";
+  const detailed = data?.mode === "owner";
   return html`
     <openclaw-modal-dialog label="버전 기록" @modal-cancel=${() => state.closeVersions()}>
       <div class="version-history">
@@ -78,7 +65,7 @@ export function renderVersionHistoryModal(state: AppViewState): TemplateResult |
         </div>
         ${versions.length === 0
           ? html`<div class="version-history__empty">기록 없음</div>`
-          : versions.map((v) => renderRow(state, v, owner))}
+          : versions.map((v) => renderRow(v, detailed))}
       </div>
     </openclaw-modal-dialog>
   `;
