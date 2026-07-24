@@ -95,14 +95,14 @@ async function checkModelRoundtrip(timeoutMs: number): Promise<SelfTestCheck> {
       return required(
         "selftest_model_roundtrip_ok",
         false,
-        `model=${result.detail} ${redact(result.text || "no completion")}`,
+        `${result.detail} ${redact(result.text || "no completion")}`,
       );
     }
     const replied = /\bOK\b/.test(result.text);
     return required(
       "selftest_model_roundtrip_ok",
       replied,
-      replied ? `model=${result.detail} completed` : `model=${result.detail} no OK token`,
+      replied ? `${result.detail} completed` : `${result.detail} no OK token`,
     );
   } catch (err) {
     return required("selftest_model_roundtrip_ok", false, redact(err));

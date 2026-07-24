@@ -334,8 +334,13 @@ export async function completeWithPreparedSimpleCompletionModel(params: {
   context: Parameters<typeof completeSimple>[1];
   cfg?: OpenClawConfig;
   options?: SimpleCompletionModelOptions;
+  forceOpenClawTransport?: boolean;
 }) {
-  const completionModel = prepareModelForSimpleCompletion({ model: params.model, cfg: params.cfg });
+  const completionModel = prepareModelForSimpleCompletion({
+    model: params.model,
+    cfg: params.cfg,
+    ...(params.forceOpenClawTransport ? { forceOpenClawTransport: true } : {}),
+  });
   const { reasoning: rawReasoning, ...options } = params.options ?? {};
   const reasoning = normalizeSimpleCompletionReasoning(rawReasoning);
   return await completeSimple(completionModel, params.context, {

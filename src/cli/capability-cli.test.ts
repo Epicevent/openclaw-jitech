@@ -4,7 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runRegisteredCli } from "../test-utils/command-runner.js";
-import { registerCapabilityCli } from "./capability-cli.js";
+import { registerCapabilityCli, runLocalModelCompletion } from "./capability-cli.js";
 
 const PNG_1X1_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+yf7kAAAAASUVORK5CYII=";
@@ -510,6 +510,7 @@ describe("capability cli", () => {
       systemPrompt?: unknown;
     };
     options?: { reasoning?: unknown };
+    forceOpenClawTransport?: unknown;
   };
   type ImageDescribeParams = {
     filePath?: string;
@@ -659,6 +660,78 @@ describe("capability cli", () => {
     expect(call?.context?.messages?.[0]?.content).toBe("hello");
     expect(call?.context).not.toHaveProperty("systemPrompt");
   });
+
+  it("attests the Google response model in local product selftest completions", async () => {
+    mocks.prepareSimpleCompletionModelForAgent.mockResolvedValueOnce({
+      selection: {
+        provider: "google",
+        modelId: "gemini-3.6-flash",
+        agentDir: "/tmp/agent",
+      },
+      model: {
+        provider: "google",
+        id: "gemini-3.6-flash",
+        api: "google-generative-ai",
+        maxTokens: 65_536,
+      },
+      auth: {
+        apiKey: "google-test",
+        source: "env:GOOGLE_API_KEY",
+        mode: "api-key",
+      },
+    } as never);
+    mocks.completeWithPreparedSimpleCompletionModel.mockResolvedValueOnce({
+      content: [{ type: "text", text: "OK" }],
+      responseModelRequired: true,
+      responseModel: "models/gemini-3.6-flash-001",
+    } as never);
+
+    const result = await runLocalModelCompletion("Reply with exactly: OK");
+
+    expect(result.ok).toBe(true);
+    expect(result.detail).toBe(
+      "requested=google/gemini-3.6-flash response=models/gemini-3.6-flash-001 receipt=matched",
+    );
+    expect(firstCompletionCall()?.forceOpenClawTransport).toBe(true);
+  });
+
+  it.each([
+    [undefined, "missing"],
+    ["gemini-3.5-flash", "mismatch"],
+    ["gemini-3.6-flash-lite", "mismatch"],
+  ] as const)(
+    "fails Google model attestation when the receipt is %s",
+    async (responseModel, receipt) => {
+      mocks.prepareSimpleCompletionModelForAgent.mockResolvedValueOnce({
+        selection: {
+          provider: "google",
+          modelId: "gemini-3.6-flash",
+          agentDir: "/tmp/agent",
+        },
+        model: {
+          provider: "google",
+          id: "gemini-3.6-flash",
+          api: "google-generative-ai",
+          maxTokens: 65_536,
+        },
+        auth: {
+          apiKey: "google-test",
+          source: "env:GOOGLE_API_KEY",
+          mode: "api-key",
+        },
+      } as never);
+      mocks.completeWithPreparedSimpleCompletionModel.mockResolvedValueOnce({
+        content: [{ type: "text", text: "OK" }],
+        responseModelRequired: true,
+        ...(responseModel ? { responseModel } : {}),
+      } as never);
+
+      const result = await runLocalModelCompletion("Reply with exactly: OK");
+
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain(`receipt=${receipt}`);
+    },
+  );
 
   it("opts explicit local provider/model probes into bundled static catalog fallback", async () => {
     await runModelRunWithModel("mistral/mistral-medium-3-5", "local");

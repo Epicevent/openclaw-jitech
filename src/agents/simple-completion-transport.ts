@@ -5,7 +5,9 @@ import { ensureCustomApiRegistered } from "./custom-api-registry.js";
 import { registerProviderStreamForModel } from "./provider-stream.js";
 import {
   buildTransportAwareSimpleStreamFn,
+  createOpenClawTransportStreamFnForModel,
   prepareTransportAwareSimpleModel,
+  resolveTransportAwareSimpleApi,
 } from "./provider-transport-stream.js";
 
 function resolveAnthropicVertexSimpleApi(baseUrl?: string): Api {
@@ -16,11 +18,24 @@ function resolveAnthropicVertexSimpleApi(baseUrl?: string): Api {
 export function prepareModelForSimpleCompletion<TApi extends Api>(params: {
   model: Model<TApi>;
   cfg?: OpenClawConfig;
+  forceOpenClawTransport?: boolean;
 }): Model<Api> {
   const { model, cfg } = params;
   // Only provider-owned custom APIs need runtime stream registration here.
   if (!getApiProvider(model.api) && registerProviderStreamForModel({ model, cfg })) {
     return model;
+  }
+
+  if (params.forceOpenClawTransport) {
+    const api = resolveTransportAwareSimpleApi(model.api);
+    const streamFn = createOpenClawTransportStreamFnForModel(model as Model<Api>, { cfg });
+    if (!api || !streamFn) {
+      throw new Error(
+        `OpenClaw transport is unavailable for provider "${model.provider}" api "${model.api}"`,
+      );
+    }
+    ensureCustomApiRegistered(api, streamFn);
+    return { ...model, api };
   }
 
   const transportAwareModel = prepareTransportAwareSimpleModel(model, { cfg });
