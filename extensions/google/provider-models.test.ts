@@ -297,18 +297,20 @@ describe("resolveGoogleGeminiForwardCompatModel", () => {
     expect(model).toBeUndefined();
   });
 
-  it("resolves gemini-3.6-flash from the flash template when no dedicated 3.6 row exists", () => {
+  it("resolves gemini-3.6-flash with explicit standard pricing when no dedicated row exists", () => {
     // Proves the "Unknown model: google/gemini-3.6-flash" gate is cleared: the resolver matches
     // the new prefix and clones an existing flash template, keeping the requested id so the
-    // request is forwarded to the provider API under gemini-3.6-flash.
+    // request is forwarded to the provider API under gemini-3.6-flash. The preview template's
+    // historical price must not leak into the new model's usage accounting.
     const model = resolveGoogleGeminiForwardCompatModel({
       providerId: "google",
       ctx: createContext({
         provider: "google",
         modelId: "gemini-3.6-flash",
         models: [
-          createTemplateModel("google", "gemini-2.5-flash", {
+          createTemplateModel("google", "gemini-3-flash-preview", {
             contextWindow: 1_048_576,
+            cost: { input: 0.5, output: 3, cacheRead: 0.05, cacheWrite: 0 },
           }),
         ],
       }),
@@ -320,6 +322,7 @@ describe("resolveGoogleGeminiForwardCompatModel", () => {
       api: "google-generative-ai",
       input: ["text", "image"],
       contextWindow: 1_048_576,
+      cost: { input: 1.5, output: 7.5, cacheRead: 0.15, cacheWrite: 0 },
     });
   });
 
