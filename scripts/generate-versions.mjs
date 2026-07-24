@@ -5,10 +5,9 @@
 // authoritative list of builds — NOT from git log (git has no build names/tags) and
 // NOT backfilled from ghcr. Each build appends itself, so history grows forward.
 //
-// Customer/--safe build: emit only {version, date}. Internal PR prose (which
-// references the owner, internal decisions, etc.) must never ship in a customer
-// image, so it's omitted at the DATA layer. Owner/dev builds also attach, per row,
-// the PR title + body pulled from ground truth (the commit's "(#NN)" -> `gh pr`).
+// Customer/--safe builds include only customer-release rows with the user-provided
+// one-line patch note. Internal commit/PR data never ships in a customer image.
+// Detailed development builds also attach source links for engineering traceability.
 //
 // Usage: node scripts/generate-versions.mjs [historyFile] [outFile] [--safe]
 import { execFileSync } from "node:child_process";
@@ -75,20 +74,20 @@ function prNumberForCommit(commit) {
 }
 
 const history = readHistory(historyFile);
-// Customer/--safe: show ONLY builds the owner flagged as customer releases (CUSTOMER_RELEASE=1),
-// so internal dev iterations never reach customers. Owner mode shows every build.
+// Customer/--safe: show only CUSTOMER_RELEASE=1 builds so development iterations
+// never reach the customer timeline. Detailed development mode shows every build.
 const source = safe ? history.filter((e) => e.customerRelease) : history;
 const versions = source.map((e) => {
   const date = e.date ?? null;
   if (safe) {
-    // customer image: date + build name + the owner-written note (the accessible release
-    // description). No commit/PR/internal — just what the owner chose to show.
+    // Customer image: date + build name + the user-provided release description.
+    // Commit/PR/internal metadata is deliberately absent.
     return { version: e.version, date, note: e.note ?? null };
   }
 
-  // owner/dev image: the "변경" is an owner-written one-line key point (e.note); the full
-  // detail lives behind the PR link (private repo → only the owner opens it). No
-  // AI-authored PR prose (title/body) is baked — the owner found that too noisy.
+  // Detailed development image: "변경" is still the user-provided one-line note;
+  // engineering detail lives behind the private source links. AI-authored PR prose
+  // is not copied into product data.
   const subject = commitSubject(e.commit);
   const pr = subject.match(/\(#(\d+)\)\s*$/)?.[1] ?? prNumberForCommit(e.commit);
   return {
@@ -104,7 +103,10 @@ const versions = source.map((e) => {
 });
 
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
-fs.writeFileSync(outFile, `${JSON.stringify({ mode: safe ? "customer" : "owner", versions }, null, 2)}\n`);
+fs.writeFileSync(
+  outFile,
+  `${JSON.stringify({ mode: safe ? "customer" : "owner", versions }, null, 2)}\n`,
+);
 console.error(
   `wrote ${versions.length} versions (${safe ? "customer" : "owner"} mode) to ${outFile}`,
 );
