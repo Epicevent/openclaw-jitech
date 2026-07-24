@@ -609,6 +609,40 @@ describe("completeWithPreparedSimpleCompletionModel", () => {
     );
   });
 
+  it("forwards the attested-completion transport requirement", async () => {
+    const model = {
+      provider: "google",
+      id: "gemini-3.6-flash",
+      name: "Gemini 3.6 Flash",
+      api: "google-generative-ai",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1_048_576,
+      maxTokens: 65_536,
+    } satisfies Model<"google-generative-ai">;
+
+    await completeWithPreparedSimpleCompletionModel({
+      model,
+      auth: {
+        apiKey: "google-test",
+        source: "env:GOOGLE_API_KEY",
+        mode: "api-key",
+      },
+      context: {
+        messages: [{ role: "user", content: "pong", timestamp: 1 }],
+      },
+      forceOpenClawTransport: true,
+    });
+
+    expect(hoisted.prepareModelForSimpleCompletionMock).toHaveBeenCalledWith({
+      model,
+      cfg: undefined,
+      forceOpenClawTransport: true,
+    });
+  });
+
   it("normalizes OpenClaw-only thinking levels before using pi-ai simple completion", async () => {
     const model = {
       provider: "openai",

@@ -105,7 +105,9 @@ type MutableAssistantOutput = {
   };
   stopReason: string;
   timestamp: number;
+  responseModelRequired: true;
   responseId?: string;
+  responseModel?: string;
   errorMessage?: string;
 };
 
@@ -113,6 +115,7 @@ const GOOGLE_VERTEX_DEFAULT_API_VERSION = "v1";
 
 type GoogleSseChunk = {
   responseId?: string;
+  modelVersion?: string;
   candidates?: Array<{
     content?: {
       parts?: Array<{
@@ -142,6 +145,48 @@ const GEMINI_THOUGHT_SIGNATURE_VALIDATOR_SKIP = "skip_thought_signature_validato
 
 function normalizeOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function usesLatestGeminiRequestContract(modelId: string): boolean {
+  const normalized = normalizeLowercaseStringOrEmpty(modelId);
+  return (
+    /(?:^|\/)gemini-3\.6(?:-|$)/.test(normalized) ||
+    /(?:^|\/)gemini-3\.5-flash-lite(?:-|$)/.test(normalized)
+  );
+}
+
+function enforceLatestGeminiRequestContract(
+  model: GoogleTransportModel,
+  params: GoogleGenerateContentRequest,
+): GoogleGenerateContentRequest {
+  if (!usesLatestGeminiRequestContract(model.id)) {
+    return params;
+  }
+
+  const contents = [...params.contents];
+  while (contents.at(-1)?.role === "model") {
+    contents.pop();
+  }
+  if (contents.length === 0) {
+    contents.push({ role: "user", parts: [{ text: " " }] });
+  }
+
+  const generationConfig = params.generationConfig ? { ...params.generationConfig } : undefined;
+  if (generationConfig) {
+    delete generationConfig.temperature;
+    delete generationConfig.topP;
+    delete generationConfig.topK;
+    delete generationConfig.top_p;
+    delete generationConfig.top_k;
+  }
+
+  const next = { ...params, contents };
+  if (generationConfig && Object.keys(generationConfig).length > 0) {
+    next.generationConfig = generationConfig;
+  } else {
+    delete next.generationConfig;
+  }
+  return next;
 }
 
 function requiresToolCallId(modelId: string): boolean {
@@ -202,9 +247,7 @@ function hasGeminiThoughtSignatureTruncationFootprint(value: string): boolean {
   );
 }
 
-function sanitizeGeminiThoughtSignature(
-  thoughtSignature: string | undefined,
-): string | undefined {
+function sanitizeGeminiThoughtSignature(thoughtSignature: string | undefined): string | undefined {
   if (typeof thoughtSignature !== "string") {
     return undefined;
   }
@@ -552,9 +595,7 @@ function convertGoogleMessages(model: GoogleTransportModel, context: Context) {
             : undefined;
           parts.push({
             text: sanitizeTransportPayloadText(block.text),
-            ...(sanitizedTextSignature
-              ? { thoughtSignature: sanitizedTextSignature }
-              : {}),
+            ...(sanitizedTextSignature ? { thoughtSignature: sanitizedTextSignature } : {}),
           });
           continue;
         }
@@ -734,7 +775,7 @@ export function buildGoogleGenerativeAiParams(
       };
     }
   }
-  return params;
+  return enforceLatestGeminiRequestContract(model, params);
 }
 
 function buildGoogleHeaders(
@@ -1202,6 +1243,7 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
         usage: createEmptyTransportUsage(),
         stopReason: "stop",
         timestamp: Date.now(),
+        responseModelRequired: true,
       };
       try {
         const apiKey = options?.apiKey ?? getEnvApiKey(model.provider) ?? undefined;
@@ -1211,6 +1253,7 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
         if (nextParams !== undefined) {
           params = nextParams as GoogleGenerateContentRequest;
         }
+        params = enforceLatestGeminiRequestContract(model, params);
         const requestUrl = buildGoogleTransportRequestUrl(kind, model, options);
         const requestHeaders = await buildGoogleTransportHeaders({
           kind,
@@ -1239,6 +1282,7 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
               })(sse.firstChunk);
         for await (const chunk of chunks) {
           output.responseId ||= chunk.responseId;
+          output.responseModel ||= normalizeOptionalString(chunk.modelVersion);
           updateUsage(output, model, chunk);
           const candidate = chunk.candidates?.[0];
           if (candidate?.content?.parts) {

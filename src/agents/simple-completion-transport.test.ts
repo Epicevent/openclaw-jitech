@@ -6,7 +6,9 @@ const createAnthropicVertexStreamFnForModel = vi.fn();
 const ensureCustomApiRegistered = vi.fn();
 const resolveProviderStreamFn = vi.fn();
 const buildTransportAwareSimpleStreamFn = vi.fn();
+const createOpenClawTransportStreamFnForModel = vi.fn();
 const prepareTransportAwareSimpleModel = vi.fn();
+const resolveTransportAwareSimpleApi = vi.fn();
 
 vi.mock("./anthropic-vertex-stream.js", () => ({
   createAnthropicVertexStreamFnForModel,
@@ -18,7 +20,9 @@ vi.mock("./custom-api-registry.js", () => ({
 
 vi.mock("./provider-transport-stream.js", () => ({
   buildTransportAwareSimpleStreamFn,
+  createOpenClawTransportStreamFnForModel,
   prepareTransportAwareSimpleModel,
+  resolveTransportAwareSimpleApi,
 }));
 
 vi.mock("../plugins/provider-runtime.js", async () => {
@@ -43,11 +47,15 @@ describe("prepareModelForSimpleCompletion", () => {
     ensureCustomApiRegistered.mockReset();
     resolveProviderStreamFn.mockReset();
     buildTransportAwareSimpleStreamFn.mockReset();
+    createOpenClawTransportStreamFnForModel.mockReset();
     prepareTransportAwareSimpleModel.mockReset();
+    resolveTransportAwareSimpleApi.mockReset();
     createAnthropicVertexStreamFnForModel.mockReturnValue("vertex-stream");
     resolveProviderStreamFn.mockReturnValue("ollama-stream");
     buildTransportAwareSimpleStreamFn.mockReturnValue(undefined);
+    createOpenClawTransportStreamFnForModel.mockReturnValue(undefined);
     prepareTransportAwareSimpleModel.mockImplementation((model) => model);
+    resolveTransportAwareSimpleApi.mockReturnValue(undefined);
   });
 
   it("registers the configured Ollama transport and keeps the original api", () => {
@@ -158,6 +166,40 @@ describe("prepareModelForSimpleCompletion", () => {
     expect(result).toEqual({
       ...model,
       api: "openclaw-openai-responses-transport",
+    });
+  });
+
+  it("forces the provider-owned OpenClaw transport for attested simple completions", () => {
+    const model: Model<"google-generative-ai"> = {
+      id: "gemini-3.6-flash",
+      name: "Gemini 3.6 Flash",
+      api: "google-generative-ai",
+      provider: "google",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+      reasoning: true,
+      input: ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 1_048_576,
+      maxTokens: 65_536,
+    };
+    resolveTransportAwareSimpleApi.mockReturnValueOnce("openclaw-google-generative-ai-transport");
+    createOpenClawTransportStreamFnForModel.mockReturnValueOnce("google-stream");
+
+    const result = prepareModelForSimpleCompletion({
+      model,
+      forceOpenClawTransport: true,
+    });
+
+    expect(createOpenClawTransportStreamFnForModel).toHaveBeenCalledWith(model, {
+      cfg: undefined,
+    });
+    expect(ensureCustomApiRegistered).toHaveBeenCalledWith(
+      "openclaw-google-generative-ai-transport",
+      "google-stream",
+    );
+    expect(result).toEqual({
+      ...model,
+      api: "openclaw-google-generative-ai-transport",
     });
   });
 });

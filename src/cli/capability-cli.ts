@@ -124,6 +124,8 @@ type CapabilityEnvelope = {
   transport: CapabilityTransport;
   provider?: string;
   model?: string;
+  modelReceiptRequired?: boolean;
+  responseModel?: string;
   attempts: Array<Record<string, unknown>>;
   inputs?: Array<Record<string, unknown>>;
   outputs: Array<Record<string, unknown>>;
@@ -444,6 +446,7 @@ function formatEnvelopeForText(value: unknown): string {
     `${envelope.capability} via ${envelope.transport}`,
     ...(envelope.provider ? [`provider: ${envelope.provider}`] : []),
     ...(envelope.model ? [`model: ${envelope.model}`] : []),
+    ...(envelope.responseModel ? [`responseModel: ${envelope.responseModel}`] : []),
     ...(envelope.ignoredOverrides && envelope.ignoredOverrides.length > 0
       ? [`ignoredOverrides: ${JSON.stringify(envelope.ignoredOverrides)}`]
       : []),
@@ -688,14 +691,65 @@ function normalizeModelRunThinking(value: unknown): ThinkLevel | undefined {
  * exact, tested `runModelRun` path so the self-test exercises the same completion code
  * customers rely on.
  */
+function normalizeModelReceiptId(value: string): string {
+  const normalized = normalizeLowercaseStringOrEmpty(value);
+  const separator = normalized.lastIndexOf("/");
+  const basename = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  return basename || normalized;
+}
+
+function modelReceiptMatchesRequest(requestedModel: string, responseModel: string): boolean {
+  const requested = normalizeModelReceiptId(requestedModel);
+  const response = normalizeModelReceiptId(responseModel);
+  if (!requested || !response) {
+    return false;
+  }
+  if (requested.startsWith("gemini-") && requested.endsWith("-latest")) {
+    const family = requested.slice("gemini-".length, -"-latest".length);
+    const versionlessResponse = response.replace(/-\d{3,}$/, "");
+    return response.startsWith("gemini-") && versionlessResponse.endsWith(`-${family}`);
+  }
+  if (response === requested) {
+    return true;
+  }
+  const revision = response.startsWith(`${requested}-`) ? response.slice(requested.length + 1) : "";
+  return /^\d{3,}$/.test(revision);
+}
+
 export async function runLocalModelCompletion(
   prompt: string,
 ): Promise<{ ok: boolean; text: string; detail: string }> {
   try {
-    const envelope = await runModelRun({ prompt, transport: "local" });
+    const envelope = await runModelRun({
+      prompt,
+      transport: "local",
+      attestProviderModel: true,
+    });
     const text = envelope.outputs?.[0]?.text ?? "";
-    const attribution = `${envelope.provider ?? "?"}/${envelope.model ?? "?"}`;
-    return { ok: envelope.ok && text.length > 0, text, detail: attribution };
+    const provider = envelope.provider ?? "?";
+    const requestedModel = envelope.model ?? "?";
+    const responseModel =
+      "responseModel" in envelope && typeof envelope.responseModel === "string"
+        ? envelope.responseModel
+        : undefined;
+    const requiresReceipt =
+      "modelReceiptRequired" in envelope && envelope.modelReceiptRequired === true;
+    const receiptOk =
+      !requiresReceipt ||
+      (typeof responseModel === "string" &&
+        modelReceiptMatchesRequest(requestedModel, responseModel));
+    const receipt = !requiresReceipt
+      ? "not-required"
+      : !responseModel
+        ? "missing"
+        : receiptOk
+          ? "matched"
+          : "mismatch";
+    return {
+      ok: envelope.ok && text.length > 0 && receiptOk,
+      text,
+      detail: `requested=${provider}/${requestedModel} response=${responseModel ?? "unavailable"} receipt=${receipt}`,
+    };
   } catch (err) {
     return { ok: false, text: "", detail: err instanceof Error ? err.message : String(err) };
   }
@@ -707,6 +761,7 @@ async function runModelRun(params: {
   model?: string;
   thinking?: ThinkLevel;
   transport: CapabilityTransport;
+  attestProviderModel?: boolean;
 }) {
   const cfg =
     params.transport === "local"
@@ -780,6 +835,7 @@ async function runModelRun(params: {
             : undefined,
         ...(params.thinking ? { reasoning: params.thinking } : {}),
       },
+      ...(params.attestProviderModel ? { forceOpenClawTransport: true } : {}),
     });
     const text = collectModelRunText(result.content);
     if (!text) {
@@ -798,6 +854,12 @@ async function runModelRun(params: {
       transport: "local" as const,
       provider: prepared.selection.provider,
       model: prepared.selection.modelId,
+      ...((result as { responseModelRequired?: unknown }).responseModelRequired === true
+        ? { modelReceiptRequired: true }
+        : {}),
+      ...(typeof result.responseModel === "string" && result.responseModel.trim()
+        ? { responseModel: result.responseModel.trim() }
+        : {}),
       attempts: [],
       ...(imageFiles.length > 0
         ? {

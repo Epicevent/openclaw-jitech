@@ -279,6 +279,7 @@ describe("google transport stream", () => {
       buildSseResponse([
         {
           responseId: "resp_1",
+          modelVersion: "gemini-3.1-pro-preview-20260701",
           candidates: [
             {
               content: {
@@ -386,7 +387,9 @@ describe("google transport stream", () => {
     });
     expect(result.api).toBe("google-generative-ai");
     expect(result.provider).toBe("google");
+    expect((result as { responseModelRequired?: unknown }).responseModelRequired).toBe(true);
     expect(result.responseId).toBe("resp_1");
+    expect(result.responseModel).toBe("gemini-3.1-pro-preview-20260701");
     expect(result.stopReason).toBe("toolUse");
     expect(result.usage.input).toBe(8);
     expect(result.usage.output).toBe(8);
@@ -1530,6 +1533,82 @@ describe("google transport stream", () => {
     );
 
     expect(params.cachedContent).toBe("cachedContents/prebuilt-context");
+  });
+
+  it("omits deprecated sampling params and trailing model prefill for Gemini 3.6", () => {
+    const params = buildGoogleGenerativeAiParams(
+      buildGeminiModel({ id: "gemini-3.6-flash" }),
+      {
+        messages: [
+          { role: "user", content: "hello", timestamp: 0 },
+          {
+            role: "assistant",
+            provider: "google",
+            api: "google-generative-ai",
+            model: "gemini-3.6-flash",
+            stopReason: "stop",
+            timestamp: 1,
+            content: [{ type: "text", text: "stale prefill" }],
+          },
+        ],
+      } as never,
+      { temperature: 0.7, maxTokens: 128 },
+    );
+
+    expect(params.contents).toEqual([{ role: "user", parts: [{ text: "hello" }] }]);
+    const generationConfig = requireGenerationConfig(params);
+    expect(generationConfig.maxOutputTokens).toBe(128);
+    expect(generationConfig).not.toHaveProperty("temperature");
+    expect(generationConfig).not.toHaveProperty("topP");
+    expect(generationConfig).not.toHaveProperty("topK");
+  });
+
+  it("preserves sampling params for earlier Gemini models", () => {
+    const params = buildGoogleGenerativeAiParams(
+      buildGeminiModel({ id: "gemini-3.5-flash" }),
+      { messages: [{ role: "user", content: "hello", timestamp: 0 }] } as never,
+      { temperature: 0.7, maxTokens: 128 },
+    );
+
+    const generationConfig = requireGenerationConfig(params);
+    expect(generationConfig.temperature).toBe(0.7);
+    expect(generationConfig.maxOutputTokens).toBe(128);
+  });
+
+  it("re-applies the Gemini 3.6 request contract after payload hooks", async () => {
+    guardedFetchMock.mockResolvedValueOnce(
+      buildSseResponse([
+        {
+          modelVersion: "gemini-3.6-flash",
+          candidates: [{ content: { parts: [{ text: "OK" }] }, finishReason: "STOP" }],
+        },
+      ]),
+    );
+    const model = buildGeminiModel({ id: "gemini-3.6-flash" });
+    const streamFn = createGoogleGenerativeAiTransportStreamFn();
+    const stream = await Promise.resolve(
+      streamFn(
+        model,
+        { messages: [{ role: "user", content: "hello", timestamp: 0 }] } as never,
+        {
+          apiKey: "gemini-api-key",
+          onPayload: (payload: Record<string, unknown>) => ({
+            ...payload,
+            generationConfig: {
+              temperature: 0.8,
+              topP: 0.9,
+              topK: 40,
+              maxOutputTokens: 128,
+            },
+          }),
+        } as never,
+      ),
+    );
+    await stream.result();
+
+    const request = requireMockCall(guardedFetchMock, 0, "guarded fetch");
+    const payload = parseRequestJsonBody(requireRequestInit(request, "guarded fetch"));
+    expect(payload.generationConfig).toEqual({ maxOutputTokens: 128 });
   });
 
   it("uses a non-empty text placeholder for empty user text", () => {

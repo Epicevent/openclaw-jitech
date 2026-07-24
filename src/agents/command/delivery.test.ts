@@ -5,6 +5,11 @@ import type { CliDeps } from "../../cli/outbound-send-deps.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { setActivePluginRegistry } from "../../plugins/runtime.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../../test-utils/channel-plugins.js";
+import {
+  getGatewayAgentResult,
+  hasDeliveredExpectedMedia,
+  hasMessagingToolDeliveryEvidence,
+} from "../pi-embedded-runner/delivery-evidence.js";
 import { deliverAgentCommandResult, normalizeAgentCommandReplyPayloads } from "./delivery.js";
 import type { AgentCommandOpts } from "./types.js";
 
@@ -976,6 +981,12 @@ describe("normalizeAgentCommandReplyPayloads", () => {
     expect(delivered.messagingToolSentTargets).toStrictEqual([
       { channel: "slack", to: "#general" },
     ]);
+    const gatewayResult = getGatewayAgentResult({ result: delivered });
+    expect(gatewayResult).not.toBeNull();
+    expect(hasMessagingToolDeliveryEvidence(gatewayResult ?? {})).toBe(true);
+    expect(
+      hasDeliveredExpectedMedia(gatewayResult ?? {}, ["/tmp/agent-workspace/out/photo.png"]),
+    ).toBe(true);
   });
 
   it("forwards messaging-tool delivery evidence on the delivered return path", async () => {
