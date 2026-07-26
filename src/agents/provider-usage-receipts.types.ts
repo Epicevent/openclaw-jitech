@@ -1,7 +1,7 @@
 export const PROVIDER_USAGE_CALL_SCHEMA = "jitech-provider-usage-call/v1" as const;
 export const PROVIDER_USAGE_EXPORT_SCHEMA = "jitech-provider-usage-export/v1" as const;
 
-export type ProviderUsageCallStatus = "succeeded" | "failed" | "cancelled";
+export type ProviderUsageCallStatus = "succeeded" | "failed" | "interrupted" | "cancelled";
 export type ProviderUsageCoverage = "complete" | "partial" | "unavailable";
 export type ProviderUsageCallTrigger =
   | "cron"
@@ -24,6 +24,13 @@ export type ProviderUsageActualModel = {
   evidenceSource: string | null;
 };
 
+export type ProviderUsageRawValue =
+  | number
+  | string
+  | null
+  | ProviderUsageRawValue[]
+  | { [key: string]: ProviderUsageRawValue };
+
 export type ProviderUsageDimensions = {
   inputTotal: number | null;
   inputNonCached: number | null;
@@ -33,7 +40,8 @@ export type ProviderUsageDimensions = {
   reasoningThinking: number | null;
   toolUsePrompt: number | null;
   providerReportedTotal: number | null;
-  rawProviderUsage: Record<string, number | string | null> | null;
+  serviceTier: string | null;
+  rawProviderUsage: Record<string, ProviderUsageRawValue> | null;
 };
 
 export type ProviderUsageCallReceiptBody = {
@@ -47,6 +55,7 @@ export type ProviderUsageCallReceiptBody = {
   attempt: number;
   retryOf: string | null;
   fallbackParent: string | null;
+  fallbackIndex: number;
   startedAt: string;
   completedAt: string;
   status: ProviderUsageCallStatus;
@@ -56,6 +65,8 @@ export type ProviderUsageCallReceiptBody = {
   usage: ProviderUsageDimensions;
   usageCoverage: ProviderUsageCoverage;
   missingUsageFields: string[];
+  receiptCoverage: ProviderUsageCoverage;
+  missingReceiptFields: string[];
   finishReason: string | null;
   errorCategory: string | null;
 };
@@ -68,7 +79,9 @@ export type ProviderUsageCallReceipt = ProviderUsageCallReceiptBody & {
 export type ProviderUsageReceiptExport = {
   schema: typeof PROVIDER_USAGE_EXPORT_SCHEMA;
   after: number;
-  nextAfter: number;
+  nextCursor: number;
+  highWatermark: number;
+  count: number;
   hasMore: boolean;
   receipts: ProviderUsageCallReceipt[];
 };

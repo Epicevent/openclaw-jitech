@@ -130,7 +130,7 @@ function observeResponseChunk(
 
 function persistObservedProviderUsageCall(
   state: ModelCallObservationState,
-  status: "succeeded" | "failed" | "cancelled",
+  status: "succeeded" | "failed" | "interrupted" | "cancelled",
   errorCategory?: string,
 ): void {
   if (!state.providerUsageCall || state.providerUsagePersisted) {
@@ -500,7 +500,7 @@ async function* observeModelCallIterator<T>(
   } finally {
     if (!terminalEmitted) {
       await safeReturnIterator(iterator);
-      persistObservedProviderUsageCall(state, "cancelled");
+      persistObservedProviderUsageCall(state, "interrupted");
       emitModelCallCompleted(eventBase, startedAt, state);
     }
   }

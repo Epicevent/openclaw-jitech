@@ -120,8 +120,19 @@ type MutableAssistantOutput = {
     thoughtsTokenCount: number | null;
     toolUsePromptTokenCount: number | null;
     totalTokenCount: number | null;
+    serviceTier: string | null;
+    trafficType: string | null;
+    promptTokensDetails: GoogleUsageModalityDetail[] | null;
+    cacheTokensDetails: GoogleUsageModalityDetail[] | null;
+    candidatesTokensDetails: GoogleUsageModalityDetail[] | null;
+    toolUsePromptTokensDetails: GoogleUsageModalityDetail[] | null;
   };
   errorMessage?: string;
+};
+
+type GoogleUsageModalityDetail = {
+  modality: string;
+  tokenCount: number;
 };
 
 const GOOGLE_VERTEX_DEFAULT_API_VERSION = "v1";
@@ -151,6 +162,12 @@ type GoogleSseChunk = {
     thoughtsTokenCount?: number;
     toolUsePromptTokenCount?: number;
     totalTokenCount?: number;
+    serviceTier?: string;
+    trafficType?: string;
+    promptTokensDetails?: Array<{ modality?: string; tokenCount?: number }>;
+    cacheTokensDetails?: Array<{ modality?: string; tokenCount?: number }>;
+    candidatesTokensDetails?: Array<{ modality?: string; tokenCount?: number }>;
+    toolUsePromptTokensDetails?: Array<{ modality?: string; tokenCount?: number }>;
   };
 };
 
@@ -1224,6 +1241,30 @@ async function* parseGoogleSseChunks(
   }
 }
 
+function normalizeUsageModalityDetails(
+  details: Array<{ modality?: string; tokenCount?: number }> | undefined,
+): GoogleUsageModalityDetail[] | null {
+  if (!details) {
+    return null;
+  }
+  const normalized: GoogleUsageModalityDetail[] = [];
+  for (const detail of details) {
+    const modality = normalizeOptionalString(detail.modality);
+    const tokenCount = detail.tokenCount;
+    if (
+      !modality ||
+      modality.length > 64 ||
+      typeof tokenCount !== "number" ||
+      !Number.isSafeInteger(tokenCount) ||
+      tokenCount < 0
+    ) {
+      return null;
+    }
+    normalized.push({ modality, tokenCount });
+  }
+  return normalized;
+}
+
 function updateUsage(
   output: MutableAssistantOutput,
   model: GoogleTransportModel,
@@ -1241,6 +1282,12 @@ function updateUsage(
     thoughtsTokenCount: usage.thoughtsTokenCount ?? null,
     toolUsePromptTokenCount: usage.toolUsePromptTokenCount ?? null,
     totalTokenCount: usage.totalTokenCount ?? null,
+    serviceTier: normalizeOptionalString(usage.serviceTier) ?? null,
+    trafficType: normalizeOptionalString(usage.trafficType) ?? null,
+    promptTokensDetails: normalizeUsageModalityDetails(usage.promptTokensDetails),
+    cacheTokensDetails: normalizeUsageModalityDetails(usage.cacheTokensDetails),
+    candidatesTokensDetails: normalizeUsageModalityDetails(usage.candidatesTokensDetails),
+    toolUsePromptTokensDetails: normalizeUsageModalityDetails(usage.toolUsePromptTokensDetails),
   };
   const promptTokens = usage.promptTokenCount || 0;
   const cacheRead = usage.cachedContentTokenCount || 0;

@@ -63,12 +63,23 @@ describe("provider usage call receipts", () => {
     ]);
     expect(first.trigger).toBe("user");
     expect(first.retryOf).toBeNull();
+    expect(first.fallbackIndex).toBe(0);
     expect(toolLoop.retryOf).toBeNull();
     expect(retry.retryOf).toBe(toolLoop.callId);
     expect(retry.fallbackParent).toBeNull();
     expect(fallback.retryOf).toBeNull();
     expect(fallback.fallbackParent).toBe(retry.callId);
+    expect(fallback.fallbackIndex).toBe(1);
     expect(fallback.configured).toEqual({ provider: "google", model: "gemini-3.6-flash" });
+
+    const fallbackToolLoop = run.beginCall({
+      requestedProvider: "anthropic",
+      requestedModel: "claude-sonnet-4-6",
+      embeddedAttempt: 1,
+    });
+    expect(fallbackToolLoop.retryOf).toBeNull();
+    expect(fallbackToolLoop.fallbackParent).toBe(retry.callId);
+    expect(fallbackToolLoop.fallbackIndex).toBe(1);
 
     const primaryCycleRetry = run.beginCall({
       requestedProvider: "google",
@@ -76,7 +87,8 @@ describe("provider usage call receipts", () => {
       embeddedAttempt: 1,
     });
     expect(primaryCycleRetry.retryOf).toBe(retry.callId);
-    expect(primaryCycleRetry.fallbackParent).toBe(fallback.callId);
+    expect(primaryCycleRetry.fallbackParent).toBeNull();
+    expect(primaryCycleRetry.fallbackIndex).toBe(0);
   });
 
   it("preserves Google raw usage and provider model evidence without content", () => {
@@ -132,9 +144,17 @@ describe("provider usage call receipts", () => {
       reasoningThinking: 5,
       toolUsePrompt: 3,
       providerReportedTotal: 123,
+      serviceTier: null,
     });
     expect(receipt.usageCoverage).toBe("partial");
-    expect(receipt.missingUsageFields).toEqual(["cacheWrite"]);
+    expect(receipt.missingUsageFields).toEqual(["cacheWrite", "serviceTier"]);
+    expect(receipt.receiptCoverage).toBe("partial");
+    expect(receipt.missingReceiptFields).toEqual([
+      "requestId",
+      "sessionId",
+      "usage.cacheWrite",
+      "usage.serviceTier",
+    ]);
     expect(JSON.stringify(exportProviderUsageReceipts())).not.toContain("secret prompt");
   });
 
@@ -159,6 +179,21 @@ describe("provider usage call receipts", () => {
     expect(receipt.usage.outputCandidates).toBeNull();
     expect(receipt.actual.model).toBeNull();
     expect(receipt.errorCategory).toBe("timeout");
+    expect(receipt.receiptCoverage).toBe("partial");
+    expect(receipt.missingReceiptFields).toEqual([
+      "requestId",
+      "sessionId",
+      "usage.inputTotal",
+      "usage.inputNonCached",
+      "usage.cacheRead",
+      "usage.cacheWrite",
+      "usage.outputCandidates",
+      "usage.reasoningThinking",
+      "usage.toolUsePrompt",
+      "usage.providerReportedTotal",
+      "usage.serviceTier",
+      "usage.rawProviderUsage",
+    ]);
   });
 
   it("does not promote an unevidenced selected response model to actual truth", () => {

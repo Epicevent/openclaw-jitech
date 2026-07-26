@@ -303,6 +303,9 @@ describe("google transport stream", () => {
             thoughtsTokenCount: 3,
             toolUsePromptTokenCount: 4,
             totalTokenCount: 22,
+            serviceTier: "STANDARD",
+            trafficType: "ON_DEMAND",
+            promptTokensDetails: [{ modality: "TEXT", tokenCount: 10 }],
           },
         },
       ]),
@@ -413,6 +416,12 @@ describe("google transport stream", () => {
       thoughtsTokenCount: 3,
       toolUsePromptTokenCount: 4,
       totalTokenCount: 22,
+      serviceTier: "STANDARD",
+      trafficType: "ON_DEMAND",
+      promptTokensDetails: [{ modality: "TEXT", tokenCount: 10 }],
+      cacheTokensDetails: null,
+      candidatesTokensDetails: null,
+      toolUsePromptTokensDetails: null,
     });
     expect(result.content).toHaveLength(3);
     expect(result.content[0]).toEqual({

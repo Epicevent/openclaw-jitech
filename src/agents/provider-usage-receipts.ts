@@ -1,4 +1,8 @@
 import { randomUUID } from "node:crypto";
+import {
+  deriveProviderUsageCoverage,
+  deriveProviderUsageReceiptCoverage,
+} from "./provider-usage-receipts.contract.js";
 import { appendProviderUsageReceipt } from "./provider-usage-receipts.store.js";
 import {
   PROVIDER_USAGE_CALL_SCHEMA,
@@ -6,23 +10,9 @@ import {
   type ProviderUsageCallReceiptBody,
   type ProviderUsageCallStatus,
   type ProviderUsageCallTrigger,
-  type ProviderUsageCoverage,
   type ProviderUsageDimensions,
   type ProviderUsageModelRef,
 } from "./provider-usage-receipts.types.js";
-
-const USAGE_FIELDS = [
-  "inputTotal",
-  "inputNonCached",
-  "cacheRead",
-  "cacheWrite",
-  "outputCandidates",
-  "reasoningThinking",
-  "toolUsePrompt",
-  "providerReportedTotal",
-] as const;
-
-type UsageField = (typeof USAGE_FIELDS)[number];
 
 type ProviderUsageRunIdentity = {
   runId: string;
@@ -44,6 +34,7 @@ export type ProviderUsageCallHandle = {
   attempt: number;
   retryOf: string | null;
   fallbackParent: string | null;
+  fallbackIndex: number;
   startedAt: string;
   configured: ProviderUsageModelRef;
   requested: ProviderUsageModelRef;
@@ -113,8 +104,28 @@ function emptyUsage(): ProviderUsageDimensions {
     reasoningThinking: null,
     toolUsePrompt: null,
     providerReportedTotal: null,
+    serviceTier: null,
     rawProviderUsage: null,
   };
+}
+
+function normalizeUsageModalityDetails(
+  value: unknown,
+): Array<{ modality: string; tokenCount: number }> | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const normalized: Array<{ modality: string; tokenCount: number }> = [];
+  for (const item of value) {
+    const detail = asRecord(item);
+    const modality = normalizeString(detail?.modality);
+    const tokenCount = normalizeCount(detail?.tokenCount);
+    if (!modality || modality.length > 64 || tokenCount === null) {
+      return null;
+    }
+    normalized.push({ modality, tokenCount });
+  }
+  return normalized;
 }
 
 function extractGoogleUsage(record: ProviderOutputRecord): ProviderUsageDimensions | null {
@@ -128,6 +139,7 @@ function extractGoogleUsage(record: ProviderOutputRecord): ProviderUsageDimensio
   const thinking = normalizeCount(raw.thoughtsTokenCount);
   const toolUse = normalizeCount(raw.toolUsePromptTokenCount);
   const total = normalizeCount(raw.totalTokenCount);
+  const serviceTier = normalizeString(raw.serviceTier);
   const inputNonCached =
     prompt !== null && cacheRead !== null ? Math.max(0, prompt - cacheRead) : null;
   return {
@@ -139,14 +151,20 @@ function extractGoogleUsage(record: ProviderOutputRecord): ProviderUsageDimensio
     reasoningThinking: thinking,
     toolUsePrompt: toolUse,
     providerReportedTotal: total,
+    serviceTier,
     rawProviderUsage: {
-      source: "gemini_response.usageMetadata",
       promptTokenCount: prompt,
       cachedContentTokenCount: cacheRead,
       candidatesTokenCount: candidates,
       thoughtsTokenCount: thinking,
       toolUsePromptTokenCount: toolUse,
       totalTokenCount: total,
+      serviceTier,
+      trafficType: normalizeString(raw.trafficType),
+      promptTokensDetails: normalizeUsageModalityDetails(raw.promptTokensDetails),
+      cacheTokensDetails: normalizeUsageModalityDetails(raw.cacheTokensDetails),
+      candidatesTokensDetails: normalizeUsageModalityDetails(raw.candidatesTokensDetails),
+      toolUsePromptTokensDetails: normalizeUsageModalityDetails(raw.toolUsePromptTokensDetails),
     },
   };
 }
@@ -177,16 +195,8 @@ function extractNormalizedUsage(record: ProviderOutputRecord): ProviderUsageDime
     usage.cacheWrite ?? usage.cache_write ?? usage.cache_creation_input_tokens,
   );
   const total = normalizeCount(usage.totalTokens ?? usage.total_tokens ?? usage.total);
+  const serviceTier = normalizeString(usage.serviceTier ?? usage.service_tier);
   const inputTotal = input !== null && cacheRead !== null ? input + cacheRead : null;
-  const rawProviderUsage: Record<string, number | string | null> = {
-    source: "assistant_message.usage",
-    input,
-    output,
-    cacheRead,
-    cacheWrite,
-    totalTokens: total,
-  };
-  const hasAny = [input, output, cacheRead, cacheWrite, total].some((value) => value !== null);
   return {
     inputTotal,
     inputNonCached: input,
@@ -196,7 +206,8 @@ function extractNormalizedUsage(record: ProviderOutputRecord): ProviderUsageDime
     reasoningThinking: null,
     toolUsePrompt: null,
     providerReportedTotal: total,
-    rawProviderUsage: hasAny ? rawProviderUsage : null,
+    serviceTier,
+    rawProviderUsage: null,
   };
 }
 
@@ -240,20 +251,6 @@ export function observeProviderUsageCallChunk(
   };
 }
 
-function coverageForUsage(usage: ProviderUsageDimensions): {
-  coverage: ProviderUsageCoverage;
-  missing: UsageField[];
-} {
-  const missing = USAGE_FIELDS.filter((field) => usage[field] === null);
-  if (missing.length === USAGE_FIELDS.length) {
-    return { coverage: "unavailable", missing: [...missing] };
-  }
-  return {
-    coverage: missing.length === 0 ? "complete" : "partial",
-    missing: [...missing],
-  };
-}
-
 export function createProviderUsageRunContext(
   identity: ProviderUsageRunIdentity,
 ): ProviderUsageRunContext {
@@ -268,6 +265,10 @@ export function createProviderUsageRunContext(
     requested: ProviderUsageModelRef;
   } | null = null;
   const lastCallByRoute = new Map<string, string>();
+  const configuredRouteKey = `${configured.provider}\0${configured.model}`;
+  const fallbackIndexByRoute = new Map<string, number>([[configuredRouteKey, 0]]);
+  const fallbackParentByRoute = new Map<string, string | null>([[configuredRouteKey, null]]);
+  let nextFallbackIndex = 1;
 
   return {
     beginCall(params) {
@@ -283,6 +284,15 @@ export function createProviderUsageRunContext(
       const embeddedAttemptChanged =
         previousCall !== null && previousCall.embeddedAttempt !== params.embeddedAttempt;
       const requestedRouteKey = `${requested.provider}\0${requested.model}`;
+      let fallbackIndex = fallbackIndexByRoute.get(requestedRouteKey);
+      if (fallbackIndex === undefined) {
+        fallbackIndex = previousCall ? nextFallbackIndex : 0;
+        fallbackIndexByRoute.set(requestedRouteKey, fallbackIndex);
+        fallbackParentByRoute.set(requestedRouteKey, previousCall?.callId ?? null);
+        if (fallbackIndex > 0) {
+          nextFallbackIndex += 1;
+        }
+      }
       const lastSameRouteCallId = lastCallByRoute.get(requestedRouteKey) ?? null;
       const callId = randomUUID();
       const handle: ProviderUsageCallHandle = {
@@ -299,7 +309,9 @@ export function createProviderUsageRunContext(
             : requestedChanged && lastSameRouteCallId
               ? lastSameRouteCallId
               : null,
-        fallbackParent: requestedChanged ? (previousCall?.callId ?? null) : null,
+        fallbackParent:
+          fallbackIndex === 0 ? null : (fallbackParentByRoute.get(requestedRouteKey) ?? null),
+        fallbackIndex,
         startedAt: new Date(params.startedAtMs ?? Date.now()).toISOString(),
         configured,
         requested,
@@ -325,8 +337,27 @@ export function persistProviderUsageCall(params: {
     providerFinishReason: null,
     usage: emptyUsage(),
   };
-  const usageCoverage = coverageForUsage(observation.usage);
+  const usageCoverage = deriveProviderUsageCoverage(observation.usage);
   const actualModel = observation.responseModel;
+  const errorCategory = normalizeString(params.errorCategory);
+  const actual = {
+    provider: actualModel ? params.handle.requested.provider : null,
+    model: actualModel,
+    responseId: observation.responseId,
+    evidenceSource: actualModel ? observation.responseModelEvidenceSource : null,
+  };
+  const finishReason = observation.providerFinishReason;
+  const receiptCoverage = deriveProviderUsageReceiptCoverage({
+    runId: params.handle.runId,
+    turnId: params.handle.turnId,
+    requestId: params.handle.requestId,
+    sessionId: params.handle.sessionId,
+    status: params.status,
+    actual,
+    usage: observation.usage,
+    finishReason,
+    errorCategory,
+  });
   const body: ProviderUsageCallReceiptBody = {
     schema: PROVIDER_USAGE_CALL_SCHEMA,
     callId: params.handle.callId,
@@ -338,22 +369,20 @@ export function persistProviderUsageCall(params: {
     attempt: params.handle.attempt,
     retryOf: params.handle.retryOf,
     fallbackParent: params.handle.fallbackParent,
+    fallbackIndex: params.handle.fallbackIndex,
     startedAt: params.handle.startedAt,
     completedAt: new Date(params.completedAtMs ?? Date.now()).toISOString(),
     status: params.status,
     configured: params.handle.configured,
     requested: params.handle.requested,
-    actual: {
-      provider: actualModel ? params.handle.requested.provider : null,
-      model: actualModel,
-      responseId: observation.responseId,
-      evidenceSource: actualModel ? observation.responseModelEvidenceSource : null,
-    },
+    actual,
     usage: observation.usage,
     usageCoverage: usageCoverage.coverage,
     missingUsageFields: usageCoverage.missing,
-    finishReason: observation.providerFinishReason,
-    errorCategory: normalizeString(params.errorCategory),
+    receiptCoverage: receiptCoverage.coverage,
+    missingReceiptFields: receiptCoverage.missing,
+    finishReason,
+    errorCategory,
   };
   return appendProviderUsageReceipt(body);
 }
