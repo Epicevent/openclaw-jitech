@@ -2951,6 +2951,8 @@ export async function runEmbeddedAttempt(
               firstModelCallStarted: true,
             });
           },
+          providerUsageRun: params.providerUsageRun,
+          embeddedAttempt: params.providerUsageAttempt,
         },
       );
 

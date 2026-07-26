@@ -33,6 +33,8 @@ export type EmbeddedRunContextWindowInfo = {
 };
 
 export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
+  /** One-based outer embedded retry attempt for provider-call relationship receipts. */
+  providerUsageAttempt?: number;
   initialReplayState?: EmbeddedRunReplayState;
   /** Pluggable context engine for ingest/assemble/compact lifecycle. */
   contextEngine?: ContextEngine;

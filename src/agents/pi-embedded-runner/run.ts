@@ -90,6 +90,7 @@ import {
 } from "../pi-embedded-helpers.js";
 import { resolveProcessToolScopeKey } from "../pi-tools.js";
 import { resolveProviderIdForAuth } from "../provider-auth-aliases.js";
+import { createProviderUsageRunContext } from "../provider-usage-receipts.js";
 import { runAgentCleanupStep } from "../run-cleanup-timeout.js";
 import { buildAgentRuntimeAuthPlan } from "../runtime-plan/auth.js";
 import { buildAgentRuntimePlan } from "../runtime-plan/build.js";
@@ -594,6 +595,17 @@ export async function runEmbeddedPiAgent(
       });
       provider = hookSelection.provider;
       modelId = hookSelection.modelId;
+      const providerUsageRun =
+        params.providerUsageRun ??
+        createProviderUsageRunContext({
+          runId: params.runId,
+          turnId: params.runId,
+          requestId: params.currentMessageId,
+          sessionId: params.sessionId,
+          trigger: params.trigger,
+          configuredProvider: provider,
+          configuredModel: modelId,
+        });
       const legacyBeforeAgentStartResult = hookSelection.legacyBeforeAgentStartResult;
       startupStages.mark("hooks");
       await ensureSelectedAgentHarnessPlugin({
@@ -1445,6 +1457,8 @@ export async function runEmbeddedPiAgent(
               disableTools: params.disableTools,
               provider,
               modelId,
+              providerUsageRun,
+              providerUsageAttempt: runLoopIterations,
               // Use the harness selected before model/auth setup for the actual
               // attempt too. Otherwise plugin-owned transports can skip PI auth
               // bootstrap but drift back to PI when the attempt is created.

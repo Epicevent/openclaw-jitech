@@ -28,6 +28,12 @@ const subCliCommandCatalog = defineCommandDescriptorCatalog([
     hasSubcommands: true,
   },
   {
+    name: "usage-receipts",
+    description: "Export content-free provider usage call receipts",
+    hasSubcommands: true,
+    parentDefaultHelp: true,
+  },
+  {
     name: "infer",
     description: "Run provider-backed model, media, search, and embedding commands",
     hasSubcommands: true,

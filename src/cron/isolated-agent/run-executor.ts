@@ -1,5 +1,6 @@
 import type { BootstrapContextMode } from "../../agents/bootstrap-files.js";
 import { resolveCliRuntimeExecutionProvider } from "../../agents/model-runtime-aliases.js";
+import { createProviderUsageRunContext } from "../../agents/provider-usage-receipts.js";
 import type { SkillSnapshot } from "../../agents/skills.js";
 import { normalizeToolList } from "../../agents/tool-policy.js";
 import type { ThinkLevel, VerboseLevel } from "../../auto-reply/thinking.js";
@@ -155,6 +156,15 @@ export function createCronPromptExecutor(params: {
   const bootstrapContextMode = resolveCronBootstrapContextMode(params.agentPayload);
   const sourceReplyDeliveryMode = params.sourceDelivery.sourceReplyDeliveryMode;
   const messageChannel = params.sourceDelivery.target.channel ?? params.resolvedDelivery.channel;
+  const providerUsageRun = createProviderUsageRunContext({
+    runId: params.cronSession.sessionEntry.sessionId,
+    turnId: params.cronSession.sessionEntry.sessionId,
+    requestId: params.job.id,
+    sessionId: params.cronSession.sessionEntry.sessionId,
+    trigger: "cron",
+    configuredProvider: params.liveSelection.provider,
+    configuredModel: params.liveSelection.model,
+  });
 
   const runPrompt = async (promptText: string) => {
     const fallbackResult = await runWithModelFallback({
@@ -289,6 +299,7 @@ export function createCronPromptExecutor(params: {
             : undefined,
           sourceReplyDeliveryMode,
           runId: params.cronSession.sessionEntry.sessionId,
+          providerUsageRun,
           requireExplicitMessageTarget: params.sourceDelivery.messageTool.requireExplicitTarget,
           disableMessageTool: !params.sourceDelivery.messageTool.enabled,
           forceMessageTool: params.sourceDelivery.messageTool.force,

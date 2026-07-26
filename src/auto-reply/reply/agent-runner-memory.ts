@@ -9,6 +9,7 @@ import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { listLegacyRuntimeModelProviderAliases } from "../../agents/model-runtime-aliases.js";
 import { isCliProvider } from "../../agents/model-selection.js";
 import { resolveContextConfigProviderForRuntime } from "../../agents/openai-codex-routing.js";
+import { createProviderUsageRunContext } from "../../agents/provider-usage-receipts.js";
 import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import {
   derivePromptTokens,
@@ -1028,12 +1029,22 @@ export async function runMemoryFlushIfNeeded(params: {
   let postCompactionSessionId: string | undefined;
   let postCompactionSessionFile: string | undefined;
   try {
+    const memoryFallbackOptions = resolveMemoryFlushModelFallbackOptions(
+      params.followupRun.run,
+      activeMemoryFlushPlan.model,
+      params.cfg,
+    );
+    const providerUsageRun = createProviderUsageRunContext({
+      runId: flushRunId,
+      turnId: flushRunId,
+      requestId: params.sessionCtx.MessageSidFull ?? params.sessionCtx.MessageSid,
+      sessionId: activeSessionEntry?.sessionId ?? params.followupRun.run.sessionId,
+      trigger: "memory",
+      configuredProvider: memoryFallbackOptions.provider,
+      configuredModel: memoryFallbackOptions.model,
+    });
     await memoryDeps.runWithModelFallback({
-      ...resolveMemoryFlushModelFallbackOptions(
-        params.followupRun.run,
-        activeMemoryFlushPlan.model,
-        params.cfg,
-      ),
+      ...memoryFallbackOptions,
       runId: flushRunId,
       sessionId: activeSessionEntry?.sessionId ?? params.followupRun.run.sessionId,
       lane: CommandLane.Main,
@@ -1083,6 +1094,7 @@ export async function runMemoryFlushIfNeeded(params: {
             bootstrapPromptWarningSignaturesSeen[bootstrapPromptWarningSignaturesSeen.length - 1],
           abortSignal: params.replyOperation.abortSignal,
           replyOperation: params.replyOperation,
+          providerUsageRun,
           onAgentEvent: (evt) => {
             if (evt.stream === "compaction") {
               const phase = typeof evt.data.phase === "string" ? evt.data.phase : "";

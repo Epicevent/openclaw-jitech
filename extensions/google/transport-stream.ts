@@ -16,10 +16,12 @@ import {
   failTransportStream,
   finalizeTransportStream,
   mergeTransportHeaders,
+  resolveProviderUsageAttemptHooks,
   sanitizeTransportPayloadText,
   stripSystemPromptCacheBoundary,
   transformTransportMessages,
   type WritableTransportStream,
+  type ProviderUsageAttemptHooks,
 } from "openclaw/plugin-sdk/provider-transport-runtime";
 import { normalizeLowercaseStringOrEmpty } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { parseGeminiAuth } from "./gemini-auth.js";
@@ -108,6 +110,17 @@ type MutableAssistantOutput = {
   responseModelRequired: true;
   responseId?: string;
   responseModel?: string;
+  responseModelEvidenceSource?: "gemini_response.modelVersion";
+  providerFinishReason?: string;
+  providerUsage?: {
+    source: "gemini_response.usageMetadata";
+    promptTokenCount: number | null;
+    cachedContentTokenCount: number | null;
+    candidatesTokenCount: number | null;
+    thoughtsTokenCount: number | null;
+    toolUsePromptTokenCount: number | null;
+    totalTokenCount: number | null;
+  };
   errorMessage?: string;
 };
 
@@ -136,6 +149,7 @@ type GoogleSseChunk = {
     cachedContentTokenCount?: number;
     candidatesTokenCount?: number;
     thoughtsTokenCount?: number;
+    toolUsePromptTokenCount?: number;
     totalTokenCount?: number;
   };
 };
@@ -991,12 +1005,15 @@ async function openGoogleSseAttempt(params: {
   parentSignal?: AbortSignal;
   firstResponseTimeoutMs: number;
   errorPrefix: string;
+  usageAttemptHooks?: ProviderUsageAttemptHooks;
+  retry: boolean;
 }): Promise<GoogleSseAttempt> {
   const attemptSignal =
     params.firstResponseTimeoutMs > 0
       ? createChildSignal(params.parentSignal, params.firstResponseTimeoutMs)
       : undefined;
   const signal = attemptSignal?.signal ?? params.parentSignal;
+  params.usageAttemptHooks?.onAttemptStarted({ retry: params.retry });
   try {
     const response = await params.guardedFetch(params.url, {
       method: "POST",
@@ -1025,8 +1042,40 @@ async function openGoogleSseAttempt(params: {
   } catch (error) {
     attemptSignal?.cleanup();
     if (attemptSignal?.timedOut() && !params.parentSignal?.aborted) {
+      params.usageAttemptHooks?.onAttemptFailed({ errorCategory: "first_response_timeout" });
       return { type: "timeout" };
     }
+    params.usageAttemptHooks?.onAttemptFailed({ errorCategory: "provider_attempt_error" });
+    throw error;
+  }
+}
+
+async function openGoogleDirectSseAttempt(params: {
+  guardedFetch: ReturnType<typeof buildGuardedModelFetch>;
+  url: string;
+  headers: Record<string, string>;
+  request: GoogleGenerateContentRequest;
+  signal?: AbortSignal;
+  errorPrefix: string;
+  usageAttemptHooks?: ProviderUsageAttemptHooks;
+}): Promise<Extract<GoogleSseAttempt, { type: "ready" }>> {
+  params.usageAttemptHooks?.onAttemptStarted({ retry: false });
+  try {
+    const response = await params.guardedFetch(params.url, {
+      method: "POST",
+      headers: params.headers,
+      body: JSON.stringify(params.request),
+      signal: params.signal,
+    });
+    if (!response.ok) {
+      throw await createProviderHttpError(response, params.errorPrefix);
+    }
+    return {
+      type: "ready",
+      chunks: parseGoogleSseChunks(response, params.signal),
+    };
+  } catch (error) {
+    params.usageAttemptHooks?.onAttemptFailed({ errorCategory: "provider_attempt_error" });
     throw error;
   }
 }
@@ -1039,25 +1088,22 @@ async function openGoogleSseChunks(params: {
   url: string;
   headers: Record<string, string>;
   request: GoogleGenerateContentRequest;
+  usageAttemptHooks?: ProviderUsageAttemptHooks;
 }): Promise<Extract<GoogleSseAttempt, { type: "ready" }>> {
   const errorPrefix =
     params.kind === "google-vertex"
       ? "Google Vertex AI API error"
       : "Google Generative AI API error";
   if (!shouldRetryGoogleGemini3FirstResponse({ kind: params.kind, model: params.model })) {
-    const response = await params.guardedFetch(params.url, {
-      method: "POST",
+    return await openGoogleDirectSseAttempt({
+      guardedFetch: params.guardedFetch,
+      url: params.url,
       headers: params.headers,
-      body: JSON.stringify(params.request),
+      request: params.request,
       signal: params.options?.signal,
+      errorPrefix,
+      usageAttemptHooks: params.usageAttemptHooks,
     });
-    if (!response.ok) {
-      throw await createProviderHttpError(response, errorPrefix);
-    }
-    return {
-      type: "ready",
-      chunks: parseGoogleSseChunks(response, params.options?.signal),
-    };
   }
 
   const retryMs = resolveGoogleGemini3FirstResponseRetryMs();
@@ -1069,19 +1115,15 @@ async function openGoogleSseChunks(params: {
         })
       : undefined;
   if (!retryRequest) {
-    const response = await params.guardedFetch(params.url, {
-      method: "POST",
+    return await openGoogleDirectSseAttempt({
+      guardedFetch: params.guardedFetch,
+      url: params.url,
       headers: params.headers,
-      body: JSON.stringify(params.request),
+      request: params.request,
       signal: params.options?.signal,
+      errorPrefix,
+      usageAttemptHooks: params.usageAttemptHooks,
     });
-    if (!response.ok) {
-      throw await createProviderHttpError(response, errorPrefix);
-    }
-    return {
-      type: "ready",
-      chunks: parseGoogleSseChunks(response, params.options?.signal),
-    };
   }
 
   const firstAttempt = await openGoogleSseAttempt({
@@ -1092,6 +1134,8 @@ async function openGoogleSseChunks(params: {
     parentSignal: params.options?.signal,
     firstResponseTimeoutMs: retryMs,
     errorPrefix,
+    usageAttemptHooks: params.usageAttemptHooks,
+    retry: false,
   });
   if (firstAttempt.type === "ready") {
     return firstAttempt;
@@ -1105,6 +1149,8 @@ async function openGoogleSseChunks(params: {
     parentSignal: params.options?.signal,
     firstResponseTimeoutMs: 0,
     errorPrefix,
+    usageAttemptHooks: params.usageAttemptHooks,
+    retry: true,
   });
   if (retryAttempt.type === "timeout") {
     throw new Error("Google Gemini first response retry timed out unexpectedly");
@@ -1187,6 +1233,15 @@ function updateUsage(
   if (!usage) {
     return;
   }
+  output.providerUsage = {
+    source: "gemini_response.usageMetadata",
+    promptTokenCount: usage.promptTokenCount ?? null,
+    cachedContentTokenCount: usage.cachedContentTokenCount ?? null,
+    candidatesTokenCount: usage.candidatesTokenCount ?? null,
+    thoughtsTokenCount: usage.thoughtsTokenCount ?? null,
+    toolUsePromptTokenCount: usage.toolUsePromptTokenCount ?? null,
+    totalTokenCount: usage.totalTokenCount ?? null,
+  };
   const promptTokens = usage.promptTokenCount || 0;
   const cacheRead = usage.cachedContentTokenCount || 0;
   output.usage = {
@@ -1270,6 +1325,7 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
           url: requestUrl,
           headers: requestHeaders,
           request: params,
+          usageAttemptHooks: resolveProviderUsageAttemptHooks(options),
         });
         stream.push({ type: "start", partial: output as never });
         let currentBlockIndex = -1;
@@ -1283,6 +1339,9 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
         for await (const chunk of chunks) {
           output.responseId ||= chunk.responseId;
           output.responseModel ||= normalizeOptionalString(chunk.modelVersion);
+          if (output.responseModel) {
+            output.responseModelEvidenceSource = "gemini_response.modelVersion";
+          }
           updateUsage(output, model, chunk);
           const candidate = chunk.candidates?.[0];
           if (candidate?.content?.parts) {
@@ -1413,6 +1472,7 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
             }
           }
           if (typeof candidate?.finishReason === "string") {
+            output.providerFinishReason = candidate.finishReason;
             output.stopReason = mapStopReasonString(candidate.finishReason);
             if (output.content.some((block) => block.type === "toolCall")) {
               output.stopReason = "toolUse";
