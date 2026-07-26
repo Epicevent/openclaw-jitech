@@ -6,6 +6,7 @@ import {
   serializeProviderUsageCoverageManifest,
   type ProviderUsageCoverageManifest,
 } from "./provider-usage-coverage.js";
+import { assertProviderUsageExportSchema } from "./provider-usage-receipts-export.contract.js";
 import {
   canonicalizeProviderUsageReceiptBody,
   digestProviderUsageReceiptBody,
@@ -452,6 +453,7 @@ export function exportProviderUsageReceipts(
     receipts,
     coverageManifests,
   };
+  assertProviderUsageExportSchema(result);
   return result;
 }
 

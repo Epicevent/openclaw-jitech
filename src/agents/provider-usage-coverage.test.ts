@@ -193,7 +193,7 @@ describe("provider usage coverage manifest", () => {
   it("rejects changed canonical bytes and unsorted or duplicate surfaces", () => {
     const manifest = buildProviderUsageCoverageManifest();
     const changed = structuredClone(manifest);
-    changed.surfaces[0]!.meterFamily = "other";
+    changed.surfaces[0].meterFamily = "other";
     expect(() => assertProviderUsageCoverageManifest(changed)).toThrow("manifestDigest mismatch");
 
     const unsorted = buildProviderUsageCoverageManifest();
