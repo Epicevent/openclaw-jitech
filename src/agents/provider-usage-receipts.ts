@@ -352,6 +352,7 @@ export function persistProviderUsageCall(params: {
     turnId: params.handle.turnId,
     requestId: params.handle.requestId,
     sessionId: params.handle.sessionId,
+    trigger: params.handle.trigger,
     status: params.status,
     actual,
     usage: observation.usage,

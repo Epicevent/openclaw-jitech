@@ -138,4 +138,128 @@ describe("provider usage v1 wire contract", () => {
       /fields must be exactly/u,
     );
   });
+
+  it("fails closed on missing usage paths, bogus paths, and field-order drift", () => {
+    const body = receiptBody(loadFixture());
+    const withMissingInput = {
+      ...body,
+      usage: { ...body.usage, inputNonCached: null },
+      missingUsageFields: ["inputNonCached", "cacheWrite"],
+    };
+
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...withMissingInput,
+        missingReceiptFields: ["usage.cacheWrite"],
+      }),
+    ).toThrow(/missingReceiptFields is inconsistent/u);
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...withMissingInput,
+        missingUsageFields: ["cacheWrite", "inputNonCached"],
+        missingReceiptFields: ["usage.inputNonCached", "usage.cacheWrite"],
+      }),
+    ).toThrow(/missingUsageFields is inconsistent/u);
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...body,
+        missingReceiptFields: ["usage.bogus"],
+      }),
+    ).toThrow(/missingReceiptFields is inconsistent/u);
+  });
+
+  it("counts an unknown trigger as missing receipt evidence", () => {
+    const body = receiptBody(loadFixture());
+    const unknownTrigger = { ...body, trigger: "unknown" as const };
+
+    expect(() => assertProviderUsageReceiptBody(unknownTrigger)).toThrow(
+      /missingReceiptFields is inconsistent/u,
+    );
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...unknownTrigger,
+        missingReceiptFields: ["trigger", "usage.cacheWrite"],
+      }),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ["configured", "provider"],
+    ["configured", "model"],
+    ["requested", "provider"],
+    ["requested", "model"],
+  ] as const)("keeps %s.%s non-empty instead of treating it as missing", (ref, field) => {
+    const body = receiptBody(loadFixture());
+
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...body,
+        [ref]: { ...body[ref], [field]: "" },
+      }),
+    ).toThrow(/must be a nonempty string/u);
+  });
+
+  it.each(["interrupted", "cancelled"] as const)(
+    "requires errorCategory evidence for %s calls",
+    (status) => {
+      const body = receiptBody(loadFixture());
+      const terminal = { ...body, status, errorCategory: null };
+
+      expect(() => assertProviderUsageReceiptBody(terminal)).toThrow(
+        /missingReceiptFields is inconsistent/u,
+      );
+      expect(() =>
+        assertProviderUsageReceiptBody({
+          ...terminal,
+          missingReceiptFields: ["errorCategory", "usage.cacheWrite"],
+        }),
+      ).not.toThrow();
+    },
+  );
+
+  it("marks receipt coverage unavailable only when every applicable field is missing", () => {
+    const body = receiptBody(loadFixture());
+    const usage = Object.fromEntries(PROVIDER_USAGE_DIMENSION_FIELDS.map((field) => [field, null]));
+    const usageFields = [...PROVIDER_USAGE_DIMENSION_FIELDS];
+    const usagePaths = usageFields.map((field) => `usage.${field}`);
+    const allCommonMissing = ["runId", "turnId", "requestId", "sessionId", "trigger"];
+    const unavailable = {
+      ...body,
+      runId: null,
+      turnId: null,
+      requestId: null,
+      sessionId: null,
+      trigger: "unknown" as const,
+      usage,
+      usageCoverage: "unavailable" as const,
+      missingUsageFields: usageFields,
+      receiptCoverage: "unavailable" as const,
+      finishReason: null,
+      errorCategory: null,
+    };
+
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...unavailable,
+        actual: { provider: null, model: null, responseId: null, evidenceSource: null },
+        status: "succeeded",
+        missingReceiptFields: [
+          ...allCommonMissing,
+          "actual.provider",
+          "actual.model",
+          "actual.responseId",
+          "actual.evidenceSource",
+          "finishReason",
+          ...usagePaths,
+        ],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertProviderUsageReceiptBody({
+        ...unavailable,
+        status: "interrupted",
+        missingReceiptFields: [...allCommonMissing, "errorCategory", ...usagePaths],
+      }),
+    ).not.toThrow();
+  });
 });

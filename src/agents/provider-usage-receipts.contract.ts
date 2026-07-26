@@ -298,6 +298,7 @@ export function deriveProviderUsageReceiptCoverage(params: {
   turnId: string | null;
   requestId: string | null;
   sessionId: string | null;
+  trigger: ProviderUsageCallReceiptBody["trigger"];
   status: ProviderUsageCallStatus;
   actual: ProviderUsageCallReceiptBody["actual"];
   usage: ProviderUsageDimensions;
@@ -305,7 +306,10 @@ export function deriveProviderUsageReceiptCoverage(params: {
   errorCategory: string | null;
 }): { coverage: ProviderUsageCoverage; missing: string[] } {
   const missing: string[] = RECEIPT_IDENTITY_FIELDS.filter((field) => params[field] === null);
-  let evidenceFieldCount = 0;
+  if (params.trigger === "unknown") {
+    missing.push("trigger");
+  }
+  let evidenceFieldCount: number;
   if (params.status === "succeeded") {
     evidenceFieldCount = SUCCEEDED_RECEIPT_FIELDS.length;
     const succeededValues = {
@@ -320,7 +324,7 @@ export function deriveProviderUsageReceiptCoverage(params: {
         missing.push(field);
       }
     }
-  } else if (params.status === "failed") {
+  } else {
     evidenceFieldCount = 1;
     if (params.errorCategory === null) {
       missing.push("errorCategory");
@@ -331,7 +335,10 @@ export function deriveProviderUsageReceiptCoverage(params: {
   return {
     coverage: coverageFromMissing(
       missing,
-      RECEIPT_IDENTITY_FIELDS.length + evidenceFieldCount + PROVIDER_USAGE_DIMENSION_FIELDS.length,
+      RECEIPT_IDENTITY_FIELDS.length +
+        1 +
+        evidenceFieldCount +
+        PROVIDER_USAGE_DIMENSION_FIELDS.length,
     ),
     missing,
   };

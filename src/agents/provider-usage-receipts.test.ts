@@ -152,6 +152,7 @@ describe("provider usage call receipts", () => {
     expect(receipt.missingReceiptFields).toEqual([
       "requestId",
       "sessionId",
+      "trigger",
       "usage.cacheWrite",
       "usage.serviceTier",
     ]);
@@ -183,6 +184,7 @@ describe("provider usage call receipts", () => {
     expect(receipt.missingReceiptFields).toEqual([
       "requestId",
       "sessionId",
+      "trigger",
       "usage.inputTotal",
       "usage.inputNonCached",
       "usage.cacheRead",
