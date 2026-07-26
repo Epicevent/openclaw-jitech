@@ -83,6 +83,7 @@ type ModelCallObservationState = {
   providerUsageObservation?: ProviderUsageCallObservation;
   providerUsageTerminal?: "succeeded" | "failed";
   providerUsagePersisted: boolean;
+  terminalEventEmitted: boolean;
 };
 
 const MODEL_CALL_STREAM_RETURN_TIMEOUT_MS = 1000;
@@ -467,11 +468,12 @@ async function* observeModelCallIterator<T>(
   startedAt: number,
   state: ModelCallObservationState,
 ): AsyncIterable<T> {
-  let terminalEmitted = false;
+  let iteratorCompleted = false;
   try {
     for (;;) {
       const next = await iterator.next();
       if (next.done) {
+        iteratorCompleted = true;
         break;
       }
       observeResponseChunk(state, startedAt, next.value);
@@ -483,27 +485,82 @@ async function* observeModelCallIterator<T>(
       receiptStatus,
       receiptStatus === "failed" ? "provider_stream_error" : undefined,
     );
-    terminalEmitted = true;
-    if (receiptStatus === "failed") {
-      emitModelCallError(eventBase, startedAt, state, {
-        errorCategory: "unknown",
-      });
-    } else {
-      emitModelCallCompleted(eventBase, startedAt, state);
+    if (!state.terminalEventEmitted) {
+      state.terminalEventEmitted = true;
+      if (receiptStatus === "failed") {
+        emitModelCallError(eventBase, startedAt, state, {
+          errorCategory: "unknown",
+        });
+      } else {
+        emitModelCallCompleted(eventBase, startedAt, state);
+      }
     }
   } catch (err) {
     const errorFields = modelCallErrorFields(err);
     persistObservedProviderUsageCall(state, "failed", errorFields.errorCategory);
-    terminalEmitted = true;
-    emitModelCallError(eventBase, startedAt, state, errorFields);
+    if (!state.terminalEventEmitted) {
+      state.terminalEventEmitted = true;
+      emitModelCallError(eventBase, startedAt, state, errorFields);
+    }
     throw err;
   } finally {
-    if (!terminalEmitted) {
+    if (!iteratorCompleted) {
       await safeReturnIterator(iterator);
-      persistObservedProviderUsageCall(state, "interrupted");
-      emitModelCallCompleted(eventBase, startedAt, state);
+      if (!state.terminalEventEmitted) {
+        persistObservedProviderUsageCall(state, "interrupted");
+        state.terminalEventEmitted = true;
+        emitModelCallCompleted(eventBase, startedAt, state);
+      }
     }
   }
+}
+
+function observeModelCallFinalResult(
+  promise: Promise<unknown>,
+  eventBase: ModelCallEventBase,
+  startedAt: number,
+  state: ModelCallObservationState,
+): Promise<unknown> {
+  return promise.then(
+    (message) => {
+      observeResponseChunk(state, startedAt, message);
+      const stopReason =
+        message && typeof message === "object"
+          ? (message as { stopReason?: unknown }).stopReason
+          : undefined;
+      const status =
+        stopReason === "error" ? "failed" : stopReason === "aborted" ? "cancelled" : "succeeded";
+      persistObservedProviderUsageCall(
+        state,
+        status,
+        status === "failed"
+          ? "provider_result_error"
+          : status === "cancelled"
+            ? "provider_result_aborted"
+            : undefined,
+      );
+      if (!state.terminalEventEmitted) {
+        state.terminalEventEmitted = true;
+        if (status === "failed") {
+          emitModelCallError(eventBase, startedAt, state, {
+            errorCategory: "unknown",
+          });
+        } else {
+          emitModelCallCompleted(eventBase, startedAt, state);
+        }
+      }
+      return message;
+    },
+    (err) => {
+      const errorFields = modelCallErrorFields(err);
+      persistObservedProviderUsageCall(state, "failed", errorFields.errorCategory);
+      if (!state.terminalEventEmitted) {
+        state.terminalEventEmitted = true;
+        emitModelCallError(eventBase, startedAt, state, errorFields);
+      }
+      throw err;
+    },
+  );
 }
 
 function observeModelCallStream<T extends AsyncIterable<unknown>>(
@@ -515,6 +572,20 @@ function observeModelCallStream<T extends AsyncIterable<unknown>>(
 ): T {
   const observedIterator = () =>
     observeModelCallIterator(createIterator(), eventBase, startedAt, state)[Symbol.asyncIterator]();
+  const resultMethod = (stream as { result?: unknown }).result;
+  let observedResult: Promise<unknown> | undefined;
+  const observeResult =
+    typeof resultMethod === "function"
+      ? () => {
+          observedResult ??= observeModelCallFinalResult(
+            Promise.resolve(resultMethod.call(stream)),
+            eventBase,
+            startedAt,
+            state,
+          );
+          return observedResult;
+        }
+      : undefined;
   let hasNonConfigurableIterator = false;
   try {
     hasNonConfigurableIterator =
@@ -525,12 +596,16 @@ function observeModelCallStream<T extends AsyncIterable<unknown>>(
   if (hasNonConfigurableIterator) {
     return {
       [Symbol.asyncIterator]: observedIterator,
+      ...(observeResult ? { result: observeResult } : {}),
     } as T;
   }
   return new Proxy(stream, {
     get(target, property, receiver) {
       if (property === Symbol.asyncIterator) {
         return observedIterator;
+      }
+      if (property === "result" && observeResult) {
+        return observeResult;
       }
       const value = Reflect.get(target, property, receiver);
       return typeof value === "function" ? value.bind(target) : value;
@@ -573,6 +648,7 @@ export function wrapStreamFnWithDiagnosticModelCallEvents(
     const state: ModelCallObservationState = {
       responseStreamBytes: 0,
       providerUsagePersisted: false,
+      terminalEventEmitted: false,
       ...(ctx.providerUsageRun
         ? {
             providerUsageCall: ctx.providerUsageRun.beginCall({

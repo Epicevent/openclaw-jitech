@@ -131,8 +131,9 @@ function buildMinimaxImageProvider(providerId: string): ImageGenerationProvider 
         transport: "http",
       });
 
+      const model = req.model || DEFAULT_MODEL;
       const body: Record<string, unknown> = {
-        model: req.model || DEFAULT_MODEL,
+        model,
         prompt: req.prompt,
         response_format: "base64",
         n: req.count ?? 1,
@@ -158,6 +159,11 @@ function buildMinimaxImageProvider(providerId: string): ImageGenerationProvider 
         allowPrivateNetwork,
         ssrfPolicy: req.ssrfPolicy,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "image.minimax",
+          provider: providerId,
+          model,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "MiniMax image generation failed");

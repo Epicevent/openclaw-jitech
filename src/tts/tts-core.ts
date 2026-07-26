@@ -7,6 +7,7 @@ import {
   type ModelRef,
 } from "../agents/model-selection.js";
 import { resolveModelAsync } from "../agents/pi-embedded-runner/model.js";
+import { completeSimpleWithProviderUsageReceipts } from "../agents/provider-usage-stream.js";
 import { prepareModelForSimpleCompletion } from "../agents/simple-completion-transport.js";
 import type { OpenClawConfig } from "../config/types.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
@@ -29,7 +30,7 @@ type SummarizeTextDeps = {
 
 function resolveDefaultSummarizeTextDeps(): SummarizeTextDeps {
   return {
-    completeSimple,
+    completeSimple: completeSimpleWithProviderUsageReceipts,
     getApiKeyForModel,
     prepareModelForSimpleCompletion,
     requireApiKey,

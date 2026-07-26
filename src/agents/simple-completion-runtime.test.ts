@@ -14,8 +14,8 @@ const hoisted = vi.hoisted(() => ({
   completeMock: vi.fn(),
 }));
 
-vi.mock("@earendil-works/pi-ai", () => ({
-  completeSimple: hoisted.completeMock,
+vi.mock("./provider-usage-stream.js", () => ({
+  completeSimpleWithProviderUsageReceipts: hoisted.completeMock,
 }));
 
 vi.mock("./pi-embedded-runner/model.js", () => ({

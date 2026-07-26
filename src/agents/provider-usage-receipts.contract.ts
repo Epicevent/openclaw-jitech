@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   PROVIDER_USAGE_CALL_SCHEMA,
-  PROVIDER_USAGE_EXPORT_SCHEMA,
   type ProviderUsageCallReceipt,
   type ProviderUsageCallReceiptBody,
   type ProviderUsageCallStatus,
@@ -14,6 +13,7 @@ export const PROVIDER_USAGE_CALL_FIELDS = [
   "schema",
   "ledgerSeq",
   "receiptDigest",
+  "producerCoverageDigest",
   "callId",
   "runId",
   "turnId",
@@ -37,16 +37,6 @@ export const PROVIDER_USAGE_CALL_FIELDS = [
   "missingReceiptFields",
   "finishReason",
   "errorCategory",
-] as const;
-
-export const PROVIDER_USAGE_EXPORT_FIELDS = [
-  "schema",
-  "after",
-  "nextCursor",
-  "highWatermark",
-  "count",
-  "hasMore",
-  "receipts",
 ] as const;
 
 export const PROVIDER_USAGE_DIMENSION_FIELDS = [
@@ -373,6 +363,12 @@ export function assertProviderUsageReceiptBody(
   if (record.schema !== PROVIDER_USAGE_CALL_SCHEMA) {
     fail(`schema must be ${PROVIDER_USAGE_CALL_SCHEMA}`);
   }
+  if (
+    typeof record.producerCoverageDigest !== "string" ||
+    !/^sha256:[0-9a-f]{64}$/u.test(record.producerCoverageDigest)
+  ) {
+    fail("producerCoverageDigest must be a lowercase SHA-256 digest");
+  }
   assertNonEmptyString(record.callId, "callId", 128);
   if (!UUID_LIKE_RE.test(record.callId)) {
     fail("callId must be UUID-like");
@@ -462,56 +458,5 @@ export function assertProviderUsageCallReceipt(
   assertProviderUsageReceiptBody(body);
   if (digestProviderUsageReceiptBody(body) !== receiptDigest) {
     fail("receiptDigest does not match canonical receipt bytes");
-  }
-}
-
-export function assertProviderUsageExportSchema(value: unknown): void {
-  const record = asRecord(value, "export");
-  assertExactKeys(record, PROVIDER_USAGE_EXPORT_FIELDS, "export");
-  if (record.schema !== PROVIDER_USAGE_EXPORT_SCHEMA) {
-    fail(`export schema must be ${PROVIDER_USAGE_EXPORT_SCHEMA}`);
-  }
-  assertNonNegativeSafeInteger(record.after, "after");
-  assertNonNegativeSafeInteger(record.nextCursor, "nextCursor");
-  assertNonNegativeSafeInteger(record.highWatermark, "highWatermark");
-  assertNonNegativeSafeInteger(record.count, "count");
-  if (typeof record.hasMore !== "boolean") {
-    fail("hasMore must be a boolean");
-  }
-  if (record.highWatermark < record.after) {
-    fail("highWatermark must not be less than after");
-  }
-  if (!Array.isArray(record.receipts)) {
-    fail("receipts must be an array");
-  }
-  for (const receipt of record.receipts) {
-    assertProviderUsageCallReceipt(receipt);
-  }
-  if (record.count !== record.receipts.length) {
-    fail("count must equal receipts.length");
-  }
-  const ledgerSequences = record.receipts.map((receipt) => receipt.ledgerSeq);
-  for (let index = 0; index < ledgerSequences.length; index += 1) {
-    const current = ledgerSequences[index];
-    const previous = ledgerSequences[index - 1];
-    if (current === undefined || current <= record.after) {
-      fail("every receipt ledgerSeq must be greater than after");
-    }
-    if (previous !== undefined && current <= previous) {
-      fail("receipts must be ordered by ledgerSeq ascending");
-    }
-    if (current > record.highWatermark) {
-      fail("receipt ledgerSeq exceeds highWatermark");
-    }
-  }
-  const expectedNextCursor = ledgerSequences.at(-1) ?? record.after;
-  if (record.nextCursor !== expectedNextCursor) {
-    fail("nextCursor must equal the last receipt ledgerSeq or after");
-  }
-  if (record.hasMore !== record.highWatermark > record.nextCursor) {
-    fail("hasMore disagrees with the observed highWatermark boundary");
-  }
-  if (record.hasMore && ledgerSequences.length === 0) {
-    fail("export must make cursor progress while hasMore is true");
   }
 }

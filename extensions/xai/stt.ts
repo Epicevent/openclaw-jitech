@@ -63,6 +63,11 @@ export async function transcribeXaiAudio(
     allowPrivateNetwork,
     dispatcherPolicy,
     auditContext: "xai stt",
+    providerUsage: {
+      surfaceCode: "media.xai_stt",
+      provider: "xai",
+      model: model ?? XAI_DEFAULT_STT_MODEL,
+    },
   });
 
   try {

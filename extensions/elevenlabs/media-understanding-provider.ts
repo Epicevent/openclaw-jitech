@@ -58,6 +58,11 @@ export async function transcribeElevenLabsAudio(
     allowPrivateNetwork,
     dispatcherPolicy,
     auditContext: "elevenlabs speech-to-text",
+    providerUsage: {
+      surfaceCode: "media.elevenlabs_stt",
+      provider: "elevenlabs",
+      model,
+    },
   });
 
   try {

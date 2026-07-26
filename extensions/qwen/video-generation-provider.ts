@@ -94,6 +94,8 @@ export function buildQwenVideoGenerationProvider(): VideoGenerationProvider {
 
       const model = req.model?.trim() || DEFAULT_QWEN_VIDEO_MODEL;
       return await runDashscopeVideoGenerationTask({
+        provider: "qwen",
+        surfaceCode: "video.qwen_dashscope",
         providerLabel: "Qwen",
         model,
         req,

@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { InvalidArgumentError } from "commander";
+import { readProviderUsageCoverageManifest } from "../agents/provider-usage-coverage.js";
 import {
   exportProviderUsageReceipts,
   MAX_PROVIDER_USAGE_EXPORT_LIMIT,
@@ -44,5 +45,16 @@ export function registerUsageReceiptsCli(program: Command): void {
     .action((opts: { after: number; limit: number }) => {
       const result = exportProviderUsageReceipts({ after: opts.after, limit: opts.limit });
       process.stdout.write(`${JSON.stringify(result)}\n`);
+    });
+
+  usageReceipts
+    .command("coverage")
+    .description("Read the static provider usage observation coverage manifest")
+    .option("--json", "Emit the exact machine-readable coverage contract", false)
+    .action((opts: { json: boolean }) => {
+      if (!opts.json) {
+        throw new InvalidArgumentError("The coverage command requires --json.");
+      }
+      process.stdout.write(`${JSON.stringify(readProviderUsageCoverageManifest())}\n`);
     });
 }

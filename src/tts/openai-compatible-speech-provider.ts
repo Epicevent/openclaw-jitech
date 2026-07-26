@@ -346,6 +346,7 @@ export function createOpenAiCompatibleSpeechProvider<
       const baseUrl = resolveBaseUrl({ cfg: req.cfg, providerConfig: config });
       const responseFormat = config.responseFormat ?? options.defaultResponseFormat;
       const speed = overrides.speed ?? config.speed;
+      const model = normalizeModel(overrides.model ?? config.model, options.defaultModel);
       const { allowPrivateNetwork, headers, dispatcherPolicy } = resolveProviderHttpRequestConfig({
         baseUrl,
         defaultBaseUrl: options.defaultBaseUrl,
@@ -364,7 +365,7 @@ export function createOpenAiCompatibleSpeechProvider<
         url: `${baseUrl}/audio/speech`,
         headers,
         body: {
-          model: normalizeModel(overrides.model ?? config.model, options.defaultModel),
+          model,
           input: req.text,
           voice: overrides.voice ?? config.voice,
           response_format: responseFormat,
@@ -375,6 +376,11 @@ export function createOpenAiCompatibleSpeechProvider<
         fetchFn: fetch,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "speech.openai_compatible",
+          provider: options.id,
+          model,
+        },
       });
 
       try {

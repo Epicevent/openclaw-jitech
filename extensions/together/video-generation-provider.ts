@@ -234,6 +234,11 @@ export function buildTogetherVideoGenerationProvider(): VideoGenerationProvider 
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.together",
+          provider: "together",
+          model: normalizeOptionalString(req.model) ?? DEFAULT_TOGETHER_VIDEO_MODEL,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "Together video generation failed");

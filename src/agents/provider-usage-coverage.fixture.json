@@ -1,0 +1,188 @@
+{
+  "schema": "jitech-provider-usage-coverage/v1",
+  "productFamily": "openclaw",
+  "manifestDigest": "sha256:9bcd5bd6eda14eb9170891f05842d753b90b7ec4496a3acc2b2f856865dc5ffb",
+  "coverageStatus": "partial",
+  "surfaces": [
+    {
+      "surfaceCode": "codex.app_server.turn_usage",
+      "observationKind": "turn_aggregate",
+      "meterFamily": "tokens",
+      "modelEvidence": "requested_only",
+      "retryObservation": "unavailable",
+      "usageObservation": "provider_reported",
+      "status": "partial",
+      "gapCode": "codex_turn_aggregate_not_exported"
+    },
+    {
+      "surfaceCode": "generation.image.google_submit",
+      "observationKind": "per_call",
+      "meterFamily": "image",
+      "modelEvidence": "provider_response",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "generation.image.other_submit",
+      "observationKind": "per_call",
+      "meterFamily": "image",
+      "modelEvidence": "requested_only",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "request_observed",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "generation.music.google_submit",
+      "observationKind": "per_call",
+      "meterFamily": "audio",
+      "modelEvidence": "provider_response",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "generation.music.other_submit",
+      "observationKind": "per_call",
+      "meterFamily": "audio",
+      "modelEvidence": "requested_only",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "request_observed",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "generation.status_poll",
+      "observationKind": "request_only",
+      "meterFamily": "other",
+      "modelEvidence": "unavailable",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "unavailable",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "generation.video.other_submit",
+      "observationKind": "per_call",
+      "meterFamily": "other",
+      "modelEvidence": "requested_only",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "request_observed",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "llm.anthropic_transport",
+      "observationKind": "per_call",
+      "meterFamily": "tokens",
+      "modelEvidence": "provider_response",
+      "retryObservation": "physical_attempt",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "llm.direct_internal",
+      "observationKind": "per_call",
+      "meterFamily": "tokens",
+      "modelEvidence": "provider_response",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "llm.google_transport",
+      "observationKind": "per_call",
+      "meterFamily": "tokens",
+      "modelEvidence": "provider_response",
+      "retryObservation": "physical_attempt",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "llm.openai_transport",
+      "observationKind": "per_call",
+      "meterFamily": "tokens",
+      "modelEvidence": "provider_response",
+      "retryObservation": "physical_attempt",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "llm.pi_native_codex",
+      "observationKind": "per_call",
+      "meterFamily": "tokens",
+      "modelEvidence": "requested_only",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "provider_reported",
+      "status": "partial",
+      "gapCode": "pi_native_codex_internal_retry_unobserved"
+    },
+    {
+      "surfaceCode": "media.google_understanding",
+      "observationKind": "per_call",
+      "meterFamily": "other",
+      "modelEvidence": "provider_response",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "media.minimax_vlm",
+      "observationKind": "per_call",
+      "meterFamily": "image",
+      "modelEvidence": "unavailable",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "unavailable",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "media.other_understanding",
+      "observationKind": "per_call",
+      "meterFamily": "other",
+      "modelEvidence": "requested_only",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "request_observed",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "search.google_grounded",
+      "observationKind": "per_call",
+      "meterFamily": "search",
+      "modelEvidence": "provider_response",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "speech.google_tts_submit",
+      "observationKind": "per_call",
+      "meterFamily": "audio",
+      "modelEvidence": "provider_response",
+      "retryObservation": "physical_attempt",
+      "usageObservation": "provider_reported",
+      "status": "implemented",
+      "gapCode": null
+    },
+    {
+      "surfaceCode": "speech.other_submit",
+      "observationKind": "per_call",
+      "meterFamily": "characters",
+      "modelEvidence": "requested_only",
+      "retryObservation": "logical_call_only",
+      "usageObservation": "request_observed",
+      "status": "implemented",
+      "gapCode": null
+    }
+  ]
+}

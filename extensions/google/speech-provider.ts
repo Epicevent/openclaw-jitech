@@ -5,6 +5,12 @@ import {
   sanitizeConfiguredModelProviderRequest,
 } from "openclaw/plugin-sdk/provider-http";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/provider-onboard";
+import {
+  buildGoogleProviderUsageEvidence,
+  createProviderUsageRunContext,
+  withProviderUsageCallReceipt,
+  type ProviderUsageRunContext,
+} from "openclaw/plugin-sdk/provider-usage";
 import { normalizeResolvedSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import type {
   SpeechDirectiveTokenParseContext,
@@ -442,6 +448,8 @@ async function synthesizeGoogleTtsPcmOnce(params: {
   audioProfile?: string;
   speakerName?: string;
   timeoutMs: number;
+  usageRun: ProviderUsageRunContext;
+  retryPrevious: boolean;
 }): Promise<Buffer> {
   const { baseUrl, allowPrivateNetwork, headers, dispatcherPolicy } =
     resolveGoogleGenerativeAiHttpRequestConfig({
@@ -452,63 +460,73 @@ async function synthesizeGoogleTtsPcmOnce(params: {
       transport: "http",
     });
 
-  const { response: res, release } = await postJsonRequest({
-    url: `${baseUrl}/models/${params.model}:generateContent`,
-    headers,
-    body: {
-      contents: [
-        {
-          role: "user",
-          parts: [
+  return await withProviderUsageCallReceipt({
+    provider: "google",
+    model: params.model,
+    runContext: params.usageRun,
+    retryPrevious: params.retryPrevious,
+    run: async (recordEvidence) => {
+      const { response: res, release } = await postJsonRequest({
+        url: `${baseUrl}/models/${params.model}:generateContent`,
+        headers,
+        body: {
+          contents: [
             {
-              text: composeGoogleTtsText({
-                text: params.text,
-                audioProfile: params.audioProfile,
-                speakerName: params.speakerName,
-              }),
+              role: "user",
+              parts: [
+                {
+                  text: composeGoogleTtsText({
+                    text: params.text,
+                    audioProfile: params.audioProfile,
+                    speakerName: params.speakerName,
+                  }),
+                },
+              ],
             },
           ],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: params.voiceName,
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: params.voiceName,
+                },
+              },
             },
           },
         },
-      },
-    },
-    timeoutMs: params.timeoutMs,
-    fetchFn: fetch,
-    pinDns: false,
-    allowPrivateNetwork,
-    dispatcherPolicy,
-  });
+        timeoutMs: params.timeoutMs,
+        fetchFn: fetch,
+        pinDns: false,
+        allowPrivateNetwork,
+        dispatcherPolicy,
+      });
 
-  try {
-    if (!res.ok) {
       try {
-        await assertOkOrThrowProviderError(res, "Google TTS failed");
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (res.status >= 500 && res.status < 600) {
+        if (!res.ok) {
+          try {
+            await assertOkOrThrowProviderError(res, "Google TTS failed");
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (res.status >= 500 && res.status < 600) {
+              throw new GoogleTtsRetryableError(message);
+            }
+            throw err;
+          }
+        }
+        try {
+          const payload = (await res.json()) as GoogleGenerateSpeechResponse;
+          recordEvidence(buildGoogleProviderUsageEvidence(payload));
+          return extractGoogleSpeechPcm(payload);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
           throw new GoogleTtsRetryableError(message);
         }
-        throw err;
+      } finally {
+        await release();
       }
-    }
-    try {
-      return extractGoogleSpeechPcm((await res.json()) as GoogleGenerateSpeechResponse);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new GoogleTtsRetryableError(message);
-    }
-  } finally {
-    await release();
-  }
+    },
+  });
 }
 
 async function synthesizeGoogleTtsPcm(params: {
@@ -522,10 +540,23 @@ async function synthesizeGoogleTtsPcm(params: {
   speakerName?: string;
   timeoutMs: number;
 }): Promise<Buffer> {
+  const usageRun = createProviderUsageRunContext({
+    runId: null,
+    turnId: null,
+    requestId: null,
+    sessionId: null,
+    trigger: "unknown",
+    configuredProvider: "google",
+    configuredModel: params.model,
+  });
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await synthesizeGoogleTtsPcmOnce(params);
+      return await synthesizeGoogleTtsPcmOnce({
+        ...params,
+        usageRun,
+        retryPrevious: attempt > 0,
+      });
     } catch (err) {
       lastError = err;
       if (!isGoogleTtsRetryableError(err) || attempt > 0) {

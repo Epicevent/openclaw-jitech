@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const completeSimple = vi.hoisted(() => vi.fn());
+const streamSimple = vi.hoisted(() => vi.fn());
 const getRuntimeAuthForModel = vi.hoisted(() => vi.fn());
 const logVerbose = vi.hoisted(() => vi.fn());
 const requireApiKey = vi.hoisted(() => vi.fn());
@@ -13,7 +13,7 @@ vi.mock("@earendil-works/pi-ai", async () => {
     await vi.importActual<typeof import("@earendil-works/pi-ai")>("@earendil-works/pi-ai");
   return {
     ...original,
-    completeSimple,
+    streamSimple,
   };
 });
 
@@ -49,7 +49,7 @@ function requireFirstMockCall<T>(mock: { mock: { calls: T[][] } }, label: string
 
 describe("generateConversationLabel", () => {
   beforeEach(() => {
-    completeSimple.mockReset();
+    streamSimple.mockReset();
     getRuntimeAuthForModel.mockReset();
     logVerbose.mockReset();
     requireApiKey.mockReset();
@@ -59,15 +59,18 @@ describe("generateConversationLabel", () => {
 
     resolveDefaultModelForAgent.mockReturnValue({ provider: "openai", model: "gpt-test" });
     resolveModelAsync.mockResolvedValue({
-      model: { provider: "openai" },
+      model: { provider: "openai", id: "gpt-test" },
       authStorage: {},
       modelRegistry: {},
     });
     prepareModelForSimpleCompletion.mockImplementation(({ model }) => model);
     getRuntimeAuthForModel.mockResolvedValue({ apiKey: "resolved-key", mode: "api-key" });
     requireApiKey.mockReturnValue("resolved-key");
-    completeSimple.mockResolvedValue({
-      content: [{ type: "text", text: "Topic label" }],
+    streamSimple.mockReturnValue({
+      async *[Symbol.asyncIterator]() {},
+      result: vi.fn().mockResolvedValue({
+        content: [{ type: "text", text: "Topic label" }],
+      }),
     });
   });
 
@@ -95,12 +98,12 @@ describe("generateConversationLabel", () => {
       {},
     );
     expect(getRuntimeAuthForModel).toHaveBeenCalledWith({
-      model: { provider: "openai" },
+      model: { provider: "openai", id: "gpt-test" },
       cfg: {},
       workspaceDir: "/tmp/agents/billing/agent",
     });
     expect(prepareModelForSimpleCompletion).toHaveBeenCalledWith({
-      model: { provider: "openai" },
+      model: { provider: "openai", id: "gpt-test" },
       cfg: {},
     });
   });
@@ -115,9 +118,9 @@ describe("generateConversationLabel", () => {
       cfg: {},
     });
 
-    expect(completeSimple).toHaveBeenCalledOnce();
-    const call = requireFirstMockCall(completeSimple, "simple completion");
-    expect(call[0]).toStrictEqual({ provider: "openai" });
+    expect(streamSimple).toHaveBeenCalledOnce();
+    const call = requireFirstMockCall(streamSimple, "simple completion stream");
+    expect(call[0]).toStrictEqual({ provider: "openai", id: "gpt-test" });
     expect(call[1]).toStrictEqual({
       systemPrompt: "Generate a label",
       messages: [
@@ -137,7 +140,7 @@ describe("generateConversationLabel", () => {
   it("omits temperature for Codex Responses simple completions", async () => {
     resolveDefaultModelForAgent.mockReturnValue({ provider: "openai-codex", model: "gpt-5.5" });
     resolveModelAsync.mockResolvedValue({
-      model: { provider: "openai-codex", api: "openai-codex-responses" },
+      model: { provider: "openai-codex", id: "gpt-5.5", api: "openai-codex-responses" },
       authStorage: {},
       modelRegistry: {},
     });
@@ -148,8 +151,8 @@ describe("generateConversationLabel", () => {
       cfg: {},
     });
 
-    expect(completeSimple).toHaveBeenCalledOnce();
-    const options = requireFirstMockCall(completeSimple, "simple completion")[2];
+    expect(streamSimple).toHaveBeenCalledOnce();
+    const options = requireFirstMockCall(streamSimple, "simple completion stream")[2];
     if (!options) {
       throw new Error("expected simple completion options");
     }
@@ -157,10 +160,13 @@ describe("generateConversationLabel", () => {
   });
 
   it("logs completion errors instead of treating them as empty labels", async () => {
-    completeSimple.mockResolvedValue({
-      content: [],
-      stopReason: "error",
-      errorMessage: "Codex error: Instructions are required",
+    streamSimple.mockReturnValue({
+      async *[Symbol.asyncIterator]() {},
+      result: vi.fn().mockResolvedValue({
+        content: [],
+        stopReason: "error",
+        errorMessage: "Codex error: Instructions are required",
+      }),
     });
 
     const label = await generateConversationLabel({

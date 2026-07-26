@@ -92,6 +92,11 @@ export async function transcribeDeepgramAudio(
     fetchFn,
     allowPrivateNetwork,
     dispatcherPolicy,
+    providerUsage: {
+      surfaceCode: "media.deepgram_stt",
+      provider: "deepgram",
+      model,
+    },
   });
 
   try {

@@ -1,10 +1,4 @@
-import {
-  completeSimple,
-  getModel,
-  type Api,
-  type AssistantMessage,
-  type Model,
-} from "@earendil-works/pi-ai";
+import { getModel, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import { getRuntimeConfig } from "../config/config.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { resolveDefaultAgentDir } from "./agent-scope.js";
@@ -14,6 +8,7 @@ import { getApiKeyForModel, requireApiKey } from "./model-auth.js";
 import { normalizeProviderId, parseModelRef } from "./model-selection.js";
 import { ensureOpenClawModelsJson } from "./models-config.js";
 import { discoverAuthStorage, discoverModels } from "./pi-model-discovery.js";
+import { completeSimpleWithProviderUsageReceipts } from "./provider-usage-stream.js";
 import { buildAssistantMessageWithZeroUsage } from "./stream-message-shared.js";
 
 export const LIVE_CACHE_TEST_ENABLED =
@@ -76,8 +71,8 @@ export async function withLiveCacheHeartbeat<T>(
 
 export async function completeSimpleWithLiveTimeout<TApi extends Api>(
   model: Model<TApi>,
-  context: Parameters<typeof completeSimple<TApi>>[1],
-  options: Parameters<typeof completeSimple<TApi>>[2],
+  context: Parameters<typeof completeSimpleWithProviderUsageReceipts<TApi>>[1],
+  options: Parameters<typeof completeSimpleWithProviderUsageReceipts<TApi>>[2],
   progressContext: string,
   timeoutMs = Math.max(
     1_000,
@@ -97,7 +92,7 @@ export async function completeSimpleWithLiveTimeout<TApi extends Api>(
   try {
     return await withLiveCacheHeartbeat(
       Promise.race([
-        completeSimple(model, context, {
+        completeSimpleWithProviderUsageReceipts(model, context, {
           ...options,
           signal: controller.signal,
         }),

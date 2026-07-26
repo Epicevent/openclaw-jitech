@@ -414,6 +414,11 @@ export function buildRunwayVideoGenerationProvider(): VideoGenerationProvider {
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.runway",
+          provider: "runway",
+          model: normalizeOptionalString(req.model) ?? DEFAULT_RUNWAY_MODEL,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "Runway video generation failed");

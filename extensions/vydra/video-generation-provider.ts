@@ -103,6 +103,11 @@ export function buildVydraVideoGenerationProvider(): VideoGenerationProvider {
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.vydra",
+          provider: "vydra",
+          model,
+        },
       });
 
       try {

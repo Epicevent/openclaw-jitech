@@ -66,6 +66,11 @@ import {
   buildGuardedModelFetch,
   resolveModelRequestTimeoutMs,
 } from "./provider-transport-fetch.js";
+import {
+  resolveProviderUsageAttemptHooks,
+  wrapFetchWithProviderUsageAttempts,
+  type ProviderUsageAttemptHooks,
+} from "./provider-usage-transport.js";
 import { sanitizeResponsesImagePayload } from "./responses-image-payload-sanitizer.js";
 import { stripSystemPromptCacheBoundary } from "./system-prompt-cache-boundary.js";
 import { transformTransportMessages } from "./transport-message-transform.js";
@@ -1667,13 +1672,14 @@ function createOpenAIResponsesClient(
   apiKey: string,
   optionHeaders?: Record<string, string>,
   turnHeaders?: Record<string, string>,
+  usageAttemptHooks?: ProviderUsageAttemptHooks,
 ) {
   return new OpenAI({
     apiKey,
     baseURL: model.baseUrl,
     dangerouslyAllowBrowser: true,
     defaultHeaders: buildOpenAIClientHeaders(model, context, optionHeaders, turnHeaders),
-    fetch: buildGuardedModelFetch(model),
+    fetch: wrapFetchWithProviderUsageAttempts(buildGuardedModelFetch(model), usageAttemptHooks),
     ...buildOpenAISdkClientOptions(model),
   });
 }
@@ -1715,6 +1721,7 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
           apiKey,
           options?.headers,
           turnState?.headers,
+          resolveProviderUsageAttemptHooks(options),
         );
         let params = buildOpenAIResponsesParams(
           model,
@@ -2120,6 +2127,7 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
           apiKey,
           options?.headers,
           turnState?.headers,
+          resolveProviderUsageAttemptHooks(options),
         );
         const deploymentName = resolveAzureDeploymentName(model);
         let params = buildAzureOpenAIResponsesParams(
@@ -2218,6 +2226,7 @@ function createAzureOpenAIClient(
   apiKey: string,
   optionHeaders?: Record<string, string>,
   turnHeaders?: Record<string, string>,
+  usageAttemptHooks?: ProviderUsageAttemptHooks,
 ) {
   return new AzureOpenAI({
     apiKey,
@@ -2225,7 +2234,7 @@ function createAzureOpenAIClient(
     dangerouslyAllowBrowser: true,
     defaultHeaders: buildOpenAIClientHeaders(model, context, optionHeaders, turnHeaders),
     baseURL: normalizeAzureBaseUrl(model.baseUrl),
-    fetch: buildGuardedModelFetch(model),
+    fetch: wrapFetchWithProviderUsageAttempts(buildGuardedModelFetch(model), usageAttemptHooks),
     ...buildOpenAISdkClientOptions(model),
   });
 }
@@ -2256,6 +2265,7 @@ function createOpenAICompletionsClient(
   context: Context,
   apiKey: string,
   optionHeaders?: Record<string, string>,
+  usageAttemptHooks?: ProviderUsageAttemptHooks,
 ) {
   const clientConfig = buildOpenAICompletionsClientConfig(model, context, optionHeaders);
   return new OpenAI({
@@ -2264,7 +2274,7 @@ function createOpenAICompletionsClient(
     dangerouslyAllowBrowser: true,
     defaultHeaders: clientConfig.defaultHeaders,
     defaultQuery: clientConfig.defaultQuery,
-    fetch: buildGuardedModelFetch(model),
+    fetch: wrapFetchWithProviderUsageAttempts(buildGuardedModelFetch(model), usageAttemptHooks),
     ...buildOpenAISdkClientOptions(model),
   });
 }
@@ -2349,7 +2359,13 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
       };
       try {
         const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
-        const client = createOpenAICompletionsClient(model, context, apiKey, options?.headers);
+        const client = createOpenAICompletionsClient(
+          model,
+          context,
+          apiKey,
+          options?.headers,
+          resolveProviderUsageAttemptHooks(options),
+        );
         let params = buildOpenAICompletionsParams(
           model as OpenAIModeModel,
           context,

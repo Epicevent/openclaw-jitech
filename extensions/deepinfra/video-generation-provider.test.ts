@@ -96,6 +96,11 @@ describe("deepinfra video generation provider", () => {
       fetchFn: fetch,
       allowPrivateNetwork: false,
       dispatcherPolicy: undefined,
+      providerUsage: {
+        surfaceCode: "video.deepinfra",
+        provider: "deepinfra",
+        model: "Pixverse/Pixverse-T2V",
+      },
     });
     expect(result.videos).toEqual([
       {

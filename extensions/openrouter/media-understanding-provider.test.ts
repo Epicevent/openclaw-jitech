@@ -116,6 +116,11 @@ describe("openrouter media understanding provider", () => {
       allowPrivateNetwork: false,
       dispatcherPolicy: undefined,
       auditContext: "openrouter stt",
+      providerUsage: {
+        surfaceCode: "media.openrouter_stt",
+        provider: "openrouter",
+        model: "openai/whisper-large-v3-turbo",
+      },
     });
     const headers = firstPostJsonRequest().headers;
     if (!headers) {

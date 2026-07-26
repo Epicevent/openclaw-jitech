@@ -4,6 +4,10 @@ import {
   createProviderHttpError,
   readProviderJsonObjectResponse,
 } from "../agents/provider-http-errors.js";
+import {
+  createProviderUsageHttpAttemptRunner,
+  type ProviderUsageHttpDescriptor,
+} from "../agents/provider-usage-http.js";
 export {
   assertOkOrThrowHttpError,
   readProviderJsonObjectResponse,
@@ -467,6 +471,7 @@ export async function postTranscriptionRequest(
     ssrfPolicy?: SsrFPolicy;
     dispatcherPolicy?: PinnedDispatcherPolicy;
     auditContext?: string;
+    providerUsage?: ProviderUsageHttpDescriptor;
     /**
      * Override the guarded-fetch mode. Defaults to an auto-upgrade to
      * `TRUSTED_ENV_PROXY` when `HTTP_PROXY`/`HTTPS_PROXY` is configured in the
@@ -487,6 +492,7 @@ export async function postTranscriptionRequest(
     guardedOptions: resolveGuardedPostRequestOptions(params),
     retryStage: params.retryStage,
     retry: params.retry,
+    providerUsage: params.providerUsage,
   });
 }
 
@@ -498,15 +504,21 @@ async function postGuardedRequest(params: {
   guardedOptions?: GuardedPostRequestOptions;
   retryStage?: ProviderOperationRetryStage;
   retry?: TransientProviderRetryConfig;
+  providerUsage?: ProviderUsageHttpDescriptor;
 }) {
+  const usageAttemptRunner = params.providerUsage
+    ? createProviderUsageHttpAttemptRunner(params.providerUsage)
+    : undefined;
   const operation = async () => {
-    const result = await fetchWithTimeoutGuarded(
-      params.url,
-      params.init,
-      params.timeoutMs,
-      params.fetchFn,
-      params.guardedOptions,
-    );
+    const request = async () =>
+      await fetchWithTimeoutGuarded(
+        params.url,
+        params.init,
+        params.timeoutMs,
+        params.fetchFn,
+        params.guardedOptions,
+      );
+    const result = usageAttemptRunner ? await usageAttemptRunner.run(request) : await request();
     if (params.retryStage && isTransientProviderHttpStatus(result.response.status)) {
       try {
         throw await createProviderHttpError(result.response, "provider POST request failed", {
@@ -545,6 +557,7 @@ export async function postJsonRequest(
     ssrfPolicy?: SsrFPolicy;
     dispatcherPolicy?: PinnedDispatcherPolicy;
     auditContext?: string;
+    providerUsage?: ProviderUsageHttpDescriptor;
     /**
      * Override the guarded-fetch mode. Defaults to an auto-upgrade to
      * `TRUSTED_ENV_PROXY` when `HTTP_PROXY`/`HTTPS_PROXY` is configured in the
@@ -565,6 +578,7 @@ export async function postJsonRequest(
     guardedOptions: resolveGuardedPostRequestOptions(params),
     retryStage: params.retryStage,
     retry: params.retry,
+    providerUsage: params.providerUsage,
   });
 }
 
@@ -580,6 +594,7 @@ export async function postMultipartRequest(
     ssrfPolicy?: SsrFPolicy;
     dispatcherPolicy?: PinnedDispatcherPolicy;
     auditContext?: string;
+    providerUsage?: ProviderUsageHttpDescriptor;
     /**
      * Override the guarded-fetch mode. Defaults to an auto-upgrade to
      * `TRUSTED_ENV_PROXY` when `HTTP_PROXY`/`HTTPS_PROXY` is configured in the
@@ -600,6 +615,7 @@ export async function postMultipartRequest(
     guardedOptions: resolveGuardedPostRequestOptions(params),
     retryStage: params.retryStage,
     retry: params.retry,
+    providerUsage: params.providerUsage,
   });
 }
 

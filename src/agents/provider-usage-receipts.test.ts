@@ -3,9 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  buildGoogleProviderUsageEvidence,
   createProviderUsageRunContext,
   observeProviderUsageCallChunk,
   persistProviderUsageCall,
+  withProviderUsageCallReceipt,
 } from "./provider-usage-receipts.js";
 import {
   closeProviderUsageReceiptStore,
@@ -89,6 +91,75 @@ describe("provider usage call receipts", () => {
     expect(primaryCycleRetry.retryOf).toBe(retry.callId);
     expect(primaryCycleRetry.fallbackParent).toBeNull();
     expect(primaryCycleRetry.fallbackIndex).toBe(0);
+  });
+
+  it("links explicit direct-provider retries and preserves provider evidence", async () => {
+    const run = createProviderUsageRunContext({
+      runId: null,
+      turnId: null,
+      requestId: null,
+      sessionId: null,
+      trigger: "unknown",
+      configuredProvider: "google",
+      configuredModel: "gemini-3.1-flash-tts-preview",
+    });
+
+    await expect(
+      withProviderUsageCallReceipt({
+        provider: "google",
+        model: "gemini-3.1-flash-tts-preview",
+        runContext: run,
+        run: async () => {
+          throw new Error("first attempt failed");
+        },
+      }),
+    ).rejects.toThrow("first attempt failed");
+    await withProviderUsageCallReceipt({
+      provider: "google",
+      model: "gemini-3.1-flash-tts-preview",
+      runContext: run,
+      retryPrevious: true,
+      run: async (recordEvidence) => {
+        recordEvidence(
+          buildGoogleProviderUsageEvidence({
+            responseId: "response-2",
+            modelVersion: "gemini-3.1-flash-tts-001",
+            usageMetadata: {
+              promptTokenCount: 3,
+              candidatesTokenCount: 7,
+              totalTokenCount: 10,
+            },
+            candidates: [{ finishReason: "STOP" }],
+          }),
+        );
+        return "ok";
+      },
+    });
+
+    const receipts = exportProviderUsageReceipts().receipts;
+    expect(receipts).toHaveLength(2);
+    expect(receipts[0]).toMatchObject({
+      status: "failed",
+      attempt: 1,
+      retryOf: null,
+      usageCoverage: "unavailable",
+    });
+    expect(receipts[1]).toMatchObject({
+      status: "succeeded",
+      attempt: 2,
+      retryOf: receipts[0]?.callId,
+      actual: {
+        provider: "google",
+        model: "gemini-3.1-flash-tts-001",
+        responseId: "response-2",
+        evidenceSource: "gemini_response.modelVersion",
+      },
+      usage: {
+        inputTotal: 3,
+        outputCandidates: 7,
+        providerReportedTotal: 10,
+      },
+    });
   });
 
   it("preserves Google raw usage and provider model evidence without content", () => {

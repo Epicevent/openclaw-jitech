@@ -4,6 +4,10 @@ import {
   readProviderJsonObjectResponse,
 } from "openclaw/plugin-sdk/provider-http";
 import {
+  buildGoogleProviderUsageEvidence,
+  withProviderUsageCallReceipt,
+} from "openclaw/plugin-sdk/provider-usage";
+import {
   buildSearchCacheKey,
   buildUnsupportedSearchFilterResponse,
   DEFAULT_SEARCH_COUNT,
@@ -182,99 +186,109 @@ async function runGeminiSearch(params: {
   const googleSearch =
     params.timeRangeFilter === undefined ? {} : { timeRangeFilter: params.timeRangeFilter };
 
-  return withTrustedWebSearchEndpoint(
-    {
-      url: endpoint,
-      timeoutSeconds: params.timeoutSeconds,
-      signal: params.signal,
-      init: {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": params.apiKey,
-        },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: params.query }] }],
-          tools: [{ google_search: googleSearch }],
-        }),
-      },
-    },
-    async (res) => {
-      if (!res.ok) {
-        const error = await createProviderHttpError(res, "Gemini API error");
-        throw new Error(error.message.replace(/key=[^&\s]+/giu, "key=***"));
-      }
-
-      const data = (await readProviderJsonObjectResponse(
-        res,
-        "Gemini API error",
-      )) as GeminiGroundingResponse;
-
-      if (data.error) {
-        const rawMessage = data.error.message || data.error.status || "unknown";
-        throw new Error(
-          formatProviderHttpErrorMessage({
-            label: "Gemini API error",
-            status: data.error.code ?? 0,
-            detail: rawMessage.replace(/key=[^&\s]+/giu, "key=***"),
-          }),
-        );
-      }
-
-      if (!Array.isArray(data.candidates)) {
-        throwMalformedGeminiResponse();
-      }
-      const candidate = data.candidates[0];
-      if (!isRecord(candidate) || !isRecord(candidate.content)) {
-        throwMalformedGeminiResponse();
-      }
-      const parts = candidate.content.parts;
-      if (!Array.isArray(parts)) {
-        throwMalformedGeminiResponse();
-      }
-      const content = parts
-        .map((part) => (isRecord(part) && typeof part.text === "string" ? part.text : undefined))
-        .filter((text): text is string => Boolean(text))
-        .join("\n");
-      if (!content) {
-        throwMalformedGeminiResponse();
-      }
-      const groundingMetadata = candidate.groundingMetadata;
-      const groundingChunks =
-        groundingMetadata === undefined
-          ? []
-          : isRecord(groundingMetadata) && Array.isArray(groundingMetadata.groundingChunks)
-            ? groundingMetadata.groundingChunks
-            : undefined;
-      if (!groundingChunks) {
-        throwMalformedGeminiResponse();
-      }
-      const rawCitations = groundingChunks.flatMap((chunk) => {
-        if (!isRecord(chunk) || !isRecord(chunk.web) || typeof chunk.web.uri !== "string") {
-          return [];
-        }
-        return [
-          {
-            url: chunk.web.uri,
-            title: typeof chunk.web.title === "string" ? chunk.web.title : undefined,
+  return await withProviderUsageCallReceipt({
+    provider: "google",
+    model: params.model,
+    run: async (recordEvidence) =>
+      await withTrustedWebSearchEndpoint(
+        {
+          url: endpoint,
+          timeoutSeconds: params.timeoutSeconds,
+          signal: params.signal,
+          init: {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": params.apiKey,
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: params.query }] }],
+              tools: [{ google_search: googleSearch }],
+            }),
           },
-        ];
-      });
+        },
+        async (res) => {
+          if (!res.ok) {
+            const error = await createProviderHttpError(res, "Gemini API error");
+            throw new Error(error.message.replace(/key=[^&\s]+/giu, "key=***"));
+          }
 
-      const citations: Array<{ url: string; title?: string }> = [];
-      for (let index = 0; index < rawCitations.length; index += 10) {
-        const batch = rawCitations.slice(index, index + 10);
-        const resolved = await Promise.all(
-          batch.map(async (citation) =>
-            Object.assign({}, citation, { url: await resolveCitationRedirectUrl(citation.url) }),
-          ),
-        );
-        citations.push(...resolved);
-      }
+          const data = (await readProviderJsonObjectResponse(
+            res,
+            "Gemini API error",
+          )) as GeminiGroundingResponse;
+          recordEvidence(buildGoogleProviderUsageEvidence(data));
 
-      return { content, citations };
-    },
-  );
+          if (data.error) {
+            const rawMessage = data.error.message || data.error.status || "unknown";
+            throw new Error(
+              formatProviderHttpErrorMessage({
+                label: "Gemini API error",
+                status: data.error.code ?? 0,
+                detail: rawMessage.replace(/key=[^&\s]+/giu, "key=***"),
+              }),
+            );
+          }
+
+          if (!Array.isArray(data.candidates)) {
+            throwMalformedGeminiResponse();
+          }
+          const candidate = data.candidates[0];
+          if (!isRecord(candidate) || !isRecord(candidate.content)) {
+            throwMalformedGeminiResponse();
+          }
+          const parts = candidate.content.parts;
+          if (!Array.isArray(parts)) {
+            throwMalformedGeminiResponse();
+          }
+          const content = parts
+            .map((part) =>
+              isRecord(part) && typeof part.text === "string" ? part.text : undefined,
+            )
+            .filter((text): text is string => Boolean(text))
+            .join("\n");
+          if (!content) {
+            throwMalformedGeminiResponse();
+          }
+          const groundingMetadata = candidate.groundingMetadata;
+          const groundingChunks =
+            groundingMetadata === undefined
+              ? []
+              : isRecord(groundingMetadata) && Array.isArray(groundingMetadata.groundingChunks)
+                ? groundingMetadata.groundingChunks
+                : undefined;
+          if (!groundingChunks) {
+            throwMalformedGeminiResponse();
+          }
+          const rawCitations = groundingChunks.flatMap((chunk) => {
+            if (!isRecord(chunk) || !isRecord(chunk.web) || typeof chunk.web.uri !== "string") {
+              return [];
+            }
+            return [
+              {
+                url: chunk.web.uri,
+                title: typeof chunk.web.title === "string" ? chunk.web.title : undefined,
+              },
+            ];
+          });
+
+          const citations: Array<{ url: string; title?: string }> = [];
+          for (let index = 0; index < rawCitations.length; index += 10) {
+            const batch = rawCitations.slice(index, index + 10);
+            const resolved = await Promise.all(
+              batch.map(async (citation) =>
+                Object.assign({}, citation, {
+                  url: await resolveCitationRedirectUrl(citation.url),
+                }),
+              ),
+            );
+            citations.push(...resolved);
+          }
+
+          return { content, citations };
+        },
+      ),
+  });
 }
 
 export async function executeGeminiSearch(

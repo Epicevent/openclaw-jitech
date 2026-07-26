@@ -340,8 +340,11 @@ describe("compactEmbeddedPiSessionDirect hooks", () => {
     expect(streamArg.currentStreamFn).toBeTypeOf("function");
     expect(streamArg.sessionId).toBe("session-1");
     expect(streamArg.authProfileId).toBe("openai:profile-1");
+    const preparedAgent = expectRecordFields(mockCallArg(applyExtraParamsToAgentMock), {});
+    expect(preparedAgent.streamFn).toBeTypeOf("function");
+    expect(preparedAgent.streamFn).not.toBe(resolvedStreamFn);
     expect(applyExtraParamsToAgentMock).toHaveBeenCalledWith(
-      expectRecordFields(mockCallArg(applyExtraParamsToAgentMock), { streamFn: resolvedStreamFn }),
+      preparedAgent,
       undefined,
       "openai",
       "gpt-5.4",

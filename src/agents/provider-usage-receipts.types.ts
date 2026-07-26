@@ -1,3 +1,5 @@
+import type { ProviderUsageCoverageManifest } from "./provider-usage-coverage.js";
+
 export const PROVIDER_USAGE_CALL_SCHEMA = "jitech-provider-usage-call/v1" as const;
 export const PROVIDER_USAGE_EXPORT_SCHEMA = "jitech-provider-usage-export/v1" as const;
 
@@ -46,6 +48,7 @@ export type ProviderUsageDimensions = {
 
 export type ProviderUsageCallReceiptBody = {
   schema: typeof PROVIDER_USAGE_CALL_SCHEMA;
+  producerCoverageDigest: string;
   callId: string;
   runId: string | null;
   turnId: string | null;
@@ -84,4 +87,5 @@ export type ProviderUsageReceiptExport = {
   count: number;
   hasMore: boolean;
   receipts: ProviderUsageCallReceipt[];
+  coverageManifests: ProviderUsageCoverageManifest[];
 };

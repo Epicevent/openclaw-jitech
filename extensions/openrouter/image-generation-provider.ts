@@ -325,6 +325,11 @@ export function buildOpenRouterImageGenerationProvider(): ImageGenerationProvide
         allowPrivateNetwork,
         ssrfPolicy: req.ssrfPolicy,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "image.openrouter",
+          provider: "openrouter",
+          model,
+        },
       });
 
       try {

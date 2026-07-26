@@ -86,6 +86,11 @@ export async function xaiTTS(params: {
     timeoutMs,
     fetchFn: fetch,
     auditContext: "xai tts",
+    providerUsage: {
+      surfaceCode: "speech.xai",
+      provider: "xai",
+      model: "xai-tts",
+    },
   });
   try {
     await assertOkOrThrowProviderError(response, "xAI TTS API error");

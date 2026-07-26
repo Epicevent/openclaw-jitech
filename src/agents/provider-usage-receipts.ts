@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
+  readProviderUsageCoverageManifest,
+  type ProviderUsageCoverageManifest,
+} from "./provider-usage-coverage.js";
+import {
   deriveProviderUsageCoverage,
   deriveProviderUsageReceiptCoverage,
 } from "./provider-usage-receipts.contract.js";
@@ -14,8 +18,8 @@ import {
   type ProviderUsageModelRef,
 } from "./provider-usage-receipts.types.js";
 
-type ProviderUsageRunIdentity = {
-  runId: string;
+export type ProviderUsageRunIdentity = {
+  runId?: string | null;
   turnId?: string | null;
   requestId?: string | number | null;
   sessionId?: string | null;
@@ -26,6 +30,7 @@ type ProviderUsageRunIdentity = {
 
 export type ProviderUsageCallHandle = {
   callId: string;
+  producerCoverageManifest: ProviderUsageCoverageManifest;
   runId: string | null;
   turnId: string | null;
   requestId: string | null;
@@ -57,6 +62,8 @@ export type ProviderUsageCallObservation = {
   providerFinishReason: string | null;
   usage: ProviderUsageDimensions;
 };
+
+export type ProviderUsageEvidenceRecorder = (evidence: unknown) => void;
 
 type ProviderOutputRecord = Record<string, unknown>;
 
@@ -106,6 +113,49 @@ function emptyUsage(): ProviderUsageDimensions {
     providerReportedTotal: null,
     serviceTier: null,
     rawProviderUsage: null,
+  };
+}
+
+export function buildGoogleProviderUsageEvidence(payload: unknown): Record<string, unknown> {
+  const record = asRecord(payload);
+  const usage = asRecord(record?.usageMetadata);
+  const candidates = Array.isArray(record?.candidates) ? record.candidates : [];
+  const firstCandidate = asRecord(candidates[0]);
+  return {
+    responseId: normalizeString(record?.responseId),
+    responseModel: normalizeString(record?.modelVersion),
+    responseModelEvidenceSource: normalizeString(record?.modelVersion)
+      ? "gemini_response.modelVersion"
+      : null,
+    providerFinishReason: normalizeString(firstCandidate?.finishReason),
+    providerUsage: usage
+      ? {
+          source: "gemini_response.usageMetadata",
+          promptTokenCount: usage.promptTokenCount,
+          cachedContentTokenCount: usage.cachedContentTokenCount,
+          candidatesTokenCount: usage.candidatesTokenCount,
+          thoughtsTokenCount: usage.thoughtsTokenCount,
+          toolUsePromptTokenCount: usage.toolUsePromptTokenCount,
+          totalTokenCount: usage.totalTokenCount,
+          serviceTier: usage.serviceTier,
+          trafficType: usage.trafficType,
+          promptTokensDetails: usage.promptTokensDetails,
+          cacheTokensDetails: usage.cacheTokensDetails,
+          candidatesTokensDetails: usage.candidatesTokensDetails,
+          toolUsePromptTokensDetails: usage.toolUsePromptTokensDetails,
+        }
+      : null,
+  };
+}
+
+export function buildAnthropicProviderUsageEvidence(payload: unknown): Record<string, unknown> {
+  const record = asRecord(payload);
+  return {
+    responseId: normalizeString(record?.id),
+    responseModel: normalizeString(record?.model),
+    responseModelEvidenceSource: normalizeString(record?.model) ? "anthropic_response.model" : null,
+    providerFinishReason: normalizeString(record?.stop_reason),
+    usage: asRecord(record?.usage),
   };
 }
 
@@ -295,10 +345,12 @@ export function createProviderUsageRunContext(
       }
       const lastSameRouteCallId = lastCallByRoute.get(requestedRouteKey) ?? null;
       const callId = randomUUID();
+      const producerCoverageManifest = readProviderUsageCoverageManifest();
       const handle: ProviderUsageCallHandle = {
         callId,
+        producerCoverageManifest,
         runId: normalizeString(identity.runId),
-        turnId: normalizeString(identity.turnId ?? identity.runId),
+        turnId: normalizeString(identity.turnId === undefined ? identity.runId : identity.turnId),
         requestId: normalizeId(identity.requestId),
         sessionId: normalizeString(identity.sessionId),
         trigger: identity.trigger ?? "unknown",
@@ -321,6 +373,56 @@ export function createProviderUsageRunContext(
       return handle;
     },
   };
+}
+
+export async function withProviderUsageCallReceipt<T>(params: {
+  provider: string;
+  model: string;
+  identity?: Omit<ProviderUsageRunIdentity, "configuredProvider" | "configuredModel">;
+  runContext?: ProviderUsageRunContext;
+  retryPrevious?: boolean;
+  embeddedAttempt?: number;
+  run: (recordEvidence: ProviderUsageEvidenceRecorder) => Promise<T>;
+}): Promise<T> {
+  const run =
+    params.runContext ??
+    createProviderUsageRunContext({
+      runId: params.identity?.runId ?? null,
+      turnId: params.identity?.turnId ?? null,
+      requestId: params.identity?.requestId ?? null,
+      sessionId: params.identity?.sessionId ?? null,
+      trigger: params.identity?.trigger ?? "unknown",
+      configuredProvider: params.provider,
+      configuredModel: params.model,
+    });
+  const handle = run.beginCall({
+    requestedProvider: params.provider,
+    requestedModel: params.model,
+    embeddedAttempt: params.embeddedAttempt ?? 1,
+    retryPrevious: params.retryPrevious,
+  });
+  let observation: ProviderUsageCallObservation | undefined;
+  const recordEvidence = (evidence: unknown) => {
+    observation = observeProviderUsageCallChunk(observation, evidence);
+  };
+  try {
+    const value = await params.run(recordEvidence);
+    persistProviderUsageCall({
+      handle,
+      status: "succeeded",
+      observation,
+    });
+    return value;
+  } catch (error) {
+    persistProviderUsageCall({
+      handle,
+      status: "failed",
+      observation,
+      errorCategory:
+        error instanceof Error && error.name.trim() ? error.name.trim() : "provider_call_error",
+    });
+    throw error;
+  }
 }
 
 export function persistProviderUsageCall(params: {
@@ -361,6 +463,7 @@ export function persistProviderUsageCall(params: {
   });
   const body: ProviderUsageCallReceiptBody = {
     schema: PROVIDER_USAGE_CALL_SCHEMA,
+    producerCoverageDigest: params.handle.producerCoverageManifest.manifestDigest,
     callId: params.handle.callId,
     runId: params.handle.runId,
     turnId: params.handle.turnId,
@@ -385,5 +488,5 @@ export function persistProviderUsageCall(params: {
     finishReason,
     errorCategory,
   };
-  return appendProviderUsageReceipt(body);
+  return appendProviderUsageReceipt(body, params.handle.producerCoverageManifest);
 }

@@ -31,6 +31,7 @@ import { getActiveEmbeddedRunSnapshot } from "./pi-embedded-runner/runs.js";
 import { streamWithPayloadPatch } from "./pi-embedded-runner/stream-payload-utils.js";
 import { discoverAuthStorage, discoverModels } from "./pi-model-discovery.js";
 import { registerProviderStreamForModel } from "./provider-stream.js";
+import { wrapStreamFnWithProviderUsageReceipts } from "./provider-usage-stream.js";
 import { stripToolResultDetails } from "./session-transcript-repair.js";
 import { sanitizeImageBlocks } from "./tool-images.js";
 
@@ -474,8 +475,14 @@ export async function runBtwSideQuestion(
     await blockEmitChain;
   };
 
+  const receiptStreamFn = wrapStreamFnWithProviderUsageReceipts(providerStreamFn ?? streamSimple, {
+    identity: {
+      sessionId,
+      trigger: "user",
+    },
+  });
   const stream = await streamWithPayloadPatch(
-    providerStreamFn ?? streamSimple,
+    receiptStreamFn,
     runtimeModel,
     {
       systemPrompt: buildBtwSystemPrompt(),

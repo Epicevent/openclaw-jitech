@@ -143,6 +143,11 @@ export async function transcribeOpenRouterAudio(
     allowPrivateNetwork,
     dispatcherPolicy,
     auditContext: "openrouter stt",
+    providerUsage: {
+      surfaceCode: "media.openrouter_stt",
+      provider: "openrouter",
+      model,
+    },
   });
 
   try {

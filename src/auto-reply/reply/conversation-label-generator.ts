@@ -1,7 +1,8 @@
-import { completeSimple, type TextContent } from "@earendil-works/pi-ai";
+import { type TextContent } from "@earendil-works/pi-ai";
 import { requireApiKey } from "../../agents/model-auth.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { resolveModelAsync } from "../../agents/pi-embedded-runner/model.js";
+import { completeSimpleWithProviderUsageReceipts } from "../../agents/provider-usage-stream.js";
 import { prepareModelForSimpleCompletion } from "../../agents/simple-completion-transport.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
@@ -69,7 +70,7 @@ export async function generateConversationLabel(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const result = await completeSimple(
+    const result = await completeSimpleWithProviderUsageReceipts(
       completionModel,
       {
         systemPrompt: prompt,

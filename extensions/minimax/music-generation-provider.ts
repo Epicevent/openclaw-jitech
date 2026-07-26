@@ -207,6 +207,11 @@ function buildMinimaxMusicProvider(providerId: string): MusicGenerationProvider 
         pinDns: false,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "music.minimax",
+          provider: providerId,
+          model,
+        },
       });
 
       try {

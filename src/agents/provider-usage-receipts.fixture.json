@@ -1,7 +1,8 @@
 {
   "schema": "jitech-provider-usage-call/v1",
   "ledgerSeq": 1,
-  "receiptDigest": "sha256:19bccd536dda5f312e1aa5e676a86fdfaf31adf5d8f084cb16773a7953a8cff3",
+  "receiptDigest": "sha256:958cfc1eb407c615832f0396e307c282867640777ba2176909595e8a11a74841",
+  "producerCoverageDigest": "sha256:9bcd5bd6eda14eb9170891f05842d753b90b7ec4496a3acc2b2f856865dc5ffb",
   "callId": "00000000-0000-4000-8000-000000000101",
   "runId": "run-fixture-1",
   "turnId": "turn-fixture-1",

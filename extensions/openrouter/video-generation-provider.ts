@@ -456,6 +456,11 @@ export function buildOpenRouterVideoGenerationProvider(): VideoGenerationProvide
         allowPrivateNetwork,
         dispatcherPolicy,
         auditContext: "openrouter-video-submit",
+        providerUsage: {
+          surfaceCode: "video.openrouter",
+          provider: "openrouter",
+          model,
+        },
       });
 
       try {

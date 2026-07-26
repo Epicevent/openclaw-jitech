@@ -177,6 +177,11 @@ export function buildFalMusicGenerationProvider(): MusicGenerationProvider {
         fetchFn: fetch,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "music.fal",
+          provider: "fal",
+          model,
+        },
       });
 
       try {

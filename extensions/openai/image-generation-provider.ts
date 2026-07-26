@@ -676,6 +676,11 @@ async function generateOpenAICodexImage(params: {
       allowPrivateNetwork,
       ssrfPolicy: req.ssrfPolicy,
       dispatcherPolicy,
+      providerUsage: {
+        surfaceCode: "image.openai_codex",
+        provider: "openai-codex",
+        model: DEFAULT_OPENAI_CODEX_IMAGE_RESPONSES_MODEL,
+      },
     });
     const { response, release } = requestResult;
     try {
@@ -838,6 +843,11 @@ export function buildOpenAIImageGenerationProvider(): ImageGenerationProvider {
               allowPrivateNetwork,
               ssrfPolicy: req.ssrfPolicy,
               dispatcherPolicy,
+              providerUsage: {
+                surfaceCode: "image.openai",
+                provider: "openai",
+                model,
+              },
             });
           })()
         : await (() => {
@@ -861,6 +871,11 @@ export function buildOpenAIImageGenerationProvider(): ImageGenerationProvider {
               allowPrivateNetwork,
               ssrfPolicy: req.ssrfPolicy,
               dispatcherPolicy,
+              providerUsage: {
+                surfaceCode: "image.openai",
+                provider: "openai",
+                model,
+              },
             });
           })();
       const { response, release } = requestResult;

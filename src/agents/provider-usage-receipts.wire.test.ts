@@ -3,14 +3,17 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readProviderUsageCoverageManifest } from "./provider-usage-coverage.js";
 import {
   assertProviderUsageExportSchema,
+  PROVIDER_USAGE_EXPORT_FIELDS,
+} from "./provider-usage-receipts-export.contract.js";
+import {
   assertProviderUsageCallReceipt,
   assertProviderUsageReceiptBody,
   digestProviderUsageReceiptBody,
   PROVIDER_USAGE_CALL_FIELDS,
   PROVIDER_USAGE_DIMENSION_FIELDS,
-  PROVIDER_USAGE_EXPORT_FIELDS,
 } from "./provider-usage-receipts.contract.js";
 import {
   appendProviderUsageReceipt,
@@ -74,12 +77,16 @@ describe("provider usage v1 wire contract", () => {
 
   it("exports the exact shared envelope with a fixed read boundary", () => {
     const fixture = loadFixture();
-    const first = appendProviderUsageReceipt(receiptBody(fixture));
-    appendProviderUsageReceipt({
-      ...receiptBody(fixture),
-      callId: "244dbbc8-cc51-44c0-8ba7-25b9d30da3fa",
-      completedAt: "2026-07-26T01:00:02.000Z",
-    });
+    const manifest = readProviderUsageCoverageManifest();
+    const first = appendProviderUsageReceipt(receiptBody(fixture), manifest);
+    appendProviderUsageReceipt(
+      {
+        ...receiptBody(fixture),
+        callId: "244dbbc8-cc51-44c0-8ba7-25b9d30da3fa",
+        completedAt: "2026-07-26T01:00:02.000Z",
+      },
+      manifest,
+    );
 
     const exported = exportProviderUsageReceipts({ after: 0, limit: 1 });
 
@@ -94,6 +101,32 @@ describe("provider usage v1 wire contract", () => {
     });
     expect(exported.receipts.every((receipt) => receipt.ledgerSeq > exported.after)).toBe(true);
     expect(Object.keys(exported.receipts[0] ?? {})).toEqual(PROVIDER_USAGE_CALL_FIELDS);
+    expect(exported.coverageManifests).toEqual([manifest]);
+  });
+
+  it("requires the exact historical manifest set referenced by a page", () => {
+    const manifest = readProviderUsageCoverageManifest();
+    const fixture = loadFixture();
+    appendProviderUsageReceipt(receiptBody(fixture), manifest);
+    const exported = exportProviderUsageReceipts({ after: 0, limit: 1 });
+
+    expect(() => assertProviderUsageExportSchema({ ...exported, coverageManifests: [] })).toThrow(
+      /must exactly match/u,
+    );
+    expect(() =>
+      assertProviderUsageExportSchema({
+        ...exported,
+        coverageManifests: [manifest, manifest],
+      }),
+    ).toThrow(/unique and ordered/u);
+    expect(() =>
+      assertProviderUsageExportSchema({
+        ...exported,
+        receipts: [],
+        count: 0,
+        nextCursor: 0,
+      }),
+    ).toThrow(/must exactly match/u);
   });
 
   it("rejects non-accounting raw provider fields", () => {

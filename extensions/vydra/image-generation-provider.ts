@@ -69,6 +69,11 @@ export function buildVydraImageGenerationProvider(): ImageGenerationProvider {
         allowPrivateNetwork,
         ssrfPolicy: req.ssrfPolicy,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "image.vydra",
+          provider: "vydra",
+          model,
+        },
       });
 
       try {

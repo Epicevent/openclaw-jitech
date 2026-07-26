@@ -21,6 +21,17 @@ vi.mock("@earendil-works/pi-ai", async () => {
   return {
     ...actual,
     complete: completeMock,
+    stream: (model: unknown, context: unknown, options: unknown) => {
+      const result = Promise.resolve(completeMock(model, context, options));
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { type: "done", message: await result };
+        },
+        async result() {
+          return await result;
+        },
+      };
+    },
   };
 });
 
@@ -112,6 +123,7 @@ async function stubPdfToolInfra(
   params?: {
     mockLoad?: boolean;
     provider?: string;
+    modelId?: string;
     input?: string[];
     api?: string;
     modelFound?: boolean;
@@ -125,17 +137,26 @@ async function stubPdfToolInfra(
   vi.spyOn(modelDiscovery, "discoverAuthStorage").mockReturnValue({
     setRuntimeApiKey: vi.fn(),
   } as never);
+  const provider = params?.provider ?? "anthropic";
+  const modelId =
+    params?.modelId ??
+    (provider === "openai-codex"
+      ? "gpt-5.4"
+      : provider === "openai"
+        ? "gpt-5.4-mini"
+        : "claude-opus-4-6");
   const find =
     params?.modelFound === false
       ? () => null
       : () =>
           ({
-            provider: params?.provider ?? "anthropic",
+            id: modelId,
+            provider,
             api:
               params?.api ??
-              (params?.provider === "openai-codex"
+              (provider === "openai-codex"
                 ? "openai-codex-responses"
-                : params?.provider === "openai"
+                : provider === "openai"
                   ? "openai-responses"
                   : "anthropic-messages"),
             maxTokens: 8192,

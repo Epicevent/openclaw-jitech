@@ -11,6 +11,10 @@ import {
   sanitizeConfiguredModelProviderRequest,
 } from "openclaw/plugin-sdk/provider-http";
 import {
+  buildGoogleProviderUsageEvidence,
+  withProviderUsageCallReceipt,
+} from "openclaw/plugin-sdk/provider-usage";
+import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -201,72 +205,79 @@ export function buildGoogleImageGenerationProvider(): ImageGenerationProvider {
         ...(req.resolution ? { imageSize: req.resolution } : {}),
       };
 
-      const { response: res, release } = await postJsonRequest({
-        url: `${baseUrl}/models/${model}:generateContent`,
-        headers,
-        body: {
-          contents: [
-            {
-              role: "user",
-              parts: [...inputParts, { text: req.prompt }],
+      return await withProviderUsageCallReceipt({
+        provider: "google",
+        model,
+        run: async (recordEvidence) => {
+          const { response: res, release } = await postJsonRequest({
+            url: `${baseUrl}/models/${model}:generateContent`,
+            headers,
+            body: {
+              contents: [
+                {
+                  role: "user",
+                  parts: [...inputParts, { text: req.prompt }],
+                },
+              ],
+              generationConfig: {
+                responseModalities: ["TEXT", "IMAGE"],
+                ...(Object.keys(resolvedImageConfig).length > 0
+                  ? { imageConfig: resolvedImageConfig }
+                  : {}),
+              },
             },
-          ],
-          generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"],
-            ...(Object.keys(resolvedImageConfig).length > 0
-              ? { imageConfig: resolvedImageConfig }
-              : {}),
-          },
-        },
-        timeoutMs: req.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS,
-        fetchFn: fetch,
-        pinDns: false,
-        allowPrivateNetwork,
-        ssrfPolicy: req.ssrfPolicy,
-        dispatcherPolicy,
-      });
-
-      try {
-        await assertOkOrThrowHttpError(res, "Google image generation failed");
-
-        const payload = await res.json();
-        let imageIndex = 0;
-        const images: GeneratedImageAsset[] = [];
-        for (const part of googleResponseParts(payload)) {
-          const inline = googleInlineDataFromPart(part);
-          if (!inline) {
-            continue;
-          }
-          const data = normalizeOptionalString(inline.data);
-          if (!data) {
-            throw new Error(GOOGLE_IMAGE_MALFORMED_RESPONSE);
-          }
-          const image = generatedImageAssetFromBase64({
-            base64: data,
-            index: imageIndex,
-            mimeType:
-              normalizeOptionalString(inline.mimeType) ??
-              normalizeOptionalString(inline.mime_type) ??
-              DEFAULT_OUTPUT_MIME,
+            timeoutMs: req.timeoutMs ?? DEFAULT_IMAGE_TIMEOUT_MS,
+            fetchFn: fetch,
+            pinDns: false,
+            allowPrivateNetwork,
+            ssrfPolicy: req.ssrfPolicy,
+            dispatcherPolicy,
           });
-          if (!image) {
-            throw new Error(GOOGLE_IMAGE_MALFORMED_RESPONSE);
+
+          try {
+            await assertOkOrThrowHttpError(res, "Google image generation failed");
+
+            const payload = await res.json();
+            recordEvidence(buildGoogleProviderUsageEvidence(payload));
+            let imageIndex = 0;
+            const images: GeneratedImageAsset[] = [];
+            for (const part of googleResponseParts(payload)) {
+              const inline = googleInlineDataFromPart(part);
+              if (!inline) {
+                continue;
+              }
+              const data = normalizeOptionalString(inline.data);
+              if (!data) {
+                throw new Error(GOOGLE_IMAGE_MALFORMED_RESPONSE);
+              }
+              const image = generatedImageAssetFromBase64({
+                base64: data,
+                index: imageIndex,
+                mimeType:
+                  normalizeOptionalString(inline.mimeType) ??
+                  normalizeOptionalString(inline.mime_type) ??
+                  DEFAULT_OUTPUT_MIME,
+              });
+              if (!image) {
+                throw new Error(GOOGLE_IMAGE_MALFORMED_RESPONSE);
+              }
+              imageIndex += 1;
+              images.push(image);
+            }
+
+            if (images.length === 0) {
+              throw new Error("Google image generation response missing image data");
+            }
+
+            return {
+              images,
+              model,
+            };
+          } finally {
+            await release();
           }
-          imageIndex += 1;
-          images.push(image);
-        }
-
-        if (images.length === 0) {
-          throw new Error("Google image generation response missing image data");
-        }
-
-        return {
-          images,
-          model,
-        };
-      } finally {
-        await release();
-      }
+        },
+      });
     },
   };
 }

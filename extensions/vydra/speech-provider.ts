@@ -112,8 +112,9 @@ export function buildVydraSpeechProvider(): SpeechProviderPlugin {
           transport: "http",
         });
 
+      const model = overrides.model ?? config.model;
       const { response, release } = await postJsonRequest({
-        url: `${baseUrl}/models/${overrides.model ?? config.model}`,
+        url: `${baseUrl}/models/${model}`,
         headers,
         body: {
           text: req.text,
@@ -123,6 +124,11 @@ export function buildVydraSpeechProvider(): SpeechProviderPlugin {
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "speech.vydra",
+          provider: "vydra",
+          model,
+        },
       });
 
       try {

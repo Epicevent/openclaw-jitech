@@ -5,7 +5,6 @@ import type {
   Model,
   ProviderStreamOptions,
 } from "@earendil-works/pi-ai";
-import { complete } from "@earendil-works/pi-ai";
 import { isMinimaxVlmModel, minimaxUnderstandImage } from "../agents/minimax-vlm.js";
 import {
   getApiKeyForModel,
@@ -17,6 +16,10 @@ import { ensureOpenClawModelsJson } from "../agents/models-config.js";
 import { resolveModelAsync } from "../agents/pi-embedded-runner/model.js";
 import { resolveProviderRequestCapabilities } from "../agents/provider-attribution.js";
 import { registerProviderStreamForModel } from "../agents/provider-stream.js";
+import {
+  completeWithProviderUsageReceipts,
+  wrapStreamFnWithProviderUsageReceipts,
+} from "../agents/provider-usage-stream.js";
 import {
   coerceImageAssistantText,
   hasImageReasoningOnlyResponse,
@@ -532,8 +535,15 @@ async function describeImagesWithModelInternal(
       ...(payloadHandler ? { onPayload: payloadHandler } : {}),
     };
     const task: Promise<AssistantMessage> = providerStreamFn
-      ? (async () => await (await providerStreamFn(model, context, streamOptions)).result())()
-      : complete(model, context, streamOptions);
+      ? (async () =>
+          await (
+            await wrapStreamFnWithProviderUsageReceipts(providerStreamFn)(
+              model,
+              context,
+              streamOptions,
+            )
+          ).result())()
+      : completeWithProviderUsageReceipts(model, context, streamOptions);
     return await withImageDescriptionTimeout({
       controller,
       timeoutMs,

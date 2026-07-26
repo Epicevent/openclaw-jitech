@@ -656,6 +656,82 @@ describe("wrapStreamFnWithDiagnosticModelCallEvents", () => {
     }
   });
 
+  it("persists a compaction-style result-only provider call", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-provider-result-only-"));
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const providerUsageRun = createProviderUsageRunContext({
+      runId: "run-result-only",
+      configuredProvider: "google",
+      configuredModel: "gemini-3.6-flash",
+    });
+    try {
+      const message = {
+        stopReason: "stop",
+        responseId: "response-result-only",
+        responseModel: "gemini-3.6-flash-001",
+        responseModelEvidenceSource: "gemini_response.modelVersion",
+        providerFinishReason: "stop",
+        providerUsage: {
+          source: "gemini_response.usageMetadata",
+          promptTokenCount: 13,
+          cachedContentTokenCount: 3,
+          candidatesTokenCount: 4,
+          thoughtsTokenCount: 2,
+          toolUsePromptTokenCount: 0,
+          totalTokenCount: 19,
+        },
+      };
+      const originalStream = {
+        async *[Symbol.asyncIterator]() {
+          yield { type: "done", message };
+        },
+        async result() {
+          return message;
+        },
+      };
+      const wrapped = wrapStreamFnWithDiagnosticModelCallEvents(
+        (() => originalStream) as unknown as StreamFn,
+        {
+          runId: "run-result-only",
+          provider: "google",
+          model: "gemini-3.6-flash",
+          trace: createDiagnosticTraceContext(),
+          nextCallId: () => "diagnostic-result-only",
+          providerUsageRun,
+          embeddedAttempt: 1,
+        },
+      );
+
+      const events = await collectModelCallEvents(async () => {
+        const result = wrapped({} as never, {} as never, {} as never) as unknown as {
+          result(): Promise<unknown>;
+        };
+        await result.result();
+      });
+
+      expect(events.map((event) => event.type)).toEqual([
+        "model.call.started",
+        "model.call.completed",
+      ]);
+      expect(exportProviderUsageReceipts().receipts).toMatchObject([
+        {
+          status: "succeeded",
+          actual: { model: "gemini-3.6-flash-001" },
+          usage: {
+            inputTotal: 13,
+            inputNonCached: 10,
+            cacheRead: 3,
+            outputCandidates: 4,
+          },
+        },
+      ]);
+    } finally {
+      closeProviderUsageReceiptStore();
+      vi.unstubAllEnvs();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("persists a thrown provider stream failure with unavailable usage", async () => {
     const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-provider-failure-"));
     vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);

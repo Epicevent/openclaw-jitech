@@ -339,6 +339,11 @@ export function buildBytePlusVideoGenerationProvider(): VideoGenerationProvider 
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.byteplus",
+          provider: "byteplus",
+          model: resolvedModel,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "BytePlus video generation failed");
