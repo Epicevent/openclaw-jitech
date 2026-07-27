@@ -66,6 +66,8 @@ export function buildAlibabaVideoGenerationProvider(): VideoGenerationProvider {
 
       const model = req.model?.trim() || DEFAULT_ALIBABA_VIDEO_MODEL;
       return await runDashscopeVideoGenerationTask({
+        provider: "alibaba",
+        surfaceCode: "video.alibaba_dashscope",
         providerLabel: "Alibaba Wan",
         model,
         req,

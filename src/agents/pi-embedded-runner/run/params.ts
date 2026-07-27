@@ -21,6 +21,7 @@ import type {
   ToolProgressDetailMode,
   ToolResultFormat,
 } from "../../pi-embedded-subscribe.shared-types.js";
+import type { ProviderUsageRunContext } from "../../provider-usage-receipts.js";
 import type { SkillSnapshot } from "../../skills.js";
 import type { SilentReplyPromptMode } from "../../system-prompt.types.js";
 import type { PromptMode } from "../../system-prompt.types.js";
@@ -164,6 +165,8 @@ export type RunEmbeddedPiAgentParams = {
    */
   runTimeoutOverrideMs?: number;
   runId: string;
+  /** Shared call identity state across tool loops, retries, and model fallback candidates. */
+  providerUsageRun?: ProviderUsageRunContext;
   abortSignal?: AbortSignal;
   onExecutionStarted?: () => void;
   onExecutionPhase?: (info: {

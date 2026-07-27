@@ -171,6 +171,15 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
   { commandPath: ["gateway", "uninstall"], exact: true, policy: { networkProxy: "bypass" } },
   { commandPath: ["gateway", "usage-cost"], exact: true, policy: { networkProxy: "bypass" } },
   {
+    commandPath: ["usage-receipts"],
+    policy: {
+      bypassConfigGuard: true,
+      loadPlugins: "never",
+      ensureCliPath: false,
+      networkProxy: "bypass",
+    },
+  },
+  {
     commandPath: ["sessions"],
     exact: true,
     policy: { ensureCliPath: false, networkProxy: "bypass" },

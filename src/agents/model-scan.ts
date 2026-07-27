@@ -1,6 +1,5 @@
 import {
   type Context,
-  complete,
   getEnvApiKey,
   getModel,
   type Model,
@@ -15,6 +14,7 @@ import {
   normalizeOptionalString,
 } from "../shared/string-coerce.js";
 import { normalizeProviderId } from "./provider-id.js";
+import { completeWithProviderUsageReceipts } from "./provider-usage-stream.js";
 
 const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -272,7 +272,7 @@ async function probeTool(
   const startedAt = Date.now();
   try {
     const message = await withTimeout(timeoutMs, (signal) =>
-      complete(model, context, {
+      completeWithProviderUsageReceipts(model, context, {
         apiKey,
         maxTokens: 256,
         temperature: 0,
@@ -320,7 +320,7 @@ async function probeImage(
   const startedAt = Date.now();
   try {
     await withTimeout(timeoutMs, (signal) =>
-      complete(model, context, {
+      completeWithProviderUsageReceipts(model, context, {
         apiKey,
         maxTokens: 16,
         temperature: 0,

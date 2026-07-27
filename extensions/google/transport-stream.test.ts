@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
+import { withProviderUsageAttemptHooks } from "openclaw/plugin-sdk/provider-transport-runtime";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { buildGuardedModelFetchMock, guardedFetchMock } = vi.hoisted(() => ({
@@ -300,7 +301,11 @@ describe("google transport stream", () => {
             cachedContentTokenCount: 2,
             candidatesTokenCount: 5,
             thoughtsTokenCount: 3,
-            totalTokenCount: 18,
+            toolUsePromptTokenCount: 4,
+            totalTokenCount: 22,
+            serviceTier: "STANDARD",
+            trafficType: "ON_DEMAND",
+            promptTokensDetails: [{ modality: "TEXT", tokenCount: 10 }],
           },
         },
       ]),
@@ -394,7 +399,30 @@ describe("google transport stream", () => {
     expect(result.usage.input).toBe(8);
     expect(result.usage.output).toBe(8);
     expect(result.usage.cacheRead).toBe(2);
-    expect(result.usage.totalTokens).toBe(18);
+    expect(result.usage.totalTokens).toBe(22);
+    expect(
+      (result as unknown as { responseModelEvidenceSource?: string }).responseModelEvidenceSource,
+    ).toBe("gemini_response.modelVersion");
+    expect((result as unknown as { providerFinishReason?: string }).providerFinishReason).toBe(
+      "STOP",
+    );
+    expect(
+      (result as unknown as { providerUsage?: Record<string, unknown> }).providerUsage,
+    ).toEqual({
+      source: "gemini_response.usageMetadata",
+      promptTokenCount: 10,
+      cachedContentTokenCount: 2,
+      candidatesTokenCount: 5,
+      thoughtsTokenCount: 3,
+      toolUsePromptTokenCount: 4,
+      totalTokenCount: 22,
+      serviceTier: "STANDARD",
+      trafficType: "ON_DEMAND",
+      promptTokensDetails: [{ modality: "TEXT", tokenCount: 10 }],
+      cacheTokensDetails: null,
+      candidatesTokensDetails: null,
+      toolUsePromptTokensDetails: null,
+    });
     expect(result.content).toHaveLength(3);
     expect(result.content[0]).toEqual({
       type: "thinking",
@@ -577,6 +605,8 @@ describe("google transport stream", () => {
       name: "Gemini 3.1 Pro Preview",
     });
     const streamFn = createGoogleGenerativeAiTransportStreamFn();
+    const onAttemptStarted = vi.fn();
+    const onAttemptFailed = vi.fn();
     const stream = await Promise.resolve(
       streamFn(
         model,
@@ -593,7 +623,10 @@ describe("google transport stream", () => {
             },
           ],
         } as never,
-        { reasoning: "high" } as never,
+        withProviderUsageAttemptHooks(
+          { reasoning: "high" },
+          { onAttemptStarted, onAttemptFailed },
+        ) as never,
       ),
     );
     const result = await stream.result();
@@ -616,6 +649,9 @@ describe("google transport stream", () => {
       thinkingLevel: "LOW",
     });
     expect(retryBody.tools).toEqual(firstBody.tools);
+    expect(onAttemptStarted.mock.calls).toEqual([[{ retry: false }], [{ retry: true }]]);
+    expect(onAttemptFailed).toHaveBeenCalledOnce();
+    expect(onAttemptFailed).toHaveBeenCalledWith({ errorCategory: "first_response_timeout" });
   });
 
   it("keeps streaming after the first Gemini 3 chunk arrives before the retry deadline", async () => {

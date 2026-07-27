@@ -60,6 +60,11 @@ export async function transcribeOpenAiCompatibleAudio(
     pinDns: false,
     allowPrivateNetwork,
     dispatcherPolicy,
+    providerUsage: {
+      surfaceCode: "media.openai_compatible_stt",
+      provider: params.provider?.trim() || "openai-compatible",
+      model,
+    },
   });
 
   try {

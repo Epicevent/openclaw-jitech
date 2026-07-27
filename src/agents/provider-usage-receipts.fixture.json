@@ -1,0 +1,59 @@
+{
+  "schema": "jitech-provider-usage-call/v1",
+  "ledgerSeq": 1,
+  "receiptDigest": "sha256:800fb530fdb22e452b3e35bb5b9190e9a7215dacf3fa0f1bcaef12a360b6d659",
+  "producerCoverageDigest": "sha256:e203990c54e568dde76d5d83ee86b80b30395412f3402272b613c1054bc9a5f9",
+  "callId": "00000000-0000-4000-8000-000000000101",
+  "runId": "run-fixture-1",
+  "turnId": "turn-fixture-1",
+  "requestId": "request-fixture-1",
+  "sessionId": "session-fixture-1",
+  "trigger": "user",
+  "attempt": 1,
+  "retryOf": null,
+  "fallbackParent": null,
+  "fallbackIndex": 0,
+  "startedAt": "1970-01-01T00:00:01.000Z",
+  "completedAt": "1970-01-01T00:00:02.000Z",
+  "status": "succeeded",
+  "configured": {
+    "provider": "google",
+    "model": "gemini-3.6-flash"
+  },
+  "requested": {
+    "provider": "google",
+    "model": "gemini-3.6-flash"
+  },
+  "actual": {
+    "provider": "google",
+    "model": "gemini-3.6-flash-001",
+    "responseId": "response-fixture-1",
+    "evidenceSource": "gemini_response.modelVersion"
+  },
+  "usage": {
+    "inputTotal": 100,
+    "inputNonCached": 80,
+    "cacheRead": 20,
+    "cacheWrite": null,
+    "outputCandidates": 10,
+    "reasoningThinking": 4,
+    "toolUsePrompt": 5,
+    "providerReportedTotal": 119,
+    "serviceTier": "STANDARD",
+    "rawProviderUsage": {
+      "promptTokenCount": 100,
+      "cachedContentTokenCount": 20,
+      "candidatesTokenCount": 10,
+      "thoughtsTokenCount": 4,
+      "toolUsePromptTokenCount": 5,
+      "totalTokenCount": 119,
+      "serviceTier": "STANDARD"
+    }
+  },
+  "usageCoverage": "partial",
+  "missingUsageFields": ["cacheWrite"],
+  "receiptCoverage": "partial",
+  "missingReceiptFields": ["usage.cacheWrite"],
+  "finishReason": "STOP",
+  "errorCategory": null
+}

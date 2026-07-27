@@ -5,6 +5,10 @@ import type {
   MusicGenerationRequest,
 } from "openclaw/plugin-sdk/music-generation";
 import { resolveApiKeyForProvider } from "openclaw/plugin-sdk/provider-auth-runtime";
+import {
+  buildGoogleProviderUsageEvidence,
+  withProviderUsageCallReceipt,
+} from "openclaw/plugin-sdk/provider-usage";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveGoogleGenerativeAiApiOrigin } from "./api.js";
 import {
@@ -137,40 +141,47 @@ export function buildGoogleMusicGenerationProvider(): MusicGenerationProvider {
           timeout: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         },
       });
-      const response = (await client.models.generateContent({
+      return await withProviderUsageCallReceipt({
+        provider: "google",
         model,
-        contents: [
-          { text: buildMusicPrompt(req) },
-          ...(req.inputImages ?? []).map((image) => ({
-            inlineData: {
-              mimeType: normalizeOptionalString(image.mimeType) || "image/png",
-              data: image.buffer?.toString("base64") ?? "",
+        run: async (recordEvidence) => {
+          const response = (await client.models.generateContent({
+            model,
+            contents: [
+              { text: buildMusicPrompt(req) },
+              ...(req.inputImages ?? []).map((image) => ({
+                inlineData: {
+                  mimeType: normalizeOptionalString(image.mimeType) || "image/png",
+                  data: image.buffer?.toString("base64") ?? "",
+                },
+              })),
+            ],
+            config: {
+              responseModalities: ["AUDIO", "TEXT"],
             },
-          })),
-        ],
-        config: {
-          responseModalities: ["AUDIO", "TEXT"],
-        },
-      })) as GoogleGenerateMusicResponse;
+          })) as GoogleGenerateMusicResponse;
+          recordEvidence(buildGoogleProviderUsageEvidence(response));
 
-      const { tracks, lyrics } = extractTracks({
-        payload: response,
-        model,
-      });
-      if (tracks.length === 0) {
-        throw new Error("Google music generation response missing audio data");
-      }
-      return {
-        tracks,
-        ...(lyrics.length > 0 ? { lyrics } : {}),
-        model,
-        metadata: {
-          inputImageCount: req.inputImages?.length ?? 0,
-          instrumental: req.instrumental === true,
-          ...(normalizeOptionalString(req.lyrics) ? { requestedLyrics: true } : {}),
-          ...(req.format ? { requestedFormat: req.format } : {}),
+          const { tracks, lyrics } = extractTracks({
+            payload: response,
+            model,
+          });
+          if (tracks.length === 0) {
+            throw new Error("Google music generation response missing audio data");
+          }
+          return {
+            tracks,
+            ...(lyrics.length > 0 ? { lyrics } : {}),
+            model,
+            metadata: {
+              inputImageCount: req.inputImages?.length ?? 0,
+              instrumental: req.instrumental === true,
+              ...(normalizeOptionalString(req.lyrics) ? { requestedLyrics: true } : {}),
+              ...(req.format ? { requestedFormat: req.format } : {}),
+            },
+          };
         },
-      };
+      });
     },
   };
 }

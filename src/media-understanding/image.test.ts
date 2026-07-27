@@ -82,6 +82,17 @@ vi.mock("@earendil-works/pi-ai", async () => {
   return {
     ...actual,
     complete: completeMock,
+    stream: (model: unknown, context: unknown, options: unknown) => {
+      const result = Promise.resolve(completeMock(model, context, options));
+      return {
+        async *[Symbol.asyncIterator]() {
+          yield { type: "done", message: await result };
+        },
+        async result() {
+          return await result;
+        },
+      };
+    },
   };
 });
 

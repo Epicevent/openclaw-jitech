@@ -233,6 +233,11 @@ export function createOpenAiCompatibleImageGenerationProvider(
               allowPrivateNetwork: resolvedAllowPrivateNetwork,
               ssrfPolicy: req.ssrfPolicy,
               dispatcherPolicy,
+              providerUsage: {
+                surfaceCode: "image.openai_compatible",
+                provider: options.id,
+                model,
+              },
             })
           : postJsonRequest({
               url: appendImagesPath(baseUrl, mode),
@@ -247,6 +252,11 @@ export function createOpenAiCompatibleImageGenerationProvider(
               allowPrivateNetwork: resolvedAllowPrivateNetwork,
               ssrfPolicy: req.ssrfPolicy,
               dispatcherPolicy,
+              providerUsage: {
+                surfaceCode: "image.openai_compatible",
+                provider: options.id,
+                model,
+              },
             });
 
       const { response, release } = await request;

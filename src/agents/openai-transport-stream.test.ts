@@ -19,6 +19,7 @@ import {
   prepareTransportAwareSimpleModel,
   resolveTransportAwareSimpleApi,
 } from "./provider-transport-stream.js";
+import { withProviderUsageAttemptHooks } from "./provider-usage-transport.js";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "./system-prompt-cache-boundary.js";
 
 type OpenAICompletionsOutput = Parameters<typeof testing.processOpenAICompletionsStream>[1];
@@ -988,7 +989,7 @@ describe("openai transport stream", () => {
         maxTokens: 256,
         requestTimeoutMs: 900_000,
       } satisfies Model<"openai-completions"> & { requestTimeoutMs: number };
-      const stream = createOpenAICompletionsTransportStreamFn()(
+      const stream = await createOpenAICompletionsTransportStreamFn()(
         baseModel,
         {
           systemPrompt: "system",
@@ -1019,6 +1020,98 @@ describe("openai transport stream", () => {
       expect(captured.roles).toEqual(["system", "user"]);
       expect(doneReason).toBe("stop");
       expect(text).toBe("OK");
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("exposes every physical OpenAI SDK retry through provider usage attempt hooks", async () => {
+    let requestCount = 0;
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        requestCount += 1;
+        if (requestCount === 1) {
+          res.writeHead(429, {
+            "content-type": "application/json",
+            "retry-after-ms": "0",
+          });
+          res.end(JSON.stringify({ error: { message: "retry once" } }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache",
+          connection: "keep-alive",
+        });
+        const created = Math.floor(Date.now() / 1000);
+        res.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-retry-proof",
+            object: "chat.completion.chunk",
+            created,
+            model: "retry-model-001",
+            choices: [{ index: 0, delta: { role: "assistant", content: "OK" } }],
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-retry-proof",
+            object: "chat.completion.chunk",
+            created,
+            model: "retry-model-001",
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+      });
+    });
+
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        throw new Error("Missing loopback server address");
+      }
+      const onAttemptStarted = vi.fn();
+      const onAttemptFailed = vi.fn();
+      const model = {
+        id: "retry-model",
+        name: "Retry model",
+        api: "openai-completions",
+        provider: "openai-compatible",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        reasoning: false,
+        input: ["text"],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 4096,
+        maxTokens: 256,
+      } satisfies Model<"openai-completions">;
+      const stream = await createOpenAICompletionsTransportStreamFn()(
+        model,
+        {
+          systemPrompt: "system",
+          messages: [{ role: "user", content: "Reply OK", timestamp: Date.now() }],
+          tools: [],
+        } as never,
+        withProviderUsageAttemptHooks(
+          { apiKey: "test-key" },
+          { onAttemptStarted, onAttemptFailed },
+        ) as never,
+      );
+
+      for await (const event of stream) {
+        void event;
+        // Consume the terminal stream so the SDK request completes.
+      }
+
+      expect(requestCount).toBe(2);
+      expect(onAttemptStarted.mock.calls).toEqual([[{ retry: false }], [{ retry: true }]]);
+      expect(onAttemptFailed).toHaveBeenCalledOnce();
+      expect(onAttemptFailed).toHaveBeenCalledWith({ errorCategory: "http_429" });
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

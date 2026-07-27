@@ -13,6 +13,10 @@ import {
   type ProviderRequestTransportOverrides,
 } from "openclaw/plugin-sdk/provider-http";
 import {
+  buildGoogleProviderUsageEvidence,
+  withProviderUsageCallReceipt,
+} from "openclaw/plugin-sdk/provider-usage";
+import {
   DEFAULT_GOOGLE_API_BASE_URL,
   normalizeGoogleModelId,
   resolveGoogleGenerativeAiHttpRequestConfig,
@@ -85,36 +89,43 @@ async function generateGeminiInlineDataText(params: {
     ],
   };
 
-  const { response: res, release } = await postJsonRequest({
-    url,
-    headers,
-    body,
-    timeoutMs: params.timeoutMs,
-    fetchFn,
-    allowPrivateNetwork,
-    dispatcherPolicy,
+  return await withProviderUsageCallReceipt({
+    provider: "google",
+    model,
+    run: async (recordEvidence) => {
+      const { response: res, release } = await postJsonRequest({
+        url,
+        headers,
+        body,
+        timeoutMs: params.timeoutMs,
+        fetchFn,
+        allowPrivateNetwork,
+        dispatcherPolicy,
+      });
+
+      try {
+        await assertOkOrThrowProviderError(res, params.httpErrorLabel);
+
+        const payload = (await res.json()) as {
+          candidates?: Array<{
+            content?: { parts?: Array<{ text?: string }> };
+          }>;
+        };
+        recordEvidence(buildGoogleProviderUsageEvidence(payload));
+        const parts = payload.candidates?.[0]?.content?.parts ?? [];
+        const text = parts
+          .map((part) => part?.text?.trim())
+          .filter(Boolean)
+          .join("\n");
+        if (!text) {
+          throw new Error(params.missingTextError);
+        }
+        return { text, model };
+      } finally {
+        await release();
+      }
+    },
   });
-
-  try {
-    await assertOkOrThrowProviderError(res, params.httpErrorLabel);
-
-    const payload = (await res.json()) as {
-      candidates?: Array<{
-        content?: { parts?: Array<{ text?: string }> };
-      }>;
-    };
-    const parts = payload.candidates?.[0]?.content?.parts ?? [];
-    const text = parts
-      .map((part) => part?.text?.trim())
-      .filter(Boolean)
-      .join("\n");
-    if (!text) {
-      throw new Error(params.missingTextError);
-    }
-    return { text, model };
-  } finally {
-    await release();
-  }
 }
 
 export async function transcribeGeminiAudio(

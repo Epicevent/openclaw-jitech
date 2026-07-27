@@ -1,4 +1,4 @@
-import { type Context, complete } from "@earendil-works/pi-ai";
+import { type Context } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import {
@@ -13,6 +13,7 @@ import {
 } from "../../shared/string-coerce.js";
 import { resolveUserPath } from "../../utils.js";
 import type { AuthProfileStore } from "../auth-profiles/types.js";
+import { completeWithProviderUsageReceipts } from "../provider-usage-stream.js";
 import { ToolInputError } from "./common.js";
 import { coerceImageModelConfig, type ImageModelConfig } from "./image-tool.helpers.js";
 import {
@@ -228,7 +229,7 @@ async function runPdfPrompt(params: {
           images: [],
         }));
         const context = buildPdfExtractionContext(params.prompt, textOnlyExtractions, model);
-        const message = await complete(model, context, {
+        const message = await completeWithProviderUsageReceipts(model, context, {
           apiKey,
           maxTokens: resolvePdfToolMaxTokens(model.maxTokens),
         });
@@ -237,7 +238,7 @@ async function runPdfPrompt(params: {
       }
 
       const context = buildPdfExtractionContext(params.prompt, extractions, model);
-      const message = await complete(model, context, {
+      const message = await completeWithProviderUsageReceipts(model, context, {
         apiKey,
         maxTokens: resolvePdfToolMaxTokens(model.maxTokens),
       });

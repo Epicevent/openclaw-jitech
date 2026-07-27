@@ -384,6 +384,11 @@ function buildMinimaxVideoProvider(providerId: string): VideoGenerationProvider 
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.minimax",
+          provider: providerId,
+          model,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "MiniMax video generation failed");

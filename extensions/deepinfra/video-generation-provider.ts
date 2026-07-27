@@ -231,6 +231,11 @@ export function buildDeepInfraVideoGenerationProvider(): VideoGenerationProvider
         fetchFn: fetch,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.deepinfra",
+          provider: "deepinfra",
+          model,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "DeepInfra video generation failed");

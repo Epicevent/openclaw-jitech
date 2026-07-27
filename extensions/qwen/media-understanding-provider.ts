@@ -55,6 +55,11 @@ export async function describeQwenVideo(
     fetchFn,
     allowPrivateNetwork,
     dispatcherPolicy,
+    providerUsage: {
+      surfaceCode: "media.qwen_video",
+      provider: "qwen",
+      model,
+    },
   });
 
   try {

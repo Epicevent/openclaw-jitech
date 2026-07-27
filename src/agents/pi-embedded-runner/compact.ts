@@ -91,6 +91,7 @@ import { createOpenClawCodingTools, resolveProcessToolScopeKey } from "../pi-too
 import { wrapStreamFnTextTransforms } from "../plugin-text-transforms.js";
 import { resolveAgentPromptSurfaceForSessionKey } from "../prompt-surface.js";
 import { registerProviderStreamForModel } from "../provider-stream.js";
+import { wrapStreamFnWithProviderUsageReceipts } from "../provider-usage-stream.js";
 import { collectRuntimeChannelCapabilities } from "../runtime-capabilities.js";
 import { buildAgentRuntimePlan } from "../runtime-plan/build.js";
 import type { AgentRuntimePlan } from "../runtime-plan/types.js";
@@ -187,6 +188,9 @@ function prepareCompactionSessionAgent(params: {
   session: { agent: { streamFn?: unknown } };
   providerStreamFn: unknown;
   sessionId: string;
+  runId?: string;
+  requestId?: string | number;
+  trigger?: "budget" | "overflow" | "manual";
   signal: AbortSignal;
   effectiveModel: ProviderRuntimeModel;
   resolvedApiKey?: string;
@@ -229,7 +233,7 @@ function prepareCompactionSessionAgent(params: {
     workspaceDir: params.effectiveWorkspace,
     model: params.effectiveModel,
   });
-  return applyExtraParamsToAgent(
+  const applied = applyExtraParamsToAgent(
     params.session.agent as never,
     params.config,
     params.provider,
@@ -243,6 +247,20 @@ function prepareCompactionSessionAgent(params: {
     undefined,
     preparedRuntimeExtraParams ? { preparedExtraParams: preparedRuntimeExtraParams } : undefined,
   );
+  if (params.session.agent.streamFn) {
+    params.session.agent.streamFn = wrapStreamFnWithProviderUsageReceipts(
+      params.session.agent.streamFn as never,
+      {
+        identity: {
+          runId: params.runId ?? null,
+          requestId: params.requestId ?? null,
+          sessionId: params.sessionId,
+          trigger: params.trigger === "manual" ? "manual" : "overflow",
+        },
+      },
+    );
+  }
+  return applied;
 }
 
 function resolveCompactionProviderStream(params: {
@@ -1122,6 +1140,9 @@ async function compactEmbeddedPiSessionDirectOnce(
             session,
             providerStreamFn,
             sessionId: params.sessionId,
+            runId: params.runId,
+            requestId: params.currentMessageId,
+            trigger: params.trigger,
             signal: runAbortController.signal,
             effectiveModel,
             resolvedApiKey: hasRuntimeAuthExchange ? undefined : apiKeyInfo?.apiKey,

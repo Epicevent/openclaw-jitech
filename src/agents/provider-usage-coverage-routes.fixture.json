@@ -1,0 +1,150 @@
+{
+  "schema": "jitech-provider-usage-route-inventory/v1",
+  "groups": [
+    {
+      "surfaceCode": "generation.image.other_submit",
+      "routes": [
+        {
+          "routeCode": "image.minimax",
+          "sourceFile": "extensions/minimax/image-generation-provider.ts"
+        },
+        {
+          "routeCode": "image.openai",
+          "sourceFile": "extensions/openai/image-generation-provider.ts"
+        },
+        {
+          "routeCode": "image.openai_codex",
+          "sourceFile": "extensions/openai/image-generation-provider.ts"
+        },
+        {
+          "routeCode": "image.openai_compatible",
+          "sourceFile": "src/image-generation/openai-compatible-image-provider.ts"
+        },
+        {
+          "routeCode": "image.openrouter",
+          "sourceFile": "extensions/openrouter/image-generation-provider.ts"
+        },
+        {
+          "routeCode": "image.vydra",
+          "sourceFile": "extensions/vydra/image-generation-provider.ts"
+        }
+      ]
+    },
+    {
+      "surfaceCode": "generation.music.other_submit",
+      "routes": [
+        {
+          "routeCode": "music.fal",
+          "sourceFile": "extensions/fal/music-generation-provider.ts"
+        },
+        {
+          "routeCode": "music.minimax",
+          "sourceFile": "extensions/minimax/music-generation-provider.ts"
+        },
+        {
+          "routeCode": "music.openrouter",
+          "sourceFile": "extensions/openrouter/music-generation-provider.ts"
+        }
+      ]
+    },
+    {
+      "surfaceCode": "generation.video.other_submit",
+      "routes": [
+        {
+          "routeCode": "video.alibaba_dashscope",
+          "sourceFile": "extensions/alibaba/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.byteplus",
+          "sourceFile": "extensions/byteplus/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.deepinfra",
+          "sourceFile": "extensions/deepinfra/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.minimax",
+          "sourceFile": "extensions/minimax/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.openai",
+          "sourceFile": "extensions/openai/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.openrouter",
+          "sourceFile": "extensions/openrouter/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.qwen_dashscope",
+          "sourceFile": "extensions/qwen/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.runway",
+          "sourceFile": "extensions/runway/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.together",
+          "sourceFile": "extensions/together/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.vydra",
+          "sourceFile": "extensions/vydra/video-generation-provider.ts"
+        },
+        {
+          "routeCode": "video.xai",
+          "sourceFile": "extensions/xai/video-generation-provider.ts"
+        }
+      ]
+    },
+    {
+      "surfaceCode": "media.other_understanding",
+      "routes": [
+        {
+          "routeCode": "media.deepgram_stt",
+          "sourceFile": "extensions/deepgram/audio.ts"
+        },
+        {
+          "routeCode": "media.elevenlabs_stt",
+          "sourceFile": "extensions/elevenlabs/media-understanding-provider.ts"
+        },
+        {
+          "routeCode": "media.moonshot_video",
+          "sourceFile": "extensions/moonshot/media-understanding-provider.ts"
+        },
+        {
+          "routeCode": "media.openai_compatible_stt",
+          "sourceFile": "src/media-understanding/openai-compatible-audio.ts"
+        },
+        {
+          "routeCode": "media.openrouter_stt",
+          "sourceFile": "extensions/openrouter/media-understanding-provider.ts"
+        },
+        {
+          "routeCode": "media.qwen_video",
+          "sourceFile": "extensions/qwen/media-understanding-provider.ts"
+        },
+        {
+          "routeCode": "media.xai_stt",
+          "sourceFile": "extensions/xai/stt.ts"
+        }
+      ]
+    },
+    {
+      "surfaceCode": "speech.other_submit",
+      "routes": [
+        {
+          "routeCode": "speech.openai_compatible",
+          "sourceFile": "src/tts/openai-compatible-speech-provider.ts"
+        },
+        {
+          "routeCode": "speech.vydra",
+          "sourceFile": "extensions/vydra/speech-provider.ts"
+        },
+        {
+          "routeCode": "speech.xai",
+          "sourceFile": "extensions/xai/tts.ts"
+        }
+      ]
+    }
+  ]
+}

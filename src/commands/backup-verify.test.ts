@@ -8,6 +8,10 @@ import { backupVerifyCommand } from "./backup-verify.js";
 
 const TEST_ARCHIVE_ROOT = "2026-03-09T00-00-00.000Z-openclaw-backup";
 
+function resolveTarWriteSourcePath(entryPath: string): string {
+  return path.resolve(entryPath);
+}
+
 const createBackupVerifyRuntime = () => ({
   log: vi.fn(),
   error: vi.fn(),
@@ -56,11 +60,12 @@ async function createArchiveWithManifestContent(
         portable: true,
         preservePaths: true,
         onWriteEntry: (entry) => {
-          if (entry.path === manifestPath) {
+          const sourcePath = resolveTarWriteSourcePath(entry.path);
+          if (sourcePath === manifestPath) {
             entry.path = `${TEST_ARCHIVE_ROOT}/manifest.json`;
             return;
           }
-          if (entry.path === payloadPath) {
+          if (sourcePath === payloadPath) {
             entry.path = payloadArchivePath;
           }
         },
@@ -112,11 +117,12 @@ async function withBrokenArchiveFixture(
         portable: true,
         preservePaths: true,
         onWriteEntry: (entry) => {
-          if (entry.path === manifestPath) {
+          const sourcePath = resolveTarWriteSourcePath(entry.path);
+          if (sourcePath === manifestPath) {
             entry.path = `${TEST_ARCHIVE_ROOT}/manifest.json`;
             return;
           }
-          const payloadEntryPath = payloadEntryPathBySource.get(entry.path);
+          const payloadEntryPath = payloadEntryPathBySource.get(sourcePath);
           if (payloadEntryPath) {
             entry.path = payloadEntryPath;
           }
@@ -161,11 +167,12 @@ describe("backupVerifyCommand", () => {
           portable: true,
           preservePaths: true,
           onWriteEntry: (entry) => {
-            if (entry.path === manifestPath) {
+            const sourcePath = resolveTarWriteSourcePath(entry.path);
+            if (sourcePath === manifestPath) {
               entry.path = `${archiveRoot}/manifest.json`;
               return;
             }
-            if (entry.path === payloadPath) {
+            if (sourcePath === payloadPath) {
               entry.path = payloadArchivePath;
             }
           },
@@ -265,7 +272,9 @@ describe("backupVerifyCommand", () => {
       {
         tempPrefix: "openclaw-backup-backslash-",
         archivePath: `${TEST_ARCHIVE_ROOT}/payload\\..\\escaped.txt`,
-        error: /forward slashes/i,
+        // node-tar normalizes backslashes to slashes on Windows before the
+        // reader sees the entry, while POSIX preserves the original spelling.
+        error: /forward slashes|path traversal segments/i,
       },
     ]) {
       await withBrokenArchiveFixture(
@@ -332,15 +341,16 @@ describe("backupVerifyCommand", () => {
           portable: true,
           preservePaths: true,
           onWriteEntry: (entry) => {
-            if (entry.path === manifestPath) {
+            const sourcePath = resolveTarWriteSourcePath(entry.path);
+            if (sourcePath === manifestPath) {
               entry.path = `${archiveRoot}/manifest.json`;
               return;
             }
-            if (entry.path === statePayloadPath) {
+            if (sourcePath === statePayloadPath) {
               entry.path = stateArchivePath;
               return;
             }
-            if (entry.path === workspaceManifestPayloadPath) {
+            if (sourcePath === workspaceManifestPayloadPath) {
               entry.path = workspaceArchivePath;
             }
           },

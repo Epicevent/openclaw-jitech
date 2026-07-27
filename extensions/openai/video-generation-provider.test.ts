@@ -5,8 +5,12 @@ import {
 import { expectExplicitVideoGenerationCapabilities } from "openclaw/plugin-sdk/provider-test-contracts";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const { postJsonRequestMock, fetchWithTimeoutMock, resolveProviderHttpRequestConfigMock } =
-  getProviderHttpMocks();
+const {
+  postJsonRequestMock,
+  postMultipartRequestMock,
+  fetchWithTimeoutMock,
+  resolveProviderHttpRequestConfigMock,
+} = getProviderHttpMocks();
 
 let buildOpenAIVideoGenerationProvider: typeof import("./video-generation-provider.js").buildOpenAIVideoGenerationProvider;
 
@@ -198,15 +202,18 @@ describe("openai video generation provider", () => {
   });
 
   it("uses multipart input_reference for video-to-video uploads", async () => {
-    fetchWithTimeoutMock
-      .mockResolvedValueOnce({
+    postMultipartRequestMock.mockResolvedValue({
+      response: {
         ok: true,
         json: async () => ({
           id: "vid_789",
           model: "sora-2",
           status: "queued",
         }),
-      })
+      },
+      release: vi.fn(async () => {}),
+    });
+    fetchWithTimeoutMock
       .mockResolvedValueOnce({
         json: async () => ({
           id: "vid_789",
@@ -229,12 +236,19 @@ describe("openai video generation provider", () => {
     });
 
     expect(postJsonRequestMock).not.toHaveBeenCalled();
-    const [createUrl, createInit, createTimeout, createFetch] = fetchWithTimeoutCall(0);
-    expect(createUrl).toBe("https://api.openai.com/v1/videos");
-    expect(createInit?.method).toBe("POST");
-    expect(createInit?.body).toBeInstanceOf(FormData);
-    expect(createTimeout).toBe(120000);
-    expect(createFetch).toBe(fetch);
+    expect(postMultipartRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.openai.com/v1/videos",
+        body: expect.any(FormData),
+        timeoutMs: 120000,
+        fetchFn: fetch,
+        providerUsage: {
+          surfaceCode: "video.openai",
+          provider: "openai",
+          model: "sora-2",
+        },
+      }),
+    );
   });
 
   it("rejects multiple reference assets", async () => {

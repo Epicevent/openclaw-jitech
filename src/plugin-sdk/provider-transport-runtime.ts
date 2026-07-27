@@ -1,4 +1,9 @@
 export { buildGuardedModelFetch } from "../agents/provider-transport-fetch.js";
+export {
+  resolveProviderUsageAttemptHooks,
+  withProviderUsageAttemptHooks,
+  type ProviderUsageAttemptHooks,
+} from "../agents/provider-usage-transport.js";
 export { buildOpenAICompletionsParams } from "../agents/openai-transport-stream.js";
 export { stripSystemPromptCacheBoundary } from "../agents/system-prompt-cache-boundary.js";
 export { transformTransportMessages } from "../agents/transport-message-transform.js";

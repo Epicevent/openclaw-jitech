@@ -23,6 +23,14 @@ import type {
   PluginHookModelCallEndedEvent,
   PluginHookModelCallStartedEvent,
 } from "../../../plugins/hook-types.js";
+import {
+  observeProviderUsageCallChunk,
+  persistProviderUsageCall,
+  type ProviderUsageCallHandle,
+  type ProviderUsageCallObservation,
+  type ProviderUsageRunContext,
+} from "../../provider-usage-receipts.js";
+import { withProviderUsageAttemptHooks } from "../../provider-usage-transport.js";
 
 export { diagnosticErrorCategory };
 
@@ -40,6 +48,8 @@ type ModelCallDiagnosticContext = {
   trace: DiagnosticTraceContext;
   nextCallId: () => string;
   onStarted?: () => void;
+  providerUsageRun?: ProviderUsageRunContext;
+  embeddedAttempt?: number;
 };
 
 type ModelCallEventBase = Omit<
@@ -69,6 +79,11 @@ type ModelCallObservationState = {
   requestPayloadBytes?: number;
   responseStreamBytes: number;
   timeToFirstByteMs?: number;
+  providerUsageCall?: ProviderUsageCallHandle;
+  providerUsageObservation?: ProviderUsageCallObservation;
+  providerUsageTerminal?: "succeeded" | "failed";
+  providerUsagePersisted: boolean;
+  terminalEventEmitted: boolean;
 };
 
 const MODEL_CALL_STREAM_RETURN_TIMEOUT_MS = 1000;
@@ -100,6 +115,67 @@ function observeResponseChunk(
   if (bytes !== undefined) {
     state.responseStreamBytes += bytes;
   }
+  state.providerUsageObservation = observeProviderUsageCallChunk(
+    state.providerUsageObservation,
+    chunk,
+  );
+  if (chunk && typeof chunk === "object") {
+    const eventType = (chunk as { type?: unknown }).type;
+    if (eventType === "done") {
+      state.providerUsageTerminal = "succeeded";
+    } else if (eventType === "error") {
+      state.providerUsageTerminal = "failed";
+    }
+  }
+}
+
+function persistObservedProviderUsageCall(
+  state: ModelCallObservationState,
+  status: "succeeded" | "failed" | "interrupted" | "cancelled",
+  errorCategory?: string,
+): void {
+  if (!state.providerUsageCall || state.providerUsagePersisted) {
+    return;
+  }
+  state.providerUsagePersisted = true;
+  persistProviderUsageCall({
+    handle: state.providerUsageCall,
+    status,
+    observation: state.providerUsageObservation,
+    errorCategory,
+  });
+}
+
+function withProviderAttemptReceiptHooks(
+  options: ModelCallStreamOptions,
+  state: ModelCallObservationState,
+  ctx: ModelCallDiagnosticContext,
+): ModelCallStreamOptions {
+  if (!ctx.providerUsageRun) {
+    return options;
+  }
+  return withProviderUsageAttemptHooks(options, {
+    onAttemptStarted: ({ retry }) => {
+      if (!retry || !state.providerUsagePersisted) {
+        return;
+      }
+      state.providerUsageCall = ctx.providerUsageRun?.beginCall({
+        requestedProvider: ctx.provider,
+        requestedModel: ctx.model,
+        embeddedAttempt: ctx.embeddedAttempt ?? 1,
+        retryPrevious: true,
+        startedAtMs: Date.now(),
+      });
+      state.providerUsageObservation = undefined;
+      state.providerUsageTerminal = undefined;
+      state.providerUsagePersisted = false;
+      state.timeToFirstByteMs = undefined;
+      state.responseStreamBytes = 0;
+    },
+    onAttemptFailed: ({ errorCategory }) => {
+      persistObservedProviderUsageCall(state, "failed", errorCategory);
+    },
+  });
 }
 
 function modelCallSizeTimingFields(state: ModelCallObservationState): ModelCallSizeTimingFields {
@@ -392,28 +468,99 @@ async function* observeModelCallIterator<T>(
   startedAt: number,
   state: ModelCallObservationState,
 ): AsyncIterable<T> {
-  let terminalEmitted = false;
+  let iteratorCompleted = false;
   try {
     for (;;) {
       const next = await iterator.next();
       if (next.done) {
+        iteratorCompleted = true;
         break;
       }
       observeResponseChunk(state, startedAt, next.value);
       yield next.value;
     }
-    terminalEmitted = true;
-    emitModelCallCompleted(eventBase, startedAt, state);
+    const receiptStatus = state.providerUsageTerminal ?? "succeeded";
+    persistObservedProviderUsageCall(
+      state,
+      receiptStatus,
+      receiptStatus === "failed" ? "provider_stream_error" : undefined,
+    );
+    if (!state.terminalEventEmitted) {
+      state.terminalEventEmitted = true;
+      if (receiptStatus === "failed") {
+        emitModelCallError(eventBase, startedAt, state, {
+          errorCategory: "unknown",
+        });
+      } else {
+        emitModelCallCompleted(eventBase, startedAt, state);
+      }
+    }
   } catch (err) {
-    terminalEmitted = true;
-    emitModelCallError(eventBase, startedAt, state, modelCallErrorFields(err));
+    const errorFields = modelCallErrorFields(err);
+    persistObservedProviderUsageCall(state, "failed", errorFields.errorCategory);
+    if (!state.terminalEventEmitted) {
+      state.terminalEventEmitted = true;
+      emitModelCallError(eventBase, startedAt, state, errorFields);
+    }
     throw err;
   } finally {
-    if (!terminalEmitted) {
+    if (!iteratorCompleted) {
       await safeReturnIterator(iterator);
-      emitModelCallCompleted(eventBase, startedAt, state);
+      if (!state.terminalEventEmitted) {
+        persistObservedProviderUsageCall(state, "interrupted");
+        state.terminalEventEmitted = true;
+        emitModelCallCompleted(eventBase, startedAt, state);
+      }
     }
   }
+}
+
+function observeModelCallFinalResult(
+  promise: Promise<unknown>,
+  eventBase: ModelCallEventBase,
+  startedAt: number,
+  state: ModelCallObservationState,
+): Promise<unknown> {
+  return promise.then(
+    (message) => {
+      observeResponseChunk(state, startedAt, message);
+      const stopReason =
+        message && typeof message === "object"
+          ? (message as { stopReason?: unknown }).stopReason
+          : undefined;
+      const status =
+        stopReason === "error" ? "failed" : stopReason === "aborted" ? "cancelled" : "succeeded";
+      persistObservedProviderUsageCall(
+        state,
+        status,
+        status === "failed"
+          ? "provider_result_error"
+          : status === "cancelled"
+            ? "provider_result_aborted"
+            : undefined,
+      );
+      if (!state.terminalEventEmitted) {
+        state.terminalEventEmitted = true;
+        if (status === "failed") {
+          emitModelCallError(eventBase, startedAt, state, {
+            errorCategory: "unknown",
+          });
+        } else {
+          emitModelCallCompleted(eventBase, startedAt, state);
+        }
+      }
+      return message;
+    },
+    (err) => {
+      const errorFields = modelCallErrorFields(err);
+      persistObservedProviderUsageCall(state, "failed", errorFields.errorCategory);
+      if (!state.terminalEventEmitted) {
+        state.terminalEventEmitted = true;
+        emitModelCallError(eventBase, startedAt, state, errorFields);
+      }
+      throw err;
+    },
+  );
 }
 
 function observeModelCallStream<T extends AsyncIterable<unknown>>(
@@ -425,6 +572,20 @@ function observeModelCallStream<T extends AsyncIterable<unknown>>(
 ): T {
   const observedIterator = () =>
     observeModelCallIterator(createIterator(), eventBase, startedAt, state)[Symbol.asyncIterator]();
+  const resultMethod = (stream as { result?: unknown }).result;
+  let observedResult: Promise<unknown> | undefined;
+  const observeResult =
+    typeof resultMethod === "function"
+      ? () => {
+          observedResult ??= observeModelCallFinalResult(
+            Promise.resolve(resultMethod.call(stream)),
+            eventBase,
+            startedAt,
+            state,
+          );
+          return observedResult;
+        }
+      : undefined;
   let hasNonConfigurableIterator = false;
   try {
     hasNonConfigurableIterator =
@@ -435,12 +596,16 @@ function observeModelCallStream<T extends AsyncIterable<unknown>>(
   if (hasNonConfigurableIterator) {
     return {
       [Symbol.asyncIterator]: observedIterator,
+      ...(observeResult ? { result: observeResult } : {}),
     } as T;
   }
   return new Proxy(stream, {
     get(target, property, receiver) {
       if (property === Symbol.asyncIterator) {
         return observedIterator;
+      }
+      if (property === "result" && observeResult) {
+        return observeResult;
       }
       const value = Reflect.get(target, property, receiver);
       return typeof value === "function" ? value.bind(target) : value;
@@ -464,6 +629,7 @@ function observeModelCallResult(
       state,
     );
   }
+  persistObservedProviderUsageCall(state, "succeeded");
   emitModelCallCompleted(eventBase, startedAt, state);
   return result;
 }
@@ -479,8 +645,26 @@ export function wrapStreamFnWithDiagnosticModelCallEvents(
     emitModelCallStarted(eventBase);
     ctx.onStarted?.();
     const startedAt = Date.now();
-    const state: ModelCallObservationState = { responseStreamBytes: 0 };
-    const propagatedOptions = withDiagnosticTraceparentHeader(options, trace, state);
+    const state: ModelCallObservationState = {
+      responseStreamBytes: 0,
+      providerUsagePersisted: false,
+      terminalEventEmitted: false,
+      ...(ctx.providerUsageRun
+        ? {
+            providerUsageCall: ctx.providerUsageRun.beginCall({
+              requestedProvider: ctx.provider,
+              requestedModel: ctx.model,
+              embeddedAttempt: ctx.embeddedAttempt ?? 1,
+              startedAtMs: startedAt,
+            }),
+          }
+        : {}),
+    };
+    const propagatedOptions = withProviderAttemptReceiptHooks(
+      withDiagnosticTraceparentHeader(options, trace, state),
+      state,
+      ctx,
+    );
 
     try {
       const result = streamFn(model, streamContext, propagatedOptions);
@@ -488,14 +672,18 @@ export function wrapStreamFnWithDiagnosticModelCallEvents(
         return result.then(
           (resolved) => observeModelCallResult(resolved, eventBase, startedAt, state),
           (err) => {
-            emitModelCallError(eventBase, startedAt, state, modelCallErrorFields(err));
+            const errorFields = modelCallErrorFields(err);
+            persistObservedProviderUsageCall(state, "failed", errorFields.errorCategory);
+            emitModelCallError(eventBase, startedAt, state, errorFields);
             throw err;
           },
         );
       }
       return observeModelCallResult(result, eventBase, startedAt, state);
     } catch (err) {
-      emitModelCallError(eventBase, startedAt, state, modelCallErrorFields(err));
+      const errorFields = modelCallErrorFields(err);
+      persistObservedProviderUsageCall(state, "failed", errorFields.errorCategory);
+      emitModelCallError(eventBase, startedAt, state, errorFields);
       throw err;
     }
   }) as StreamFn;

@@ -45,6 +45,7 @@ import {
 import { sanitizeUserFacingText } from "../../agents/pi-embedded-helpers/sanitize-user-facing-text.js";
 import { isMessagingToolSendAction } from "../../agents/pi-embedded-messaging.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+import { createProviderUsageRunContext } from "../../agents/provider-usage-receipts.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
 import {
   resolveGroupSessionKey,
@@ -1446,6 +1447,20 @@ export async function runAgentTurnWithFallback(params: {
     });
   };
 
+  const providerUsageModelFallbackOptions = resolveModelFallbackOptions(
+    effectiveRun,
+    runtimeConfig,
+  );
+  const providerUsageRun = createProviderUsageRunContext({
+    runId,
+    turnId: runId,
+    requestId: params.sessionCtx.MessageSidFull ?? params.sessionCtx.MessageSid,
+    sessionId: params.followupRun.run.sessionId,
+    trigger: params.isHeartbeat ? "heartbeat" : "user",
+    configuredProvider: providerUsageModelFallbackOptions.provider,
+    configuredModel: providerUsageModelFallbackOptions.model,
+  });
+
   while (true) {
     try {
       const normalizeStreamingText = (payload: ReplyPayload): { text?: string; skip: boolean } => {
@@ -1535,8 +1550,9 @@ export async function runAgentTurnWithFallback(params: {
       const runLane = CommandLane.Main;
       let queuedUserMessagePersistedAcrossFallback = false;
       let assistantErrorPersistedAcrossFallback = false;
+      const modelFallbackOptions = resolveModelFallbackOptions(effectiveRun, runtimeConfig);
       const fallbackResult = await runWithModelFallback<EmbeddedAgentRunResult>({
-        ...resolveModelFallbackOptions(effectiveRun, runtimeConfig),
+        ...modelFallbackOptions,
         runId,
         sessionId: params.followupRun.run.sessionId,
         lane: runLane,
@@ -1799,6 +1815,7 @@ export async function runAgentTurnWithFallback(params: {
                 ...senderContext,
                 ...runBaseParams,
                 provider: embeddedRunProvider,
+                providerUsageRun,
                 agentHarnessId: embeddedRunHarnessOverride,
                 agentHarnessRuntimeOverride: embeddedRunHarnessOverride,
                 sandboxSessionKey: params.runtimePolicySessionKey,

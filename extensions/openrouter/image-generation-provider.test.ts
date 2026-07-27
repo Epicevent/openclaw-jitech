@@ -210,6 +210,11 @@ describe("openrouter image generation provider", () => {
       allowPrivateNetwork: false,
       ssrfPolicy: { allowRfc2544BenchmarkRange: true },
       dispatcherPolicy: undefined,
+      providerUsage: {
+        surfaceCode: "image.openrouter",
+        provider: "openrouter",
+        model: "google/gemini-3.1-flash-image-preview",
+      },
     });
     const image = requireGeneratedImage(result, 0);
     expect(image.buffer.toString()).toBe("png-one");

@@ -1800,7 +1800,7 @@
     "playwright-core": "1.60.0",
     "qrcode": "1.5.4",
     "quickjs-wasi": "2.2.0",
-    "tar": "7.5.15",
+    "tar": "7.5.19",
     "tokenjuice": "0.7.1",
     "tree-sitter-bash": "0.25.1",
     "tslog": "4.10.2",
@@ -1825,7 +1825,7 @@
     "@types/node": "25.8.0",
     "@types/ws": "8.18.1",
     "@typescript/native-preview": "7.0.0-dev.20260517.1",
-    "@vitest/coverage-v8": "4.1.6",
+    "@vitest/coverage-v8": "4.1.10",
     "jscpd": "4.2.2",
     "jsdom": "29.1.1",
     "lit": "3.3.3",
@@ -1836,15 +1836,15 @@
     "tsdown": "0.22.0",
     "tsx": "4.22.0",
     "unrun": "0.3.0",
-    "vitest": "4.1.6"
+    "vitest": "4.1.10"
   },
   "optionalDependencies": {
-    "sharp": "0.34.5",
+    "sharp": "0.35.3",
     "sqlite-vec": "0.1.9"
   },
   "overrides": {
-    "axios": "1.16.0",
-    "fast-uri": "3.1.2",
+    "axios": "1.18.0",
+    "fast-uri": "3.1.4",
     "follow-redirects": "1.16.0",
     "ip-address": "10.2.0",
     "node-domexception": "npm:@nolyfill/domexception@1.0.28",

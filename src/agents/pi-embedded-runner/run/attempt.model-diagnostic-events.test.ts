@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -11,6 +14,12 @@ import {
   resetGlobalHookRunner,
 } from "../../../plugins/hook-runner-global.js";
 import { createHookRunnerWithRegistry } from "../../../plugins/hooks.test-helpers.js";
+import { createProviderUsageRunContext } from "../../provider-usage-receipts.js";
+import {
+  closeProviderUsageReceiptStore,
+  exportProviderUsageReceipts,
+} from "../../provider-usage-receipts.store.js";
+import { resolveProviderUsageAttemptHooks } from "../../provider-usage-transport.js";
 import { wrapStreamFnWithDiagnosticModelCallEvents } from "./attempt.model-diagnostic-events.js";
 
 async function collectModelCallEvents(run: () => Promise<void>): Promise<DiagnosticEventPayload[]> {
@@ -481,5 +490,295 @@ describe("wrapStreamFnWithDiagnosticModelCallEvents", () => {
     expect(completedEvent.callId).toBe("call-abandoned");
     expectNumberField(completedEvent, "durationMs");
     expect(events[1]).not.toHaveProperty("errorCategory");
+  });
+
+  it("persists one terminal receipt for a cumulative provider stream", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-provider-stream-"));
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const providerUsageRun = createProviderUsageRunContext({
+      runId: "run-receipt",
+      turnId: "turn-receipt",
+      requestId: "request-receipt",
+      sessionId: "session-receipt",
+      trigger: "user",
+      configuredProvider: "google",
+      configuredModel: "gemini-3.6-flash",
+    });
+    try {
+      async function* stream() {
+        yield {
+          type: "text_delta",
+          partial: {
+            usage: { input: 5, output: 1 },
+            content: "secret partial response",
+          },
+        };
+        yield {
+          type: "done",
+          message: {
+            responseId: "response-terminal",
+            responseModel: "gemini-3.6-flash-001",
+            responseModelEvidenceSource: "gemini_response.modelVersion",
+            providerFinishReason: "STOP",
+            providerUsage: {
+              source: "gemini_response.usageMetadata",
+              promptTokenCount: 10,
+              cachedContentTokenCount: 2,
+              candidatesTokenCount: 4,
+              thoughtsTokenCount: 3,
+              toolUsePromptTokenCount: 1,
+              totalTokenCount: 18,
+            },
+            content: "secret terminal response",
+          },
+        };
+      }
+      const wrapped = wrapStreamFnWithDiagnosticModelCallEvents(
+        (() => stream()) as unknown as StreamFn,
+        {
+          runId: "run-receipt",
+          provider: "google",
+          model: "gemini-3.6-flash",
+          trace: createDiagnosticTraceContext(),
+          nextCallId: () => "diagnostic-call-receipt",
+          providerUsageRun,
+          embeddedAttempt: 1,
+        },
+      );
+
+      await drain(wrapped({} as never, {} as never, {} as never) as AsyncIterable<unknown>);
+
+      const exported = exportProviderUsageReceipts();
+      expect(exported.receipts).toHaveLength(1);
+      expect(exported.receipts[0]).toMatchObject({
+        runId: "run-receipt",
+        turnId: "turn-receipt",
+        requestId: "request-receipt",
+        trigger: "user",
+        status: "succeeded",
+        actual: {
+          provider: "google",
+          model: "gemini-3.6-flash-001",
+          responseId: "response-terminal",
+          evidenceSource: "gemini_response.modelVersion",
+        },
+        usage: {
+          inputTotal: 10,
+          inputNonCached: 8,
+          cacheRead: 2,
+          outputCandidates: 4,
+          reasoningThinking: 3,
+          toolUsePrompt: 1,
+          providerReportedTotal: 18,
+        },
+      });
+      expect(JSON.stringify(exported)).not.toContain("secret partial response");
+      expect(JSON.stringify(exported)).not.toContain("secret terminal response");
+    } finally {
+      closeProviderUsageReceiptStore();
+      vi.unstubAllEnvs();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists an internal transport retry as a separate linked call", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-provider-retry-"));
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const providerUsageRun = createProviderUsageRunContext({
+      runId: "run-retry",
+      configuredProvider: "google",
+      configuredModel: "gemini-3.6-flash",
+    });
+    try {
+      async function* recoveredStream() {
+        yield {
+          type: "done",
+          message: {
+            responseModel: "gemini-3.6-flash-001",
+            responseModelEvidenceSource: "gemini_response.modelVersion",
+            providerUsage: {
+              source: "gemini_response.usageMetadata",
+              promptTokenCount: 7,
+              cachedContentTokenCount: 0,
+              candidatesTokenCount: 2,
+              thoughtsTokenCount: 0,
+              toolUsePromptTokenCount: 0,
+              totalTokenCount: 9,
+            },
+          },
+        };
+      }
+      const wrapped = wrapStreamFnWithDiagnosticModelCallEvents(
+        ((
+          _model: Parameters<StreamFn>[0],
+          _context: Parameters<StreamFn>[1],
+          options: Parameters<StreamFn>[2],
+        ) => {
+          const hooks = resolveProviderUsageAttemptHooks(options);
+          hooks?.onAttemptStarted({ retry: false });
+          hooks?.onAttemptFailed({ errorCategory: "first_response_timeout" });
+          hooks?.onAttemptStarted({ retry: true });
+          return recoveredStream();
+        }) as unknown as StreamFn,
+        {
+          runId: "run-retry",
+          provider: "google",
+          model: "gemini-3.6-flash",
+          trace: createDiagnosticTraceContext(),
+          nextCallId: () => "diagnostic-call-retry",
+          providerUsageRun,
+          embeddedAttempt: 1,
+        },
+      );
+
+      await drain(wrapped({} as never, {} as never, {} as never) as AsyncIterable<unknown>);
+
+      const receipts = exportProviderUsageReceipts().receipts;
+      expect(receipts).toHaveLength(2);
+      expect(receipts[0]).toMatchObject({
+        attempt: 1,
+        status: "failed",
+        retryOf: null,
+        errorCategory: "first_response_timeout",
+        usageCoverage: "unavailable",
+      });
+      expect(receipts[1]).toMatchObject({
+        attempt: 2,
+        status: "succeeded",
+        retryOf: receipts[0]?.callId,
+        actual: { model: "gemini-3.6-flash-001" },
+        usage: { inputTotal: 7, outputCandidates: 2 },
+      });
+    } finally {
+      closeProviderUsageReceiptStore();
+      vi.unstubAllEnvs();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a compaction-style result-only provider call", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-provider-result-only-"));
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const providerUsageRun = createProviderUsageRunContext({
+      runId: "run-result-only",
+      configuredProvider: "google",
+      configuredModel: "gemini-3.6-flash",
+    });
+    try {
+      const message = {
+        stopReason: "stop",
+        responseId: "response-result-only",
+        responseModel: "gemini-3.6-flash-001",
+        responseModelEvidenceSource: "gemini_response.modelVersion",
+        providerFinishReason: "stop",
+        providerUsage: {
+          source: "gemini_response.usageMetadata",
+          promptTokenCount: 13,
+          cachedContentTokenCount: 3,
+          candidatesTokenCount: 4,
+          thoughtsTokenCount: 2,
+          toolUsePromptTokenCount: 0,
+          totalTokenCount: 19,
+        },
+      };
+      const originalStream = {
+        async *[Symbol.asyncIterator]() {
+          yield { type: "done", message };
+        },
+        async result() {
+          return message;
+        },
+      };
+      const wrapped = wrapStreamFnWithDiagnosticModelCallEvents(
+        (() => originalStream) as unknown as StreamFn,
+        {
+          runId: "run-result-only",
+          provider: "google",
+          model: "gemini-3.6-flash",
+          trace: createDiagnosticTraceContext(),
+          nextCallId: () => "diagnostic-result-only",
+          providerUsageRun,
+          embeddedAttempt: 1,
+        },
+      );
+
+      const events = await collectModelCallEvents(async () => {
+        const result = wrapped({} as never, {} as never, {} as never) as unknown as {
+          result(): Promise<unknown>;
+        };
+        await result.result();
+      });
+
+      expect(events.map((event) => event.type)).toEqual([
+        "model.call.started",
+        "model.call.completed",
+      ]);
+      expect(exportProviderUsageReceipts().receipts).toMatchObject([
+        {
+          status: "succeeded",
+          actual: { model: "gemini-3.6-flash-001" },
+          usage: {
+            inputTotal: 13,
+            inputNonCached: 10,
+            cacheRead: 3,
+            outputCandidates: 4,
+          },
+        },
+      ]);
+    } finally {
+      closeProviderUsageReceiptStore();
+      vi.unstubAllEnvs();
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a thrown provider stream failure with unavailable usage", async () => {
+    const stateDir = await mkdtemp(path.join(os.tmpdir(), "openclaw-provider-failure-"));
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const providerUsageRun = createProviderUsageRunContext({
+      runId: "run-failure",
+      configuredProvider: "google",
+      configuredModel: "gemini-3.6-flash",
+    });
+    try {
+      const stream = {
+        [Symbol.asyncIterator]() {
+          return {
+            async next(): Promise<IteratorResult<unknown>> {
+              throw new TypeError("provider stream failed");
+            },
+          };
+        },
+      };
+      const wrapped = wrapStreamFnWithDiagnosticModelCallEvents(
+        (() => stream) as unknown as StreamFn,
+        {
+          runId: "run-failure",
+          provider: "google",
+          model: "gemini-3.6-flash",
+          trace: createDiagnosticTraceContext(),
+          nextCallId: () => "diagnostic-call-failure",
+          providerUsageRun,
+          embeddedAttempt: 1,
+        },
+      );
+
+      await expect(
+        drain(wrapped({} as never, {} as never, {} as never) as AsyncIterable<unknown>),
+      ).rejects.toThrow("provider stream failed");
+
+      expect(exportProviderUsageReceipts().receipts).toMatchObject([
+        {
+          status: "failed",
+          errorCategory: "TypeError",
+          usageCoverage: "unavailable",
+          actual: { provider: null, model: null },
+        },
+      ]);
+    } finally {
+      closeProviderUsageReceiptStore();
+      vi.unstubAllEnvs();
+      await rm(stateDir, { recursive: true, force: true });
+    }
   });
 });

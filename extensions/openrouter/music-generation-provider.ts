@@ -308,6 +308,11 @@ export function buildOpenRouterMusicGenerationProvider(): MusicGenerationProvide
         fetchFn: fetch,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "music.openrouter",
+          provider: "openrouter",
+          model,
+        },
       });
 
       try {

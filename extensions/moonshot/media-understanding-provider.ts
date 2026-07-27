@@ -59,6 +59,11 @@ export async function describeMoonshotVideo(
     fetchFn,
     allowPrivateNetwork,
     dispatcherPolicy,
+    providerUsage: {
+      surfaceCode: "media.moonshot_video",
+      provider: "moonshot",
+      model,
+    },
   });
 
   try {

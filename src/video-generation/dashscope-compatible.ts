@@ -212,6 +212,8 @@ export async function pollDashscopeVideoTaskUntilComplete(params: {
 }
 
 export async function runDashscopeVideoGenerationTask(params: {
+  provider: string;
+  surfaceCode: string;
   providerLabel: string;
   model: string;
   req: VideoGenerationRequest;
@@ -250,6 +252,11 @@ export async function runDashscopeVideoGenerationTask(params: {
     fetchFn: params.fetchFn,
     allowPrivateNetwork: params.allowPrivateNetwork,
     dispatcherPolicy: params.dispatcherPolicy,
+    providerUsage: {
+      surfaceCode: params.surfaceCode,
+      provider: params.provider,
+      model: params.model,
+    },
   });
 
   try {

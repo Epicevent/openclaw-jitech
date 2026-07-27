@@ -6,9 +6,9 @@ import {
   createProviderOperationDeadline,
   createProviderOperationTimeoutResolver,
   fetchProviderDownloadResponse,
-  fetchWithTimeout,
   pollProviderOperationJson,
   postJsonRequest,
+  postMultipartRequest,
   resolveProviderOperationTimeoutMs,
   resolveProviderHttpRequestConfig,
   type ProviderOperationTimeoutMs,
@@ -282,6 +282,11 @@ export function buildOpenAIVideoGenerationProvider(): VideoGenerationProvider {
                 fetchFn,
                 allowPrivateNetwork,
                 dispatcherPolicy,
+                providerUsage: {
+                  surfaceCode: "video.openai",
+                  provider: "openai",
+                  model,
+                },
               });
             })()
           : await (() => {
@@ -297,22 +302,23 @@ export function buildOpenAIVideoGenerationProvider(): VideoGenerationProvider {
               form.set("input_reference", referenceAsset);
               const multipartHeaders = new Headers(headers);
               multipartHeaders.delete("Content-Type");
-              return fetchWithTimeout(
-                requestUrl,
-                {
-                  method: "POST",
-                  headers: multipartHeaders,
-                  body: form,
-                },
-                resolveProviderOperationTimeoutMs({
+              return postMultipartRequest({
+                url: requestUrl,
+                headers: multipartHeaders,
+                body: form,
+                timeoutMs: resolveProviderOperationTimeoutMs({
                   deadline,
                   defaultTimeoutMs: DEFAULT_TIMEOUT_MS,
                 }),
                 fetchFn,
-              ).then((response) => ({
-                response,
-                release: async () => {},
-              }));
+                allowPrivateNetwork,
+                dispatcherPolicy,
+                providerUsage: {
+                  surfaceCode: "video.openai",
+                  provider: "openai",
+                  model,
+                },
+              });
             })()
         : await (() => {
             const jsonHeaders = new Headers(headers);
@@ -333,6 +339,11 @@ export function buildOpenAIVideoGenerationProvider(): VideoGenerationProvider {
               fetchFn,
               allowPrivateNetwork,
               dispatcherPolicy,
+              providerUsage: {
+                surfaceCode: "video.openai",
+                provider: "openai",
+                model,
+              },
             });
           })();
       const { response, release } = requestResult;

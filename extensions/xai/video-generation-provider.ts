@@ -447,6 +447,11 @@ export function buildXaiVideoGenerationProvider(): VideoGenerationProvider {
         fetchFn,
         allowPrivateNetwork,
         dispatcherPolicy,
+        providerUsage: {
+          surfaceCode: "video.xai",
+          provider: "xai",
+          model: normalizeOptionalString(req.model) ?? DEFAULT_XAI_VIDEO_MODEL,
+        },
       });
       try {
         await assertOkOrThrowHttpError(response, "xAI video generation failed");

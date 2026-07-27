@@ -1,5 +1,4 @@
 import {
-  completeSimple,
   type Api,
   type Model,
   type ThinkingLevel as SimpleCompletionThinkingLevel,
@@ -25,6 +24,7 @@ import {
 } from "./model-selection.js";
 import { OPENAI_CODEX_PROVIDER_ID, isOpenAIProvider } from "./openai-codex-routing.js";
 import { resolveModel, resolveModelAsync } from "./pi-embedded-runner/model.js";
+import { completeSimpleWithProviderUsageReceipts } from "./provider-usage-stream.js";
 import { prepareModelForSimpleCompletion } from "./simple-completion-transport.js";
 
 type SimpleCompletionAuthStorage = {
@@ -331,7 +331,7 @@ export async function prepareSimpleCompletionModelForAgent(params: {
 export async function completeWithPreparedSimpleCompletionModel(params: {
   model: Model<Api>;
   auth: ResolvedProviderAuth;
-  context: Parameters<typeof completeSimple>[1];
+  context: Parameters<typeof completeSimpleWithProviderUsageReceipts>[1];
   cfg?: OpenClawConfig;
   options?: SimpleCompletionModelOptions;
   forceOpenClawTransport?: boolean;
@@ -343,7 +343,7 @@ export async function completeWithPreparedSimpleCompletionModel(params: {
   });
   const { reasoning: rawReasoning, ...options } = params.options ?? {};
   const reasoning = normalizeSimpleCompletionReasoning(rawReasoning);
-  return await completeSimple(completionModel, params.context, {
+  return await completeSimpleWithProviderUsageReceipts(completionModel, params.context, {
     ...options,
     ...(reasoning ? { reasoning } : {}),
     apiKey: params.auth.apiKey,

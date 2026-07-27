@@ -23,3 +23,16 @@ export {
   buildUsageHttpErrorSnapshot,
   fetchJson,
 } from "../infra/provider-usage.fetch.shared.js";
+export {
+  buildAnthropicProviderUsageEvidence,
+  buildGoogleProviderUsageEvidence,
+  createProviderUsageRunContext,
+  withProviderUsageCallReceipt,
+  type ProviderUsageEvidenceRecorder,
+  type ProviderUsageRunContext,
+} from "../agents/provider-usage-receipts.js";
+export {
+  createProviderUsageHttpAttemptRunner,
+  withProviderUsageHttpRequest,
+  type ProviderUsageHttpDescriptor,
+} from "../agents/provider-usage-http.js";
