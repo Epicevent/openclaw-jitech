@@ -7,6 +7,10 @@ import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
 import { deleteMediaBuffer, saveMediaBuffer } from "../media/store.js";
 import { normalizeOptionalLowercaseString } from "../shared/string-coerce.js";
+import {
+  DEFAULT_CHAT_ATTACHMENT_MAX_BYTES,
+  DEFAULT_CHAT_ATTACHMENT_MAX_MB,
+} from "./server-constants.js";
 
 export type ChatAttachment = {
   type?: string;
@@ -56,7 +60,7 @@ type SavedMedia = {
 const OFFLOAD_THRESHOLD_BYTES = 2_000_000;
 const TEXT_ONLY_OFFLOAD_LIMIT = 10;
 
-export const DEFAULT_CHAT_ATTACHMENT_MAX_MB = 20;
+export { DEFAULT_CHAT_ATTACHMENT_MAX_MB };
 
 export function resolveChatAttachmentMaxBytes(cfg: OpenClawConfig): number {
   const configured = cfg.agents?.defaults?.mediaMaxMb;
@@ -246,7 +250,7 @@ export async function parseMessageWithAttachments(
     acceptNonImage?: boolean;
   },
 ): Promise<ParsedMessageWithImages> {
-  const maxBytes = opts?.maxBytes ?? DEFAULT_CHAT_ATTACHMENT_MAX_MB * 1024 * 1024;
+  const maxBytes = opts?.maxBytes ?? DEFAULT_CHAT_ATTACHMENT_MAX_BYTES;
   const log = opts?.log;
   const shouldForceImageOffload = opts?.supportsImages === false;
   const supportsInlineImages = opts?.supportsInlineImages !== false;

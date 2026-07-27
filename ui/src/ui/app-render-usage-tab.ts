@@ -58,6 +58,8 @@ export function renderUsageTab(state: AppViewState) {
         state.usageResult?.cacheStatus,
         state.usageCostSummary?.cacheStatus,
       ),
+      providerLedger: state.providerUsageLedger,
+      providerLedgerError: state.providerUsageLedgerError,
     },
     filters: {
       startDate: state.usageStartDate,

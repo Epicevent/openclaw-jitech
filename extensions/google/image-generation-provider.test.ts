@@ -122,6 +122,7 @@ describe("Google image-generation provider", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const provider = buildGoogleImageGenerationProvider();
+    expect(provider.capabilities.output?.formats).toEqual(["png"]);
     const result = await provider.generateImage({
       provider: "google",
       model: "gemini-3.1-flash-image-preview",

@@ -26,6 +26,62 @@
   margin: 0;
 }
 
+.usage-provider-ledger {
+  display: grid;
+  gap: 14px;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+
+.usage-provider-ledger--error {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+
+.usage-provider-ledger__heading,
+.usage-provider-ledger__evidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.usage-provider-ledger__source {
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.usage-provider-ledger__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.usage-provider-ledger__metric {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.usage-provider-ledger__metric span,
+.usage-provider-ledger__evidence,
+.usage-provider-ledger__error {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.usage-provider-ledger__metric strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
 .usage-loading-card,
 .usage-empty-state,
 .usage-overview-card,

@@ -33,7 +33,9 @@ describe("chat.history reasoning-tag stripping (issue #57)", () => {
 
   it("preserves an inline base64 image that was trapped inside <final>", () => {
     const img = "![diagram](data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=)";
-    const [msg] = projectChatDisplayMessages([assistantText(`<final>여기 그림입니다.\n${img}</final>`)]);
+    const [msg] = projectChatDisplayMessages([
+      assistantText(`<final>여기 그림입니다.\n${img}</final>`),
+    ]);
     const out = projectedText(msg);
     expect(out).not.toContain("<final>");
     expect(out).toContain(img); // the data-URI markdown survives → dashboard renders it
@@ -42,6 +44,42 @@ describe("chat.history reasoning-tag stripping (issue #57)", () => {
   it("leaves a plain answer (no reasoning tags) untouched", () => {
     const [msg] = projectChatDisplayMessages([assistantText("Just a normal answer, no tags.")]);
     expect(projectedText(msg)).toBe("Just a normal answer, no tags.");
+  });
+
+  it("strips reasoning scaffolding split across assistant text blocks on reload", () => {
+    const [msg] = projectChatDisplayMessages([
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "internal prompt instructions" },
+          { type: "text", text: ". Output must be " },
+          { type: "thinking", thinking: "more internal reasoning" },
+          {
+            type: "text",
+            text: "then close the scaffold.</think><final>A274-USAGE-ROUNDTRIP-20260727</final>",
+          },
+        ],
+      },
+    ]);
+    const out = projectedText(msg);
+    expect(out).toBe("A274-USAGE-ROUNDTRIP-20260727");
+    expect(out).not.toContain("Output must be");
+    expect(out).not.toContain("internal");
+    expect(
+      (msg?.content as Array<{ type?: string }>).some((block) => block.type === "thinking"),
+    ).toBe(false);
+  });
+
+  it("preserves ordinary multi-block assistant text", () => {
+    const input = {
+      role: "assistant",
+      content: [
+        { type: "text", text: "First paragraph." },
+        { type: "text", text: "Second paragraph." },
+      ],
+    };
+    const [msg] = projectChatDisplayMessages([input]);
+    expect(msg?.content).toEqual(input.content);
   });
 
   it("does not strip <final> the USER literally typed", () => {
@@ -71,7 +109,8 @@ describe("chat.history reasoning-tag stripping (issue #57)", () => {
   });
 
   it("must NOT strip SVG <text x=…> elements (issue #59 — would break diagrams)", () => {
-    const svg = '<svg width="20"><text x="1" y="2" fill="black">A</text><text x="5" y="6">B</text></svg>';
+    const svg =
+      '<svg width="20"><text x="1" y="2" fill="black">A</text><text x="5" y="6">B</text></svg>';
     const [msg] = projectChatDisplayMessages([assistantText(`<text>Here:\n${svg}</text>`)]);
     const out = projectedText(msg);
     expect(out).not.toMatch(/^<text>/); // the bare wrapper is gone
@@ -141,7 +180,10 @@ describe("chat.history hides internal inter-session tool deliveries (issue #60)"
 
   it("normalizes an inline {type:image,data,mimeType} block into renderable source.base64 (root fix)", () => {
     const [msg] = projectChatDisplayMessages([
-      { role: "assistant", content: [{ type: "image", data: "/9j/2wBDAAUF", mimeType: "image/jpeg" }] },
+      {
+        role: "assistant",
+        content: [{ type: "image", data: "/9j/2wBDAAUF", mimeType: "image/jpeg" }],
+      },
     ]);
     const block = (msg.content as Array<Record<string, unknown>>).find((b) => b.type === "image");
     expect(block).toBeTruthy();

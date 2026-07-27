@@ -433,6 +433,8 @@ export class OpenClawApp extends LitElement {
   @state() usageLoading = false;
   @state() usageResult: import("./types.js").SessionsUsageResult | null = null;
   @state() usageCostSummary: import("./types.js").CostUsageSummary | null = null;
+  @state() providerUsageLedger: import("./types.js").ProviderUsageLedgerSummary | null = null;
+  @state() providerUsageLedgerError: string | null = null;
   @state() usageError: string | null = null;
   @state() usageStartDate = (() => {
     const d = new Date();

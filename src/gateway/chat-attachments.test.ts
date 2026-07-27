@@ -31,6 +31,12 @@ import {
   resolveChatAttachmentMaxBytes,
   UnsupportedAttachmentError,
 } from "./chat-attachments.js";
+import {
+  CHAT_ATTACHMENT_WS_ENVELOPE_HEADROOM_BYTES,
+  DEFAULT_CHAT_ATTACHMENT_MAX_BYTES,
+  MAX_PAYLOAD_BYTES,
+  estimateBase64EncodedBytes,
+} from "./server-constants.js";
 
 const PNG_1x1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAn8B9FD5fHAAAAAASUVORK5CYII=";
@@ -538,10 +544,19 @@ describe("resolveChatAttachmentMaxBytes", () => {
   });
 
   it("falls back to DEFAULT_CHAT_ATTACHMENT_MAX_MB when unset", () => {
+    expect(DEFAULT_CHAT_ATTACHMENT_MAX_MB).toBe(200);
     expect(resolveChatAttachmentMaxBytes({} as OpenClawConfig)).toBe(DEFAULT_BYTES);
     expect(resolveChatAttachmentMaxBytes({ agents: {} } as unknown as OpenClawConfig)).toBe(
       DEFAULT_BYTES,
     );
+  });
+
+  it("keeps a full-size default attachment inside the WebSocket envelope", () => {
+    expect(DEFAULT_BYTES).toBe(DEFAULT_CHAT_ATTACHMENT_MAX_BYTES);
+    expect(MAX_PAYLOAD_BYTES).toBe(
+      estimateBase64EncodedBytes(DEFAULT_BYTES) + CHAT_ATTACHMENT_WS_ENVELOPE_HEADROOM_BYTES,
+    );
+    expect(estimateBase64EncodedBytes(DEFAULT_BYTES)).toBeLessThan(MAX_PAYLOAD_BYTES);
   });
 
   it("rejects non-positive, non-finite, or non-number values", () => {

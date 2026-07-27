@@ -13,6 +13,7 @@ import {
 import { getProviderEnvVars } from "../secrets/provider-env-vars.js";
 import { parseImageGenerationModelRef } from "./model-ref.js";
 import { resolveImageGenerationOverrides } from "./normalization.js";
+import { normalizeGeneratedImageOutputFormat } from "./output-format.js";
 import { getImageGenerationProvider, listImageGenerationProviders } from "./provider-registry.js";
 import type { GenerateImageParams, GenerateImageRuntimeResult } from "./runtime-types.js";
 import type { ImageGenerationResult } from "./types.js";
@@ -24,6 +25,7 @@ export type ImageGenerationRuntimeDeps = {
   listProviders?: typeof listImageGenerationProviders;
   getProviderEnvVars?: typeof getProviderEnvVars;
   log?: Pick<typeof log, "warn">;
+  normalizeOutputFormat?: typeof normalizeGeneratedImageOutputFormat;
 };
 
 export type { GenerateImageParams, GenerateImageRuntimeResult } from "./runtime-types.js";
@@ -123,8 +125,12 @@ export async function generateImage(
       if (!Array.isArray(result.images) || result.images.length === 0) {
         throw new Error("Image generation provider returned no images.");
       }
+      const images = await (deps.normalizeOutputFormat ?? normalizeGeneratedImageOutputFormat)(
+        result.images,
+        sanitized.outputFormat,
+      );
       return {
-        images: result.images,
+        images,
         provider: candidate.provider,
         model: result.model ?? candidate.model,
         attempts,

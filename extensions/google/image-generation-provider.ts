@@ -169,6 +169,9 @@ export function buildGoogleImageGenerationProvider(): ImageGenerationProvider {
         aspectRatios: [...GOOGLE_SUPPORTED_ASPECT_RATIOS],
         resolutions: ["1K", "2K", "4K"],
       },
+      output: {
+        formats: ["png"],
+      },
     },
     async generateImage(req) {
       const auth = await resolveApiKeyForProvider({

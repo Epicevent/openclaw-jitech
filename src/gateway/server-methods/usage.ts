@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import { loadProviderUsageLedgerSummary } from "../../agents/provider-usage-ledger-summary.js";
 import {
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
@@ -834,6 +835,26 @@ export const usageHandlers: GatewayRequestHandlers = {
     });
     const summary = await loadCostUsageSummaryCached({ startMs, endMs, config });
     respond(true, summary, undefined);
+  },
+  "usage.providerLedger": async ({ respond, params }) => {
+    const { startMs, endMs } = parseDateRange({
+      startDate: params?.startDate,
+      endDate: params?.endDate,
+      days: params?.days,
+      range: params?.range,
+      mode: params?.mode,
+      utcOffset: params?.utcOffset,
+    });
+    try {
+      respond(true, loadProviderUsageLedgerSummary({ startMs, endMs }), undefined);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `Provider usage receipt ledger unavailable: ${detail}`),
+      );
+    }
   },
   "sessions.usage": async ({ respond, params, context }) => {
     if (!validateSessionsUsageParams(params)) {
