@@ -205,9 +205,9 @@ const SURFACES: ProviderUsageCoverageSurface[] = [
     meterFamily: "characters",
     modelEvidence: "requested_only",
     retryObservation: "logical_call_only",
-    usageObservation: "request_observed",
-    status: "implemented",
-    gapCode: null,
+    usageObservation: "unavailable",
+    status: "partial",
+    gapCode: "character_quantity_unavailable",
   },
 ];
 

@@ -1,7 +1,7 @@
 {
   "schema": "jitech-provider-usage-coverage/v1",
   "productFamily": "openclaw",
-  "manifestDigest": "sha256:9bcd5bd6eda14eb9170891f05842d753b90b7ec4496a3acc2b2f856865dc5ffb",
+  "manifestDigest": "sha256:e203990c54e568dde76d5d83ee86b80b30395412f3402272b613c1054bc9a5f9",
   "coverageStatus": "partial",
   "surfaces": [
     {
@@ -180,9 +180,9 @@
       "meterFamily": "characters",
       "modelEvidence": "requested_only",
       "retryObservation": "logical_call_only",
-      "usageObservation": "request_observed",
-      "status": "implemented",
-      "gapCode": null
+      "usageObservation": "unavailable",
+      "status": "partial",
+      "gapCode": "character_quantity_unavailable"
     }
   ]
 }

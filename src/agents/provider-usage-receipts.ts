@@ -219,10 +219,10 @@ function extractGoogleUsage(record: ProviderOutputRecord): ProviderUsageDimensio
   };
 }
 
-function extractNormalizedUsage(record: ProviderOutputRecord): ProviderUsageDimensions {
+function extractNormalizedUsage(record: ProviderOutputRecord): ProviderUsageDimensions | null {
   const usage = asRecord(record.usage) ?? asRecord(record.timings);
   if (!usage) {
-    return emptyUsage();
+    return null;
   }
   const input = normalizeCount(
     usage.input ??
@@ -297,7 +297,7 @@ export function observeProviderUsageCallChunk(
       normalizeString(output.stopReason) ??
       current?.providerFinishReason ??
       null,
-    usage: usage.rawProviderUsage ? usage : (current?.usage ?? usage),
+    usage: usage ?? current?.usage ?? emptyUsage(),
   };
 }
 

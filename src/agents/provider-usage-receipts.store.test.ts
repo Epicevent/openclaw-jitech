@@ -200,6 +200,13 @@ describe("provider usage receipt store", () => {
       ),
     ).toThrow(ProviderUsageReceiptConflictError);
     expect(exportProviderUsageReceipts().receipts).toHaveLength(1);
+
+    const restored = appendProviderUsageReceipt(buildReceipt(CALL_IDS.second), manifest);
+    expect(restored.ledgerSeq).toBeGreaterThan(first.ledgerSeq);
+    expect(exportProviderUsageReceipts().receipts.map((receipt) => receipt.callId)).toEqual([
+      CALL_IDS.replay,
+      CALL_IDS.second,
+    ]);
   });
 
   it("fails closed without creating state when the ledger is missing", () => {

@@ -230,6 +230,42 @@ describe("provider usage call receipts", () => {
     expect(JSON.stringify(exportProviderUsageReceipts())).not.toContain("secret prompt");
   });
 
+  it("keeps final normalized totals after an initial zero-usage stream snapshot", () => {
+    const started = observeProviderUsageCallChunk(undefined, {
+      type: "start",
+      partial: {
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+        },
+      },
+    });
+    const completed = observeProviderUsageCallChunk(started, {
+      type: "done",
+      message: {
+        usage: {
+          input: 13,
+          output: 5,
+          cacheRead: 2,
+          cacheWrite: 1,
+          totalTokens: 21,
+        },
+      },
+    });
+
+    expect(completed.usage).toMatchObject({
+      inputTotal: 15,
+      inputNonCached: 13,
+      cacheRead: 2,
+      cacheWrite: 1,
+      outputCandidates: 5,
+      providerReportedTotal: 21,
+    });
+  });
+
   it("represents unavailable usage as null instead of zero", () => {
     const run = createProviderUsageRunContext({
       runId: "run-3",

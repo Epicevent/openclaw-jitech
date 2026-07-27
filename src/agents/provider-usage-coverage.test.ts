@@ -190,6 +190,19 @@ describe("provider usage coverage manifest", () => {
     expect((fixture as { coverageStatus: string }).coverageStatus).toBe("partial");
   });
 
+  it("does not claim character-meter coverage without a stored quantity", () => {
+    const speech = buildProviderUsageCoverageManifest().surfaces.find(
+      (surface) => surface.surfaceCode === "speech.other_submit",
+    );
+
+    expect(speech).toMatchObject({
+      meterFamily: "characters",
+      usageObservation: "unavailable",
+      status: "partial",
+      gapCode: "character_quantity_unavailable",
+    });
+  });
+
   it("rejects changed canonical bytes and unsorted or duplicate surfaces", () => {
     const manifest = buildProviderUsageCoverageManifest();
     const changed = structuredClone(manifest);
