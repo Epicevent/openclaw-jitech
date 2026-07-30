@@ -18,6 +18,7 @@ type ReceiptRow = {
   ledger_seq: number | bigint;
   handoff_digest: string;
   receipt_digest: string;
+  consumption_receipt_digest: string;
   product_source_commit: string;
   receipt_json: string;
 };
@@ -111,7 +112,8 @@ function createStatements(db: DatabaseSync): ReceiptStatements {
       ON CONFLICT(handoff_digest) DO NOTHING
     `),
     selectByHandoffDigest: db.prepare(`
-      SELECT ledger_seq, handoff_digest, receipt_digest, product_source_commit, receipt_json
+      SELECT ledger_seq, handoff_digest, receipt_digest, consumption_receipt_digest,
+             product_source_commit, receipt_json
       FROM kwrag_p0_handoff_receipt
       WHERE handoff_digest = ?
     `),
@@ -150,6 +152,9 @@ function parseReceiptRow(row: ReceiptRow): StoredKwragP0HandoffReceipt {
     if (parsed.receiptDigest !== row.receipt_digest) {
       throw new Error("stored receiptDigest disagrees with its index");
     }
+    if (parsed.consumptionReceiptDigest !== row.consumption_receipt_digest) {
+      throw new Error("stored consumptionReceiptDigest disagrees with its index");
+    }
     if (parsed.productSourceCommit !== row.product_source_commit) {
       throw new Error("stored productSourceCommit disagrees with its index");
     }
@@ -172,6 +177,18 @@ function parseReceiptRow(row: ReceiptRow): StoredKwragP0HandoffReceipt {
   }
 }
 
+function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt[] {
+  const rows = db
+    .prepare(`
+      SELECT ledger_seq, handoff_digest, receipt_digest, consumption_receipt_digest,
+             product_source_commit, receipt_json
+      FROM kwrag_p0_handoff_receipt
+      ORDER BY ledger_seq ASC
+    `)
+    .all() as unknown as ReceiptRow[];
+  return rows.map((row) => parseReceiptRow(row));
+}
+
 export function appendKwragP0HandoffReceipt(
   receipt: KwragP0HandoffReceipt,
 ): StoredKwragP0HandoffReceipt {
@@ -179,6 +196,7 @@ export function appendKwragP0HandoffReceipt(
   const store = openReceiptDatabase();
   store.db.exec("BEGIN IMMEDIATE");
   try {
+    readCanonicalReceiptRows(store.db);
     try {
       store.statements.insertReceipt.run(
         receipt.handoffDigest,
@@ -198,7 +216,11 @@ export function appendKwragP0HandoffReceipt(
         `KWRAG P0 receipt insert disappeared for handoffDigest=${receipt.handoffDigest}`,
       );
     }
-    if (existing.receipt_digest !== receipt.receiptDigest || existing.receipt_json !== serialized) {
+    if (
+      existing.receipt_digest !== receipt.receiptDigest ||
+      existing.consumption_receipt_digest !== receipt.consumptionReceiptDigest ||
+      existing.receipt_json !== serialized
+    ) {
       throw new KwragP0HandoffReceiptConflictError(receipt.handoffDigest);
     }
     store.db.exec("COMMIT");
@@ -213,6 +235,7 @@ export function appendKwragP0HandoffReceipt(
 function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapshot {
   db.exec("BEGIN");
   try {
+    const receipts = readCanonicalReceiptRows(db);
     const boundary = db
       .prepare(
         "SELECT COALESCE(MAX(ledger_seq), 0) AS high_watermark FROM kwrag_p0_handoff_receipt",
@@ -228,15 +251,7 @@ function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapsho
     if (!Number.isSafeInteger(highWatermarkRaw) || highWatermarkRaw < 0) {
       throw new KwragP0HandoffReceiptLedgerCorruptError("invalid high watermark");
     }
-    const row = db
-      .prepare(`
-        SELECT ledger_seq, handoff_digest, receipt_digest, product_source_commit, receipt_json
-        FROM kwrag_p0_handoff_receipt
-        ORDER BY ledger_seq DESC
-        LIMIT 1
-      `)
-      .get() as ReceiptRow | undefined;
-    const latest = row ? parseReceiptRow(row) : null;
+    const latest = receipts.at(-1) ?? null;
     if ((latest?.ledgerSeq ?? 0) !== highWatermarkRaw) {
       throw new KwragP0HandoffReceiptLedgerCorruptError(
         "latest receipt does not match the ledger high watermark",

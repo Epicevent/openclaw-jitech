@@ -141,6 +141,40 @@ describe("KWRAG P0 handoff receipt store", () => {
     );
   });
 
+  it("fails closed when the consumption receipt index disagrees with canonical bytes", () => {
+    const receipt = buildReceipt();
+    appendKwragP0HandoffReceipt(receipt);
+    closeKwragP0HandoffReceiptStore();
+
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env));
+    try {
+      db.prepare(
+        "UPDATE kwrag_p0_handoff_receipt SET consumption_receipt_digest = ? WHERE handoff_digest = ?",
+      ).run(`sha256:${"f".repeat(64)}`, receipt.handoffDigest);
+    } finally {
+      db.close();
+    }
+
+    expect(() => appendKwragP0HandoffReceipt(buildSecondHandoffReceipt())).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
+    closeKwragP0HandoffReceiptStore();
+    const verifyDb = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+      readOnly: true,
+    });
+    try {
+      expect(
+        verifyDb.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt").get(),
+      ).toEqual({ count: 1 });
+    } finally {
+      verifyDb.close();
+    }
+    expect(() => readKwragP0HandoffLedgerSnapshot()).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
+  });
+
   it.skipIf(process.platform === "win32")("repairs restrictive ledger permissions", () => {
     appendKwragP0HandoffReceipt(buildReceipt());
     const dbPath = resolveKwragP0HandoffReceiptDbPath(process.env);
