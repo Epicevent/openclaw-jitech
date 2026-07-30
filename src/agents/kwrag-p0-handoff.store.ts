@@ -211,6 +211,19 @@ function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt
   if (rows.length !== count) {
     throw new KwragP0HandoffReceiptLedgerCorruptError("receipt count changed within snapshot");
   }
+  const sequenceRow = db
+    .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'kwrag_p0_handoff_receipt'")
+    .get() as { seq: number | bigint } | undefined;
+  const sequenceRaw = sequenceRow?.seq ?? 0;
+  const sequence = typeof sequenceRaw === "bigint" ? Number(sequenceRaw) : sequenceRaw;
+  if (!Number.isSafeInteger(sequence) || sequence < 0) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError("invalid monotonic sequence anchor");
+  }
+  if (sequence !== count) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError(
+      "receipt count disagrees with the monotonic sequence anchor",
+    );
+  }
   const receipts = rows.map((row) => parseReceiptRow(row));
   for (const [index, receipt] of receipts.entries()) {
     if (receipt.ledgerSeq !== index + 1) {
@@ -256,15 +269,29 @@ export function appendKwragP0HandoffReceipt(
     if (canonicalRows.length >= KWRAG_P0_MAX_LEDGER_RECEIPTS) {
       throw new KwragP0HandoffReceiptCapacityError();
     }
+    let insertedLedgerSeq: number;
     try {
-      store.statements.insertReceipt.run(
+      const insertResult = store.statements.insertReceipt.run(
         receipt.handoffDigest,
         receipt.receiptDigest,
         receipt.consumptionReceiptDigest,
         receipt.productSourceCommit,
         serialized,
       );
+      const changes =
+        typeof insertResult.changes === "bigint"
+          ? Number(insertResult.changes)
+          : insertResult.changes;
+      insertedLedgerSeq = normalizeLedgerSeq(insertResult.lastInsertRowid);
+      if (changes !== 1 || insertedLedgerSeq !== canonicalRows.length + 1) {
+        throw new KwragP0HandoffReceiptLedgerCorruptError(
+          "insert result disagrees with the monotonic sequence anchor",
+        );
+      }
     } catch (error) {
+      if (error instanceof KwragP0HandoffReceiptLedgerCorruptError) {
+        throw error;
+      }
       throw new KwragP0HandoffReceiptConflictError(receipt.handoffDigest, error);
     }
     const existing = store.statements.selectByHandoffDigest.get(receipt.handoffDigest) as
@@ -273,6 +300,11 @@ export function appendKwragP0HandoffReceipt(
     if (!existing) {
       throw new Error(
         `KWRAG P0 receipt insert disappeared for handoffDigest=${receipt.handoffDigest}`,
+      );
+    }
+    if (normalizeLedgerSeq(existing.ledger_seq) !== insertedLedgerSeq) {
+      throw new KwragP0HandoffReceiptLedgerCorruptError(
+        "inserted row disagrees with the returned ledger sequence",
       );
     }
     if (

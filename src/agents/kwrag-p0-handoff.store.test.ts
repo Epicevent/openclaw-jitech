@@ -239,6 +239,52 @@ describe("KWRAG P0 handoff receipt store", () => {
     );
   });
 
+  it.each([
+    { label: "tail", deleteSql: "DELETE FROM kwrag_p0_handoff_receipt WHERE ledger_seq = 3" },
+    { label: "all", deleteSql: "DELETE FROM kwrag_p0_handoff_receipt" },
+  ])("fails closed when canonical $label rows are deleted", ({ deleteSql }) => {
+    for (let index = 1; index <= 3; index += 1) {
+      appendKwragP0HandoffReceipt(buildIndexedReceipt(index));
+    }
+    closeKwragP0HandoffReceiptStore();
+
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env));
+    let countAfterDelete = 0;
+    try {
+      db.exec(deleteSql);
+      const row = db.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt").get() as {
+        count: number;
+      };
+      countAfterDelete = row.count;
+    } finally {
+      db.close();
+    }
+
+    expect(() => readKwragP0HandoffLedgerSnapshot()).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
+    expect(() => appendKwragP0HandoffReceipt(buildIndexedReceipt(4))).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
+    closeKwragP0HandoffReceiptStore();
+    const verifyDb = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+      readOnly: true,
+    });
+    try {
+      const countRow = verifyDb
+        .prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt")
+        .get();
+      const sequenceRow = verifyDb
+        .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'kwrag_p0_handoff_receipt'")
+        .get();
+      expect(countRow).toEqual({ count: countAfterDelete });
+      expect(sequenceRow).toEqual({ seq: 3 });
+    } finally {
+      verifyDb.close();
+    }
+  });
+
   it.skipIf(process.platform === "win32")("repairs restrictive ledger permissions", () => {
     appendKwragP0HandoffReceipt(buildReceipt());
     const dbPath = resolveKwragP0HandoffReceiptDbPath(process.env);
