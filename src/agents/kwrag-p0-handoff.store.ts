@@ -212,8 +212,13 @@ function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt
     throw new KwragP0HandoffReceiptLedgerCorruptError("receipt count changed within snapshot");
   }
   const sequenceRows = db
-    .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'kwrag_p0_handoff_receipt'")
-    .all() as unknown as Array<{ seq: number | bigint | null }>;
+    .prepare(`
+      SELECT seq, typeof(seq) AS storage_class
+      FROM sqlite_sequence
+      WHERE name = 'kwrag_p0_handoff_receipt'
+      LIMIT 2
+    `)
+    .all() as unknown as Array<{ seq: unknown; storage_class: unknown }>;
   if (count === 0 && sequenceRows.length === 0) {
     return [];
   }
@@ -222,7 +227,13 @@ function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt
       "monotonic sequence anchor cardinality is invalid",
     );
   }
-  const sequenceRaw = sequenceRows[0]?.seq;
+  const sequenceRow = sequenceRows[0];
+  if (sequenceRow?.storage_class !== "integer") {
+    throw new KwragP0HandoffReceiptLedgerCorruptError(
+      "monotonic sequence anchor storage class is invalid",
+    );
+  }
+  const sequenceRaw = sequenceRow.seq;
   const sequence = typeof sequenceRaw === "bigint" ? Number(sequenceRaw) : sequenceRaw;
   if (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0) {
     throw new KwragP0HandoffReceiptLedgerCorruptError("invalid monotonic sequence anchor");

@@ -287,10 +287,11 @@ describe("KWRAG P0 handoff receipt store", () => {
 
   it.each([
     {
-      label: "duplicate",
+      label: "many-duplicate",
       seedCount: 3,
       expectedCount: 3,
-      mutationSql: "INSERT INTO sqlite_sequence(name, seq) VALUES ('kwrag_p0_handoff_receipt', 3)",
+      mutationSql:
+        "WITH RECURSIVE duplicate_anchor(value) AS (VALUES (1) UNION ALL SELECT value + 1 FROM duplicate_anchor WHERE value < 128) INSERT INTO sqlite_sequence(name, seq) SELECT 'kwrag_p0_handoff_receipt', 3 FROM duplicate_anchor",
     },
     {
       label: "NULL",
@@ -305,6 +306,20 @@ describe("KWRAG P0 handoff receipt store", () => {
       expectedCount: 0,
       mutationSql:
         "DELETE FROM kwrag_p0_handoff_receipt; UPDATE sqlite_sequence SET seq = 0 WHERE name = 'kwrag_p0_handoff_receipt'",
+    },
+    {
+      label: "REAL",
+      seedCount: 1,
+      expectedCount: 1,
+      mutationSql:
+        "UPDATE sqlite_sequence SET seq = CAST(1 AS REAL) WHERE name = 'kwrag_p0_handoff_receipt'",
+    },
+    {
+      label: "TEXT",
+      seedCount: 1,
+      expectedCount: 1,
+      mutationSql:
+        "UPDATE sqlite_sequence SET seq = CAST(1 AS TEXT) WHERE name = 'kwrag_p0_handoff_receipt'",
     },
   ])(
     "fails closed for a malformed $label sequence anchor",
@@ -321,7 +336,9 @@ describe("KWRAG P0 handoff receipt store", () => {
       try {
         db.exec(mutationSql);
         sequenceRowsBefore = db
-          .prepare("SELECT name, seq FROM sqlite_sequence ORDER BY rowid ASC")
+          .prepare(
+            "SELECT name, seq, typeof(seq) AS storage_class, quote(seq) AS quoted FROM sqlite_sequence ORDER BY rowid ASC",
+          )
           .all();
       } finally {
         db.close();
@@ -340,7 +357,11 @@ describe("KWRAG P0 handoff receipt store", () => {
           verifyDb.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt").get(),
         ).toEqual({ count: expectedCount });
         expect(
-          verifyDb.prepare("SELECT name, seq FROM sqlite_sequence ORDER BY rowid ASC").all(),
+          verifyDb
+            .prepare(
+              "SELECT name, seq, typeof(seq) AS storage_class, quote(seq) AS quoted FROM sqlite_sequence ORDER BY rowid ASC",
+            )
+            .all(),
         ).toEqual(sequenceRowsBefore);
       } finally {
         verifyDb.close();
