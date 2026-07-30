@@ -22,6 +22,7 @@ type ResolvedImageGenerationOverrides = {
   resolution?: ImageGenerationResolution;
   quality?: ImageGenerationQuality;
   outputFormat?: ImageGenerationOutputFormat;
+  deliveryOutputFormat?: ImageGenerationOutputFormat;
   background?: ImageGenerationBackground;
   ignoredOverrides: ImageGenerationIgnoredOverride[];
   normalization?: ImageGenerationNormalization;
@@ -175,7 +176,11 @@ export function resolveImageGenerationOverrides(params: {
 
   const supportedFormats = params.provider.capabilities.output?.formats;
   if (outputFormat && !(supportedFormats ?? []).includes(outputFormat)) {
-    ignoredOverrides.push({ key: "outputFormat", value: outputFormat });
+    // PNG is a product delivery contract even when the provider cannot emit it natively.
+    // The runtime omits the provider hint and converts the returned bytes after generation.
+    if (outputFormat !== "png") {
+      ignoredOverrides.push({ key: "outputFormat", value: outputFormat });
+    }
     outputFormat = undefined;
   }
 
@@ -230,6 +235,7 @@ export function resolveImageGenerationOverrides(params: {
     resolution,
     quality,
     outputFormat,
+    deliveryOutputFormat: params.outputFormat === "png" ? "png" : outputFormat,
     background,
     ignoredOverrides,
     normalization: finalizeImageNormalization(normalization),
