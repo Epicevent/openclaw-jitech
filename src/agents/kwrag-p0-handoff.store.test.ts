@@ -15,6 +15,8 @@ import { resolveKwragP0HandoffReceiptDbPath } from "./kwrag-p0-handoff.paths.js"
 import {
   appendKwragP0HandoffReceipt,
   closeKwragP0HandoffReceiptStore,
+  KWRAG_P0_MAX_LEDGER_RECEIPTS,
+  KwragP0HandoffReceiptCapacityError,
   KwragP0HandoffReceiptConflictError,
   KwragP0HandoffReceiptLedgerCorruptError,
   readKwragP0HandoffLedgerSnapshot,
@@ -173,6 +175,35 @@ describe("KWRAG P0 handoff receipt store", () => {
     expect(() => readKwragP0HandoffLedgerSnapshot()).toThrow(
       KwragP0HandoffReceiptLedgerCorruptError,
     );
+  });
+
+  it("keeps integrity work bounded and permits only identical replay at the row cap", () => {
+    const receipts = Array.from({ length: KWRAG_P0_MAX_LEDGER_RECEIPTS }, (_, index) =>
+      mutateReceipt(buildReceipt(), (changed) => {
+        const suffix = (index + 1).toString(16).padStart(64, "0");
+        changed.handoffDigest = `sha256:${suffix}`;
+        changed.consumptionReceiptDigest = `sha256:${suffix}`;
+        changed.runId = `run-p0-cap-${index + 1}`;
+        changed.sessionId = `session-p0-cap-${index + 1}`;
+      }),
+    );
+    for (const receipt of receipts) {
+      appendKwragP0HandoffReceipt(receipt);
+    }
+
+    expect(appendKwragP0HandoffReceipt(receipts[0])).toEqual({
+      ledgerSeq: 1,
+      receipt: receipts[0],
+    });
+    const overflow = mutateReceipt(buildReceipt(), (changed) => {
+      const suffix = (KWRAG_P0_MAX_LEDGER_RECEIPTS + 1).toString(16).padStart(64, "0");
+      changed.handoffDigest = `sha256:${suffix}`;
+      changed.consumptionReceiptDigest = `sha256:${suffix}`;
+      changed.runId = "run-p0-cap-overflow";
+      changed.sessionId = "session-p0-cap-overflow";
+    });
+    expect(() => appendKwragP0HandoffReceipt(overflow)).toThrow(KwragP0HandoffReceiptCapacityError);
+    expect(readKwragP0HandoffLedgerSnapshot().highWatermark).toBe(KWRAG_P0_MAX_LEDGER_RECEIPTS);
   });
 
   it.skipIf(process.platform === "win32")("repairs restrictive ledger permissions", () => {

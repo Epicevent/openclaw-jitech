@@ -13,6 +13,7 @@ import {
 
 const RECEIPT_DIR_MODE = 0o700;
 const RECEIPT_FILE_MODE = 0o600;
+export const KWRAG_P0_MAX_LEDGER_RECEIPTS = 64;
 
 type ReceiptRow = {
   ledger_seq: number | bigint;
@@ -61,6 +62,13 @@ export class KwragP0HandoffReceiptLedgerCorruptError extends Error {
   constructor(message: string, cause?: unknown) {
     super(`KWRAG P0 handoff receipt ledger is corrupt: ${message}`, { cause });
     this.name = "KwragP0HandoffReceiptLedgerCorruptError";
+  }
+}
+
+export class KwragP0HandoffReceiptCapacityError extends Error {
+  constructor() {
+    super(`KWRAG P0 handoff receipt ledger reached its ${KWRAG_P0_MAX_LEDGER_RECEIPTS}-row cap`);
+    this.name = "KwragP0HandoffReceiptCapacityError";
   }
 }
 
@@ -178,6 +186,19 @@ function parseReceiptRow(row: ReceiptRow): StoredKwragP0HandoffReceipt {
 }
 
 function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt[] {
+  const countRow = db.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt").get() as
+    | { count: number | bigint }
+    | undefined;
+  const countRaw = countRow?.count;
+  const count = typeof countRaw === "bigint" ? Number(countRaw) : countRaw;
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError("invalid receipt count");
+  }
+  if (count > KWRAG_P0_MAX_LEDGER_RECEIPTS) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError(
+      `receipt count exceeds the ${KWRAG_P0_MAX_LEDGER_RECEIPTS}-row P0 cap`,
+    );
+  }
   const rows = db
     .prepare(`
       SELECT ledger_seq, handoff_digest, receipt_digest, consumption_receipt_digest,
@@ -186,7 +207,24 @@ function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt
       ORDER BY ledger_seq ASC
     `)
     .all() as unknown as ReceiptRow[];
+  if (rows.length !== count) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError("receipt count changed within snapshot");
+  }
   return rows.map((row) => parseReceiptRow(row));
+}
+
+function assertIdenticalReplay(
+  existing: StoredKwragP0HandoffReceipt,
+  receipt: KwragP0HandoffReceipt,
+  serialized: string,
+): void {
+  if (
+    existing.receipt.receiptDigest !== receipt.receiptDigest ||
+    existing.receipt.consumptionReceiptDigest !== receipt.consumptionReceiptDigest ||
+    serializeKwragP0HandoffReceipt(existing.receipt) !== serialized
+  ) {
+    throw new KwragP0HandoffReceiptConflictError(receipt.handoffDigest);
+  }
 }
 
 export function appendKwragP0HandoffReceipt(
@@ -196,7 +234,19 @@ export function appendKwragP0HandoffReceipt(
   const store = openReceiptDatabase();
   store.db.exec("BEGIN IMMEDIATE");
   try {
-    readCanonicalReceiptRows(store.db);
+    const canonicalRows = readCanonicalReceiptRows(store.db);
+    const replay = canonicalRows.find(
+      (stored) => stored.receipt.handoffDigest === receipt.handoffDigest,
+    );
+    if (replay) {
+      assertIdenticalReplay(replay, receipt, serialized);
+      store.db.exec("COMMIT");
+      ensureReceiptPermissions(store.path);
+      return replay;
+    }
+    if (canonicalRows.length >= KWRAG_P0_MAX_LEDGER_RECEIPTS) {
+      throw new KwragP0HandoffReceiptCapacityError();
+    }
     try {
       store.statements.insertReceipt.run(
         receipt.handoffDigest,
