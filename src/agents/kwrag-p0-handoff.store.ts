@@ -43,6 +43,7 @@ export type StoredKwragP0HandoffReceipt = Readonly<{
 export type KwragP0HandoffLedgerSnapshot = Readonly<{
   ledgerAvailable: boolean;
   highWatermark: number | null;
+  receiptCount: number;
   latest: StoredKwragP0HandoffReceipt | null;
 }>;
 
@@ -210,7 +211,15 @@ function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt
   if (rows.length !== count) {
     throw new KwragP0HandoffReceiptLedgerCorruptError("receipt count changed within snapshot");
   }
-  return rows.map((row) => parseReceiptRow(row));
+  const receipts = rows.map((row) => parseReceiptRow(row));
+  for (const [index, receipt] of receipts.entries()) {
+    if (receipt.ledgerSeq !== index + 1) {
+      throw new KwragP0HandoffReceiptLedgerCorruptError(
+        `ledger sequence is not contiguous at position ${index + 1}`,
+      );
+    }
+  }
+  return receipts;
 }
 
 function assertIdenticalReplay(
@@ -311,6 +320,7 @@ function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapsho
     return Object.freeze({
       ledgerAvailable: true,
       highWatermark: highWatermarkRaw,
+      receiptCount: receipts.length,
       latest,
     });
   } catch (error) {
@@ -324,7 +334,12 @@ export function readKwragP0HandoffLedgerSnapshot(
 ): KwragP0HandoffLedgerSnapshot {
   const pathname = resolveKwragP0HandoffReceiptDbPath(env);
   if (!existsSync(pathname)) {
-    return Object.freeze({ ledgerAvailable: false, highWatermark: null, latest: null });
+    return Object.freeze({
+      ledgerAvailable: false,
+      highWatermark: null,
+      receiptCount: 0,
+      latest: null,
+    });
   }
   const cached = cachedDatabase?.path === pathname ? cachedDatabase.db : null;
   if (cached) {

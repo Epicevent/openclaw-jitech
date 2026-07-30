@@ -63,6 +63,16 @@ function mutateReceipt(
   return changed;
 }
 
+function buildIndexedReceipt(index: number): KwragP0HandoffReceipt {
+  return mutateReceipt(buildReceipt(), (changed) => {
+    const suffix = index.toString(16).padStart(64, "0");
+    changed.handoffDigest = `sha256:${suffix}`;
+    changed.consumptionReceiptDigest = `sha256:${suffix}`;
+    changed.runId = `run-p0-index-${index}`;
+    changed.sessionId = `session-p0-index-${index}`;
+  });
+}
+
 describe("KWRAG P0 handoff receipt store", () => {
   let stateDir: string;
 
@@ -87,6 +97,7 @@ describe("KWRAG P0 handoff receipt store", () => {
     expect(readKwragP0HandoffLedgerSnapshot()).toEqual({
       ledgerAvailable: true,
       highWatermark: 1,
+      receiptCount: 1,
       latest: stored,
     });
   });
@@ -118,6 +129,7 @@ describe("KWRAG P0 handoff receipt store", () => {
     expect(readKwragP0HandoffLedgerSnapshot()).toEqual({
       ledgerAvailable: false,
       highWatermark: null,
+      receiptCount: 0,
       latest: null,
     });
     expect(existsSync(dbPath)).toBe(false);
@@ -179,13 +191,7 @@ describe("KWRAG P0 handoff receipt store", () => {
 
   it("keeps integrity work bounded and permits only identical replay at the row cap", () => {
     const receipts = Array.from({ length: KWRAG_P0_MAX_LEDGER_RECEIPTS }, (_, index) =>
-      mutateReceipt(buildReceipt(), (changed) => {
-        const suffix = (index + 1).toString(16).padStart(64, "0");
-        changed.handoffDigest = `sha256:${suffix}`;
-        changed.consumptionReceiptDigest = `sha256:${suffix}`;
-        changed.runId = `run-p0-cap-${index + 1}`;
-        changed.sessionId = `session-p0-cap-${index + 1}`;
-      }),
+      buildIndexedReceipt(index + 1),
     );
     for (const receipt of receipts) {
       appendKwragP0HandoffReceipt(receipt);
@@ -195,15 +201,42 @@ describe("KWRAG P0 handoff receipt store", () => {
       ledgerSeq: 1,
       receipt: receipts[0],
     });
-    const overflow = mutateReceipt(buildReceipt(), (changed) => {
-      const suffix = (KWRAG_P0_MAX_LEDGER_RECEIPTS + 1).toString(16).padStart(64, "0");
-      changed.handoffDigest = `sha256:${suffix}`;
-      changed.consumptionReceiptDigest = `sha256:${suffix}`;
-      changed.runId = "run-p0-cap-overflow";
-      changed.sessionId = "session-p0-cap-overflow";
-    });
+    const overflow = buildIndexedReceipt(KWRAG_P0_MAX_LEDGER_RECEIPTS + 1);
     expect(() => appendKwragP0HandoffReceipt(overflow)).toThrow(KwragP0HandoffReceiptCapacityError);
     expect(readKwragP0HandoffLedgerSnapshot().highWatermark).toBe(KWRAG_P0_MAX_LEDGER_RECEIPTS);
+  });
+
+  it("fails closed when a canonical middle row is deleted", () => {
+    for (let index = 1; index <= 3; index += 1) {
+      appendKwragP0HandoffReceipt(buildIndexedReceipt(index));
+    }
+    closeKwragP0HandoffReceiptStore();
+
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env));
+    try {
+      db.prepare("DELETE FROM kwrag_p0_handoff_receipt WHERE ledger_seq = 2").run();
+    } finally {
+      db.close();
+    }
+
+    expect(() => appendKwragP0HandoffReceipt(buildIndexedReceipt(4))).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
+    closeKwragP0HandoffReceiptStore();
+    const verifyDb = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+      readOnly: true,
+    });
+    try {
+      expect(
+        verifyDb.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt").get(),
+      ).toEqual({ count: 2 });
+    } finally {
+      verifyDb.close();
+    }
+    expect(() => readKwragP0HandoffLedgerSnapshot()).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
   });
 
   it.skipIf(process.platform === "win32")("repairs restrictive ledger permissions", () => {

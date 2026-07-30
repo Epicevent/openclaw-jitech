@@ -57,6 +57,9 @@ describe("kwrag-p0 status CLI", () => {
         "currentProductSourceCommit",
         "ledgerAvailable",
         "highWatermark",
+        "receiptCount",
+        "maxReceipts",
+        "capacityReached",
         "latest",
         "p1Identity",
       ].toSorted(),
@@ -67,6 +70,9 @@ describe("kwrag-p0 status CLI", () => {
       defaultEnabled: false,
       ledgerAvailable: false,
       highWatermark: null,
+      receiptCount: 0,
+      maxReceipts: 64,
+      capacityReached: false,
       latest: null,
     });
     expect(payload.currentProductSourceCommit).toMatch(/^[0-9a-f]{40}$/u);
@@ -94,9 +100,15 @@ describe("kwrag-p0 status CLI", () => {
 
     const payload = JSON.parse(output.writes.join("")) as {
       highWatermark: number;
+      receiptCount: number;
+      maxReceipts: number;
+      capacityReached: boolean;
       latest: { ledgerSeq: number; receipt: { productSourceCommit: string } };
     };
     expect(payload.highWatermark).toBe(1);
+    expect(payload.receiptCount).toBe(1);
+    expect(payload.maxReceipts).toBe(64);
+    expect(payload.capacityReached).toBe(false);
     expect(payload.latest).toMatchObject({
       ledgerSeq: 1,
       receipt: { productSourceCommit: PRODUCT_SOURCE_COMMIT },

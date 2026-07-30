@@ -1,6 +1,7 @@
 import { resolveExactCommitHash } from "../infra/git-commit.js";
 import { KwragP0HandoffContractError, KWRAG_P1_UNRESOLVED_IDENTITY } from "./kwrag-p0-handoff.js";
 import {
+  KWRAG_P0_MAX_LEDGER_RECEIPTS,
   readKwragP0HandoffLedgerSnapshot,
   type StoredKwragP0HandoffReceipt,
 } from "./kwrag-p0-handoff.store.js";
@@ -15,6 +16,9 @@ export type KwragP0Status = Readonly<{
   currentProductSourceCommit: string;
   ledgerAvailable: boolean;
   highWatermark: number | null;
+  receiptCount: number;
+  maxReceipts: typeof KWRAG_P0_MAX_LEDGER_RECEIPTS;
+  capacityReached: boolean;
   latest: StoredKwragP0HandoffReceipt | null;
   p1Identity: typeof KWRAG_P1_UNRESOLVED_IDENTITY;
 }>;
@@ -39,6 +43,9 @@ export function readKwragP0Status(
     currentProductSourceCommit,
     ledgerAvailable: ledger.ledgerAvailable,
     highWatermark: ledger.highWatermark,
+    receiptCount: ledger.receiptCount,
+    maxReceipts: KWRAG_P0_MAX_LEDGER_RECEIPTS,
+    capacityReached: ledger.receiptCount >= KWRAG_P0_MAX_LEDGER_RECEIPTS,
     latest: ledger.latest,
     p1Identity: KWRAG_P1_UNRESOLVED_IDENTITY,
   });
