@@ -3,6 +3,7 @@ import type {
   SessionUsageTimeSeries as SharedSessionUsageTimeSeries,
 } from "../../../src/shared/session-usage-timeseries-types.js";
 import type { SessionsUsageResult as SharedSessionsUsageResult } from "../../../src/shared/usage-types.js";
+export type { ProviderUsageLedgerSummary } from "../../../src/shared/provider-usage-ledger-summary.js";
 
 export type SessionsUsageEntry = SharedSessionsUsageResult["sessions"][number];
 export type SessionsUsageTotals = SharedSessionsUsageResult["totals"];

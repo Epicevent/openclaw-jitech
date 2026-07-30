@@ -35,6 +35,7 @@ import {
   SessionLogEntry,
   SessionLogRole,
   UsageColumnId,
+  UsageDataState,
   UsageFilterState,
   UsageProps,
   UsageSessionEntry,
@@ -129,6 +130,109 @@ function renderUsageEmptyState(onRefresh: () => void) {
       </div>
       <div class="usage-empty-state__actions">
         <button class="btn primary" @click=${onRefresh}>${t("common.refresh")}</button>
+      </div>
+    </section>
+  `;
+}
+
+type ProviderLedgerDimension = NonNullable<UsageDataState["providerLedger"]>["usage"]["inputTotal"];
+
+function formatProviderLedgerDimension(dimension: ProviderLedgerDimension): string {
+  if (dimension.total !== null) {
+    return formatTokens(dimension.total);
+  }
+  if (dimension.knownSubtotal !== null) {
+    return t("usage.providerLedger.knownSubtotal", {
+      value: formatTokens(dimension.knownSubtotal),
+      known: String(dimension.knownReceipts),
+      total: String(dimension.receiptCount),
+    });
+  }
+  return t("usage.providerLedger.unavailableDimension", {
+    known: String(dimension.knownReceipts),
+    total: String(dimension.receiptCount),
+  });
+}
+
+function renderProviderLedger(data: UsageDataState) {
+  if (data.providerLedgerError) {
+    return html`
+      <section class="card usage-provider-ledger usage-provider-ledger--error">
+        <div class="card-title usage-section-title">${t("usage.providerLedger.title")}</div>
+        <div class="card-sub">${t("usage.providerLedger.unavailable")}</div>
+        <div class="usage-provider-ledger__error">${data.providerLedgerError}</div>
+      </section>
+    `;
+  }
+  const ledger = data.providerLedger;
+  if (!ledger) {
+    return nothing;
+  }
+  const modelText = ledger.actualModels
+    .map((entry) => {
+      const model =
+        entry.provider && entry.model
+          ? `${entry.provider}/${entry.model}`
+          : t("usage.providerLedger.actualModelMissing");
+      return `${model} × ${entry.callCount}`;
+    })
+    .join(", ");
+  const coverageLabel =
+    ledger.producerCoverage === "complete"
+      ? t("usage.providerLedger.coverage.complete")
+      : ledger.producerCoverage === "partial"
+        ? t("usage.providerLedger.coverage.partial")
+        : t("usage.providerLedger.coverage.unavailable");
+  return html`
+    <section class="card usage-provider-ledger">
+      <div class="usage-provider-ledger__heading">
+        <div>
+          <div class="card-title usage-section-title">${t("usage.providerLedger.title")}</div>
+          <div class="card-sub">${t("usage.providerLedger.subtitle")}</div>
+        </div>
+        <span class="usage-provider-ledger__source">${t("usage.providerLedger.source")}</span>
+      </div>
+      <div class="usage-provider-ledger__grid">
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.calls")}</span>
+          <strong>${ledger.receiptCount}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.inputNonCached")}</span>
+          <strong>${formatProviderLedgerDimension(ledger.usage.inputNonCached)}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.cacheRead")}</span>
+          <strong>${formatProviderLedgerDimension(ledger.usage.cacheRead)}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.cacheWrite")}</span>
+          <strong>${formatProviderLedgerDimension(ledger.usage.cacheWrite)}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.output")}</span>
+          <strong>${formatProviderLedgerDimension(ledger.usage.outputCandidates)}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.thinking")}</span>
+          <strong>${formatProviderLedgerDimension(ledger.usage.reasoningThinking)}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.toolUse")}</span>
+          <strong>${formatProviderLedgerDimension(ledger.usage.toolUsePrompt)}</strong>
+        </div>
+        <div class="usage-provider-ledger__metric">
+          <span>${t("usage.providerLedger.cost")}</span>
+          <strong>${t("usage.providerLedger.costUnavailable")}</strong>
+        </div>
+      </div>
+      <div class="usage-provider-ledger__evidence">
+        <span
+          >${t("usage.providerLedger.actualModels")}:
+          ${modelText || t("usage.common.unknown")}</span
+        >
+        <span>${t("usage.providerLedger.coverageLabel")}: ${coverageLabel}</span>
+        <span>${t("usage.providerLedger.highWatermark")}: ${ledger.highWatermark}</span>
       </div>
     </section>
   `;
@@ -421,10 +525,12 @@ export function renderUsage(props: UsageProps) {
 
   return html`
     <div class="usage-page">
+      ${renderProviderLedger(data)}
       <section class="card usage-header ${display.headerPinned ? "pinned" : ""}">
         <div class="usage-header-row">
           <div class="usage-header-title">
             <div class="card-title usage-section-title">${t("usage.filters.title")}</div>
+            <span class="usage-query-hint">${t("usage.providerLedger.legacyNotice")}</span>
             ${data.loading || cacheStatusTitle
               ? html`<span class="usage-refresh-indicator" title=${cacheStatusTitle ?? ""}>
                   ${t("usage.loading.badge")}

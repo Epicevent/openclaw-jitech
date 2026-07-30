@@ -310,6 +310,8 @@ export type AppViewState = {
   usageLoading: boolean;
   usageResult: SessionsUsageResult | null;
   usageCostSummary: CostUsageSummary | null;
+  providerUsageLedger: import("./types.ts").ProviderUsageLedgerSummary | null;
+  providerUsageLedgerError: string | null;
   usageError: string | null;
   usageStartDate: string;
   usageEndDate: string;

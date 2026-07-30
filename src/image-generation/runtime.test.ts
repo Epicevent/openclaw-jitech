@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
 import {
   generateImage,
@@ -335,27 +335,30 @@ describe("image-generation runtime", () => {
       },
     ];
 
-    const result = await runGenerateImage({
-      cfg: {
-        agents: {
-          defaults: {
-            imageGenerationModel: { primary: "openai/gpt-image-2" },
+    const result = await generateImage(
+      {
+        cfg: {
+          agents: {
+            defaults: {
+              imageGenerationModel: { primary: "openai/gpt-image-2" },
+            },
+          },
+        } as OpenClawConfig,
+        prompt: "draw a cheap preview",
+        quality: "low",
+        outputFormat: "jpeg",
+        background: "opaque",
+        providerOptions: {
+          openai: {
+            background: "opaque",
+            moderation: "low",
+            outputCompression: 60,
+            user: "end-user-42",
           },
         },
-      } as OpenClawConfig,
-      prompt: "draw a cheap preview",
-      quality: "low",
-      outputFormat: "jpeg",
-      background: "opaque",
-      providerOptions: {
-        openai: {
-          background: "opaque",
-          moderation: "low",
-          outputCompression: 60,
-          user: "end-user-42",
-        },
       },
-    });
+      { ...runtimeDeps, normalizeOutputFormat: async (images) => images },
+    );
 
     expect(seenRequest).toEqual({
       quality: "low",
@@ -371,6 +374,40 @@ describe("image-generation runtime", () => {
       },
     });
     expect(result.ignoredOverrides).toStrictEqual([]);
+  });
+
+  it("normalizes provider bytes after the requested output format reaches the provider", async () => {
+    const providerBytes = [{ buffer: Buffer.from("jpeg-bytes"), mimeType: "image/jpeg" }];
+    const pngBytes = [{ buffer: Buffer.from("png-bytes"), mimeType: "image/png" }];
+    const normalizeOutputFormat = vi.fn().mockResolvedValue(pngBytes);
+    providers = [
+      {
+        id: "google",
+        capabilities: {
+          generate: {},
+          edit: { enabled: true },
+          output: { formats: ["png"] },
+        },
+        async generateImage(req) {
+          expect(req.outputFormat).toBe("png");
+          return { images: providerBytes };
+        },
+      },
+    ];
+
+    const result = await generateImage(
+      {
+        cfg: {
+          agents: { defaults: { imageGenerationModel: { primary: "google/image-model" } } },
+        } as OpenClawConfig,
+        prompt: "draw a cat",
+        outputFormat: "png",
+      },
+      { ...runtimeDeps, normalizeOutputFormat },
+    );
+
+    expect(normalizeOutputFormat).toHaveBeenCalledWith(providerBytes, "png");
+    expect(result.images).toEqual(pngBytes);
   });
 
   it("drops unsupported image output hints and reports them", async () => {

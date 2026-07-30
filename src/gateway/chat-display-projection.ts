@@ -239,6 +239,58 @@ function sanitizeAssistantPhasedContentBlocks(content: unknown[]): {
   };
 }
 
+function coalesceSplitAssistantReasoningText(content: unknown[]): {
+  content: unknown[];
+  changed: boolean;
+} {
+  const textBlocks = content.filter(
+    (block): block is Record<string, unknown> =>
+      Boolean(block) &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string",
+  );
+  if (textBlocks.length < 2) {
+    return { content, changed: false };
+  }
+
+  const hasReasoningBlock = content.some((block) => {
+    if (!block || typeof block !== "object") {
+      return false;
+    }
+    const type = (block as { type?: unknown }).type;
+    return type === "thinking" || type === "reasoning";
+  });
+  const joinedText = textBlocks.map((block) => block.text as string).join("");
+  const hasCrossBlockScaffold = joinedText.includes("</think>") && joinedText.includes("<final>");
+  if (!hasReasoningBlock || !hasCrossBlockScaffold) {
+    return { content, changed: false };
+  }
+
+  const visible = stripAssistantReasoningForHistory(joinedText).text;
+  let insertedVisibleText = false;
+  const projected: unknown[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") {
+      projected.push(block);
+      continue;
+    }
+    const entry = block as Record<string, unknown>;
+    if (entry.type === "thinking" || entry.type === "reasoning") {
+      continue;
+    }
+    if (entry.type === "text" && typeof entry.text === "string") {
+      if (!insertedVisibleText && visible.length > 0) {
+        projected.push({ ...entry, text: visible });
+        insertedVisibleText = true;
+      }
+      continue;
+    }
+    projected.push(block);
+  }
+  return { content: projected, changed: true };
+}
+
 function projectAssistantTextFromMixedToolContent(
   content: unknown[],
   maxChars: number,
@@ -392,25 +444,41 @@ function sanitizeChatHistoryMessage(
       changed ||= reasoned.changed || stripped.changed || res.truncated;
     }
   } else if (Array.isArray(entry.content)) {
-    const updated = entry.content.map((block) =>
-      sanitizeChatHistoryContentBlock(block, { preserveExactToolPayload, maxChars, stripReasoning }),
+    let content: unknown[] = entry.content;
+    if (entry.role === "assistant" && !preserveExactToolPayload) {
+      const coalesced = coalesceSplitAssistantReasoningText(content);
+      if (coalesced.changed) {
+        content = coalesced.content;
+        entry.content = content;
+        changed = true;
+      }
+    }
+    const updated = content.map((block) =>
+      sanitizeChatHistoryContentBlock(block, {
+        preserveExactToolPayload,
+        maxChars,
+        stripReasoning,
+      }),
     );
     if (updated.some((item) => item.changed)) {
-      entry.content = updated.map((item) => item.block);
+      content = updated.map((item) => item.block);
+      entry.content = content;
       changed = true;
     }
-    if (entry.role === "assistant" && Array.isArray(entry.content)) {
-      const mixedToolText = projectAssistantTextFromMixedToolContent(entry.content, maxChars);
+    if (entry.role === "assistant") {
+      const mixedToolText = projectAssistantTextFromMixedToolContent(content, maxChars);
       if (mixedToolText) {
-        entry.content = mixedToolText.content;
+        content = mixedToolText.content;
+        entry.content = content;
         if (entry.phase === "commentary") {
           delete entry.phase;
         }
         changed = true;
       } else {
-        const sanitizedPhases = sanitizeAssistantPhasedContentBlocks(entry.content);
+        const sanitizedPhases = sanitizeAssistantPhasedContentBlocks(content);
         if (sanitizedPhases.changed) {
-          entry.content = sanitizedPhases.content;
+          content = sanitizedPhases.content;
+          entry.content = content;
           changed = true;
         }
       }

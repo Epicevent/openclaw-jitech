@@ -1,5 +1,6 @@
 import type {
   CostUsageDailyEntry,
+  ProviderUsageLedgerSummary,
   SessionsUsageEntry,
   SessionsUsageResult,
   SessionsUsageTotals,
@@ -32,6 +33,8 @@ export type UsageDataState = {
   aggregates: UsageAggregates | null;
   costDaily: CostDailyEntry[];
   cacheStatus: SessionsUsageResult["cacheStatus"];
+  providerLedger: ProviderUsageLedgerSummary | null;
+  providerLedgerError: string | null;
 };
 
 export type UsageFilterState = {

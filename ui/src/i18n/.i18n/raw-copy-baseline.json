@@ -4606,6 +4606,48 @@
       "name": "aria-label",
       "path": "ui/src/ui/views/usage-render-overview.ts",
       "text": "Remove session filter"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "aria-label",
+      "path": "ui/src/ui/views/version-history.ts",
+      "text": "닫기"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/ui/views/version-history.ts",
+      "text": "기록 없음"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/ui/views/version-history.ts",
+      "text": "버전"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/ui/views/version-history.ts",
+      "text": "버전 기록"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/ui/views/version-history.ts",
+      "text": "변경"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/ui/views/version-history.ts",
+      "text": "빌드"
     }
   ]
 }

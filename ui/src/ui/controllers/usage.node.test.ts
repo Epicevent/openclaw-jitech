@@ -17,6 +17,8 @@ function createState(request: RequestFn, overrides: Partial<UsageState> = {}): U
     usageLoading: false,
     usageResult: null,
     usageCostSummary: null,
+    providerUsageLedger: null,
+    providerUsageLedgerError: null,
     usageError: null,
     usageStartDate: "2026-02-16",
     usageEndDate: "2026-02-16",
@@ -46,6 +48,12 @@ function expectSpecificTimezoneCalls(request: ReturnType<typeof vi.fn>, startCal
     includeContextWeight: true,
   });
   expect(request).toHaveBeenNthCalledWith(startCall + 1, "usage.cost", {
+    startDate: "2026-02-16",
+    endDate: "2026-02-16",
+    mode: "specific",
+    utcOffset: "UTC+5:30",
+  });
+  expect(request).toHaveBeenNthCalledWith(startCall + 2, "usage.providerLedger", {
     startDate: "2026-02-16",
     endDate: "2026-02-16",
     mode: "specific",
@@ -98,6 +106,11 @@ describe("usage controller date interpretation params", () => {
       endDate: "2026-02-16",
       mode: "utc",
     });
+    expect(request).toHaveBeenNthCalledWith(3, "usage.providerLedger", {
+      startDate: "2026-02-16",
+      endDate: "2026-02-16",
+      mode: "utc",
+    });
   });
 
   it("captures useful error strings in loadUsage", async () => {
@@ -109,6 +122,22 @@ describe("usage controller date interpretation params", () => {
     await loadUsage(state);
 
     expect(state.usageError).toBe("request failed");
+  });
+
+  it("keeps transcript analytics available while a missing receipt ledger fails closed separately", async () => {
+    const request = vi.fn(async (method: string) => {
+      if (method === "usage.providerLedger") {
+        throw new Error("receipt ledger unavailable");
+      }
+      return {};
+    });
+    const state = createState(request, { usageTimeZone: "utc" });
+
+    await loadUsage(state);
+
+    expect(state.usageError).toBeNull();
+    expect(state.providerUsageLedger).toBeNull();
+    expect(state.providerUsageLedgerError).toBe("receipt ledger unavailable");
   });
 
   it("serializes non-Error objects without object-to-string coercion", () => {
@@ -141,7 +170,7 @@ describe("usage controller date interpretation params", () => {
     await loadUsage(state);
 
     expectSpecificTimezoneCalls(request, 1);
-    expect(request).toHaveBeenNthCalledWith(3, "sessions.usage", {
+    expect(request).toHaveBeenNthCalledWith(4, "sessions.usage", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
       groupBy: "family",
@@ -149,7 +178,11 @@ describe("usage controller date interpretation params", () => {
       limit: 1000,
       includeContextWeight: true,
     });
-    expect(request).toHaveBeenNthCalledWith(4, "usage.cost", {
+    expect(request).toHaveBeenNthCalledWith(5, "usage.cost", {
+      startDate: "2026-02-16",
+      endDate: "2026-02-16",
+    });
+    expect(request).toHaveBeenNthCalledWith(6, "usage.providerLedger", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
     });
@@ -157,7 +190,7 @@ describe("usage controller date interpretation params", () => {
     // Subsequent loads for the same gateway should skip mode/utcOffset immediately.
     await loadUsage(state);
 
-    expect(request).toHaveBeenNthCalledWith(5, "sessions.usage", {
+    expect(request).toHaveBeenNthCalledWith(7, "sessions.usage", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
       groupBy: "family",
@@ -165,7 +198,11 @@ describe("usage controller date interpretation params", () => {
       limit: 1000,
       includeContextWeight: true,
     });
-    expect(request).toHaveBeenNthCalledWith(6, "usage.cost", {
+    expect(request).toHaveBeenNthCalledWith(8, "usage.cost", {
+      startDate: "2026-02-16",
+      endDate: "2026-02-16",
+    });
+    expect(request).toHaveBeenNthCalledWith(9, "usage.providerLedger", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
     });
@@ -203,7 +240,7 @@ describe("usage controller date interpretation params", () => {
     await loadUsage(state);
 
     expectSpecificTimezoneCalls(request, 1);
-    expect(request).toHaveBeenNthCalledWith(3, "sessions.usage", {
+    expect(request).toHaveBeenNthCalledWith(4, "sessions.usage", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
       mode: "specific",
@@ -211,7 +248,13 @@ describe("usage controller date interpretation params", () => {
       limit: 1000,
       includeContextWeight: true,
     });
-    expect(request).toHaveBeenNthCalledWith(4, "usage.cost", {
+    expect(request).toHaveBeenNthCalledWith(5, "usage.cost", {
+      startDate: "2026-02-16",
+      endDate: "2026-02-16",
+      mode: "specific",
+      utcOffset: "UTC+5:30",
+    });
+    expect(request).toHaveBeenNthCalledWith(6, "usage.providerLedger", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
       mode: "specific",
@@ -221,7 +264,7 @@ describe("usage controller date interpretation params", () => {
     // Subsequent loads for the same gateway should still send date params but skip lineage params.
     await loadUsage(state);
 
-    expect(request).toHaveBeenNthCalledWith(5, "sessions.usage", {
+    expect(request).toHaveBeenNthCalledWith(7, "sessions.usage", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
       mode: "specific",
@@ -229,7 +272,13 @@ describe("usage controller date interpretation params", () => {
       limit: 1000,
       includeContextWeight: true,
     });
-    expect(request).toHaveBeenNthCalledWith(6, "usage.cost", {
+    expect(request).toHaveBeenNthCalledWith(8, "usage.cost", {
+      startDate: "2026-02-16",
+      endDate: "2026-02-16",
+      mode: "specific",
+      utcOffset: "UTC+5:30",
+    });
+    expect(request).toHaveBeenNthCalledWith(9, "usage.providerLedger", {
       startDate: "2026-02-16",
       endDate: "2026-02-16",
       mode: "specific",

@@ -1,7 +1,12 @@
 import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
-import type { SessionsUsageResult, CostUsageSummary, SessionUsageTimeSeries } from "../types.ts";
+import type {
+  SessionsUsageResult,
+  CostUsageSummary,
+  ProviderUsageLedgerSummary,
+  SessionUsageTimeSeries,
+} from "../types.ts";
 import type { SessionLogEntry } from "../views/usage.ts";
 import {
   formatMissingOperatorReadScopeMessage,
@@ -14,6 +19,8 @@ export type UsageState = {
   usageLoading: boolean;
   usageResult: SessionsUsageResult | null;
   usageCostSummary: CostUsageSummary | null;
+  providerUsageLedger: ProviderUsageLedgerSummary | null;
+  providerUsageLedgerError: string | null;
   usageError: string | null;
   usageStartDate: string;
   usageEndDate: string;
@@ -187,13 +194,22 @@ function toErrorMessage(err: unknown): string {
   return "request failed";
 }
 
-function applyUsageResults(state: UsageState, sessionsRes: unknown, costRes: unknown) {
+function applyUsageResults(
+  state: UsageState,
+  sessionsRes: unknown,
+  costRes: unknown,
+  providerLedger: { value: unknown; error: string | null },
+) {
   if (sessionsRes) {
     state.usageResult = sessionsRes as SessionsUsageResult;
   }
   if (costRes) {
     state.usageCostSummary = costRes as CostUsageSummary;
   }
+  state.providerUsageLedger = providerLedger.value
+    ? (providerLedger.value as ProviderUsageLedgerSummary)
+    : null;
+  state.providerUsageLedgerError = providerLedger.error;
 }
 
 export async function loadUsage(
@@ -237,6 +253,14 @@ export async function loadUsage(
           endDate,
           ...dateInterpretation,
         }),
+        client
+          .request("usage.providerLedger", {
+            startDate,
+            endDate,
+            ...dateInterpretation,
+          })
+          .then((value) => ({ value, error: null }))
+          .catch((error: unknown) => ({ value: null, error: toErrorMessage(error) })),
       ]);
     };
 
@@ -244,11 +268,11 @@ export async function loadUsage(
     let includeUsageScope = shouldSendLegacyUsageScopeParams(state);
     while (true) {
       try {
-        const [sessionsRes, costRes] = await runUsageRequests(
+        const [sessionsRes, costRes, providerLedger] = await runUsageRequests(
           includeDateInterpretation,
           includeUsageScope,
         );
-        applyUsageResults(state, sessionsRes, costRes);
+        applyUsageResults(state, sessionsRes, costRes, providerLedger);
         break;
       } catch (err) {
         if (includeUsageScope && isLegacyUsageScopeUnsupportedError(err)) {
@@ -272,6 +296,8 @@ export async function loadUsage(
     if (isMissingOperatorReadScopeError(err)) {
       state.usageResult = null;
       state.usageCostSummary = null;
+      state.providerUsageLedger = null;
+      state.providerUsageLedgerError = formatMissingOperatorReadScopeMessage("provider usage");
       state.usageError = formatMissingOperatorReadScopeMessage("usage");
     } else {
       state.usageError = toErrorMessage(err);
