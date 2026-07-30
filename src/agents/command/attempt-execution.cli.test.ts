@@ -6,6 +6,7 @@ import type { SessionEntry } from "../../config/sessions.js";
 import { appendSessionTranscriptMessage } from "../../config/sessions/transcript-append.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { FailoverError } from "../failover-error.js";
+import { buildKwragP0TestHandoff } from "../kwrag-p0-handoff.fixture.js";
 import { runEmbeddedPiAgent, type EmbeddedPiRunResult } from "../pi-embedded.js";
 import { persistCliTurnTranscript, runAgentAttempt } from "./attempt-execution.js";
 
@@ -1137,6 +1138,70 @@ describe("CLI attempt execution", () => {
       provider: "openai",
       model: "gpt-5.4",
     });
+  });
+
+  it("forwards a trusted caller-explicit KWRAG P0 handoff only to the embedded runner", async () => {
+    const sessionKey = "agent:main:direct:kwrag-p0";
+    const sessionEntry: SessionEntry = {
+      sessionId: "openclaw-session-kwrag-p0",
+      updatedAt: Date.now(),
+    };
+    const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
+    await fs.writeFile(storePath, JSON.stringify(sessionStore, null, 2), "utf-8");
+    const retrievalHandoff = buildKwragP0TestHandoff();
+    const onRetrievalHandoffReceipt = vi.fn();
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({
+      payloads: [{ text: "fixed embedded stub" }],
+      meta: {
+        durationMs: 5,
+        finalAssistantVisibleText: "fixed embedded stub",
+        executionTrace: { runner: "pi" },
+      },
+    });
+
+    await runAgentAttempt({
+      providerOverride: "openai",
+      originalProvider: "openai",
+      modelOverride: "gpt-5.4",
+      cfg: {} as OpenClawConfig,
+      sessionEntry,
+      sessionId: sessionEntry.sessionId,
+      sessionKey,
+      sessionAgentId: "main",
+      sessionFile: path.join(tmpDir, "session.jsonl"),
+      workspaceDir: tmpDir,
+      body: "original user prompt",
+      isFallbackRetry: false,
+      resolvedThinkLevel: "medium",
+      timeoutMs: 1_000,
+      runId: "run-p0-1",
+      opts: {
+        message: "original user prompt",
+        senderIsOwner: false,
+        retrievalHandoff,
+        onRetrievalHandoffReceipt,
+      } as Parameters<typeof runAgentAttempt>[0]["opts"],
+      runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
+      spawnedBy: undefined,
+      messageChannel: "telegram",
+      skillsSnapshot: undefined,
+      resolvedVerboseLevel: undefined,
+      agentDir: tmpDir,
+      onAgentEvent: vi.fn(),
+      authProfileProvider: "openai",
+      sessionStore,
+      storePath,
+      sessionHasHistory: false,
+    });
+
+    expect(runCliAgentMock).not.toHaveBeenCalled();
+    expect(firstEmbeddedPiAgentArg()).toEqual(
+      expect.objectContaining({
+        prompt: "original user prompt",
+        retrievalHandoff,
+        onRetrievalHandoffReceipt,
+      }),
+    );
   });
 
   it("forwards user-pinned OpenAI API-key backup profiles to Codex harness runs", async () => {

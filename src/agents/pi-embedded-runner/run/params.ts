@@ -15,6 +15,7 @@ import type { InputProvenance } from "../../../sessions/input-provenance.js";
 import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.exec-types.js";
 import type { AgentStreamParams, ClientToolDefinition } from "../../command/shared-types.js";
 import type { AgentInternalEvent } from "../../internal-events.js";
+import type { KwragP0CallerHandoff, KwragP0HandoffReceipt } from "../../kwrag-p0-handoff.js";
 import type { BlockReplyPayload } from "../../pi-embedded-payloads.js";
 import type {
   BlockReplyChunking,
@@ -167,6 +168,10 @@ export type RunEmbeddedPiAgentParams = {
   runId: string;
   /** Shared call identity state across tool loops, retries, and model fallback candidates. */
   providerUsageRun?: ProviderUsageRunContext;
+  /** Trusted internal P0 handoff. It carries content-free receipt identities only. */
+  retrievalHandoff?: KwragP0CallerHandoff;
+  /** Required receipt sink when retrievalHandoff is present. */
+  onRetrievalHandoffReceipt?: (receipt: KwragP0HandoffReceipt) => void | Promise<void>;
   abortSignal?: AbortSignal;
   onExecutionStarted?: () => void;
   onExecutionPhase?: (info: {

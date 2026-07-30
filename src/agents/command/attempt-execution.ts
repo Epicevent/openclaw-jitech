@@ -25,6 +25,7 @@ import { runCliAgent } from "../cli-runner.js";
 import { getCliSessionBinding, setCliSessionBinding } from "../cli-session.js";
 import { FailoverError } from "../failover-error.js";
 import { resolveAvailableAgentHarnessPolicy } from "../harness/selection.js";
+import { KwragP0HandoffContractError } from "../kwrag-p0-handoff.js";
 import { resolveCliRuntimeExecutionProvider } from "../model-runtime-aliases.js";
 import { isCliProvider } from "../model-selection.js";
 import { resolveOpenAIRuntimeProviderForPi } from "../openai-codex-routing.js";
@@ -483,7 +484,17 @@ export function runAgentAttempt(params: {
     (agentHarnessPolicy.runtime === "pi" && embeddedPiProvider !== params.providerOverride
       ? "pi"
       : undefined);
+  if (params.opts.retrievalHandoff && isRawModelRun) {
+    throw new KwragP0HandoffContractError(
+      "caller-explicit retrieval handoff is unavailable for raw model runs",
+    );
+  }
   if (!isRawModelRun && isCliProvider(cliExecutionProvider, params.cfg)) {
+    if (params.opts.retrievalHandoff) {
+      throw new KwragP0HandoffContractError(
+        "caller-explicit retrieval handoff requires the embedded PI runner",
+      );
+    }
     const cliSessionBinding = getCliSessionBinding(params.sessionEntry, cliExecutionProvider);
     const resolveReusableCliSessionBinding = async () => {
       if (
@@ -667,6 +678,8 @@ export function runAgentAttempt(params: {
     bashElevated: params.opts.bashElevated,
     timeoutMs: params.timeoutMs,
     runId: params.runId,
+    retrievalHandoff: params.opts.retrievalHandoff,
+    onRetrievalHandoffReceipt: params.opts.onRetrievalHandoffReceipt,
     lane: params.opts.lane,
     abortSignal: params.opts.abortSignal,
     extraSystemPrompt: params.opts.extraSystemPrompt,

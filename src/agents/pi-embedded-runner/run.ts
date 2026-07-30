@@ -50,6 +50,7 @@ import {
 } from "../failover-error.js";
 import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
 import { selectAgentHarness } from "../harness/selection.js";
+import { KwragP0HandoffContractError, verifyOptionalKwragP0Handoff } from "../kwrag-p0-handoff.js";
 import { LiveSessionModelSwitchError } from "../live-model-switch-error.js";
 import { shouldSwitchToLiveModel, clearLiveModelSwitchPending } from "../live-model-switch.js";
 import {
@@ -535,6 +536,20 @@ export async function runEmbeddedPiAgent(
       });
       startupStages.mark("runtime-plugins");
       notifyExecutionPhase("runtime_plugins");
+
+      const retrievalHandoffReceipt = verifyOptionalKwragP0Handoff({
+        input: params.retrievalHandoff,
+        runId: params.runId,
+        sessionId: params.sessionId,
+      });
+      if (retrievalHandoffReceipt) {
+        if (!params.onRetrievalHandoffReceipt) {
+          throw new KwragP0HandoffContractError(
+            "caller-explicit retrieval handoff requires a receipt sink",
+          );
+        }
+        await params.onRetrievalHandoffReceipt(retrievalHandoffReceipt);
+      }
 
       let provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
       let modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;
