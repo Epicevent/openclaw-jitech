@@ -211,12 +211,20 @@ function readCanonicalReceiptRows(db: DatabaseSync): StoredKwragP0HandoffReceipt
   if (rows.length !== count) {
     throw new KwragP0HandoffReceiptLedgerCorruptError("receipt count changed within snapshot");
   }
-  const sequenceRow = db
+  const sequenceRows = db
     .prepare("SELECT seq FROM sqlite_sequence WHERE name = 'kwrag_p0_handoff_receipt'")
-    .get() as { seq: number | bigint } | undefined;
-  const sequenceRaw = sequenceRow?.seq ?? 0;
+    .all() as unknown as Array<{ seq: number | bigint | null }>;
+  if (count === 0 && sequenceRows.length === 0) {
+    return [];
+  }
+  if (sequenceRows.length !== 1) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError(
+      "monotonic sequence anchor cardinality is invalid",
+    );
+  }
+  const sequenceRaw = sequenceRows[0]?.seq;
   const sequence = typeof sequenceRaw === "bigint" ? Number(sequenceRaw) : sequenceRaw;
-  if (!Number.isSafeInteger(sequence) || sequence < 0) {
+  if (typeof sequence !== "number" || !Number.isSafeInteger(sequence) || sequence <= 0) {
     throw new KwragP0HandoffReceiptLedgerCorruptError("invalid monotonic sequence anchor");
   }
   if (sequence !== count) {

@@ -285,6 +285,69 @@ describe("KWRAG P0 handoff receipt store", () => {
     }
   });
 
+  it.each([
+    {
+      label: "duplicate",
+      seedCount: 3,
+      expectedCount: 3,
+      mutationSql: "INSERT INTO sqlite_sequence(name, seq) VALUES ('kwrag_p0_handoff_receipt', 3)",
+    },
+    {
+      label: "NULL",
+      seedCount: 1,
+      expectedCount: 0,
+      mutationSql:
+        "DELETE FROM kwrag_p0_handoff_receipt; UPDATE sqlite_sequence SET seq = NULL WHERE name = 'kwrag_p0_handoff_receipt'",
+    },
+    {
+      label: "empty-ledger",
+      seedCount: 1,
+      expectedCount: 0,
+      mutationSql:
+        "DELETE FROM kwrag_p0_handoff_receipt; UPDATE sqlite_sequence SET seq = 0 WHERE name = 'kwrag_p0_handoff_receipt'",
+    },
+  ])(
+    "fails closed for a malformed $label sequence anchor",
+    ({ seedCount, expectedCount, mutationSql }) => {
+      for (let index = 1; index <= seedCount; index += 1) {
+        appendKwragP0HandoffReceipt(buildIndexedReceipt(index));
+      }
+      closeKwragP0HandoffReceiptStore();
+
+      const { DatabaseSync } = requireNodeSqlite();
+      const dbPath = resolveKwragP0HandoffReceiptDbPath(process.env);
+      const db = new DatabaseSync(dbPath);
+      let sequenceRowsBefore: unknown[] = [];
+      try {
+        db.exec(mutationSql);
+        sequenceRowsBefore = db
+          .prepare("SELECT name, seq FROM sqlite_sequence ORDER BY rowid ASC")
+          .all();
+      } finally {
+        db.close();
+      }
+
+      expect(() => readKwragP0HandoffLedgerSnapshot()).toThrow(
+        KwragP0HandoffReceiptLedgerCorruptError,
+      );
+      expect(() => appendKwragP0HandoffReceipt(buildIndexedReceipt(seedCount + 1))).toThrow(
+        KwragP0HandoffReceiptLedgerCorruptError,
+      );
+      closeKwragP0HandoffReceiptStore();
+      const verifyDb = new DatabaseSync(dbPath, { readOnly: true });
+      try {
+        expect(
+          verifyDb.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_handoff_receipt").get(),
+        ).toEqual({ count: expectedCount });
+        expect(
+          verifyDb.prepare("SELECT name, seq FROM sqlite_sequence ORDER BY rowid ASC").all(),
+        ).toEqual(sequenceRowsBefore);
+      } finally {
+        verifyDb.close();
+      }
+    },
+  );
+
   it.skipIf(process.platform === "win32")("repairs restrictive ledger permissions", () => {
     appendKwragP0HandoffReceipt(buildReceipt());
     const dbPath = resolveKwragP0HandoffReceiptDbPath(process.env);
