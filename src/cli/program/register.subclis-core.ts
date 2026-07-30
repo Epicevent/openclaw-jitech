@@ -118,6 +118,11 @@ const entrySpecs: readonly CommandGroupDescriptorSpec<SubCliRegistrar>[] = [
       exportName: "registerUsageReceiptsCli",
     },
     {
+      commandNames: ["kwrag-p0"],
+      loadModule: () => import("../kwrag-p0-cli.js"),
+      exportName: "registerKwragP0Cli",
+    },
+    {
       commandNames: ["infer", "capability"],
       loadModule: () => import("../capability-cli.js"),
       exportName: "registerCapabilityCli",

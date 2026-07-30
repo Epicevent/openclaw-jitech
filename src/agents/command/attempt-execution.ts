@@ -484,13 +484,13 @@ export function runAgentAttempt(params: {
     (agentHarnessPolicy.runtime === "pi" && embeddedPiProvider !== params.providerOverride
       ? "pi"
       : undefined);
-  if (params.opts.retrievalHandoff && isRawModelRun) {
+  if (params.opts.retrievalHandoff !== undefined && isRawModelRun) {
     throw new KwragP0HandoffContractError(
       "caller-explicit retrieval handoff is unavailable for raw model runs",
     );
   }
   if (!isRawModelRun && isCliProvider(cliExecutionProvider, params.cfg)) {
-    if (params.opts.retrievalHandoff) {
+    if (params.opts.retrievalHandoff !== undefined) {
       throw new KwragP0HandoffContractError(
         "caller-explicit retrieval handoff requires the embedded PI runner",
       );
@@ -679,7 +679,6 @@ export function runAgentAttempt(params: {
     timeoutMs: params.timeoutMs,
     runId: params.runId,
     retrievalHandoff: params.opts.retrievalHandoff,
-    onRetrievalHandoffReceipt: params.opts.onRetrievalHandoffReceipt,
     lane: params.opts.lane,
     abortSignal: params.opts.abortSignal,
     extraSystemPrompt: params.opts.extraSystemPrompt,

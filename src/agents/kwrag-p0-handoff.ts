@@ -34,6 +34,7 @@ export type KwragP0HandoffReceipt = Readonly<{
   schema: typeof KWRAG_P0_HANDOFF_RECEIPT_SCHEMA;
   receiptDigest: Sha256Digest;
   handoffDigest: Sha256Digest;
+  productSourceCommit: string;
   runId: string;
   traceId: string;
   sessionId: string;
@@ -84,6 +85,7 @@ type KwragP0Handoff = {
 };
 
 const DIGEST_RE = /^sha256:[0-9a-f]{64}$/u;
+const EXACT_COMMIT_RE = /^[0-9a-f]{40}$/u;
 const IDENTIFIER_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,191}$/u;
 const CALLER_HANDOFF_FIELDS = ["expected", "handoff"] as const;
 const EXPECTED_BOUNDARY_FIELDS = [
@@ -114,6 +116,37 @@ const CONSUMPTION_FIELDS = [
   "resultReceiptDigest",
   "status",
 ] as const;
+const P1_IDENTITY_FIELDS = [
+  "status",
+  "pipelineFactoryDigest",
+  "backendId",
+  "pipelineFingerprint",
+  "researchDecisionDigest",
+] as const;
+const RECEIPT_BODY_FIELDS = [
+  "schema",
+  "handoffDigest",
+  "productSourceCommit",
+  "runId",
+  "traceId",
+  "sessionId",
+  "slotInstanceId",
+  "mountAuthorityDigest",
+  "slotRuntimeBindingDigest",
+  "operationSchema",
+  "operationId",
+  "operationReceiptDigest",
+  "resultSchema",
+  "resultId",
+  "resultReceiptDigest",
+  "consumptionSchema",
+  "consumptionId",
+  "consumptionReceiptDigest",
+  "consumptionStatus",
+  "promptInjectionApplied",
+  "p1Identity",
+] as const;
+const RECEIPT_FIELDS = ["receiptDigest", ...RECEIPT_BODY_FIELDS] as const;
 
 export class KwragP0HandoffContractError extends Error {
   constructor(message: string) {
@@ -162,6 +195,13 @@ function digest(value: unknown, path: string): Sha256Digest {
   return value as Sha256Digest;
 }
 
+function exactCommit(value: unknown, path: string): string {
+  if (typeof value !== "string" || !EXACT_COMMIT_RE.test(value)) {
+    fail(`${path} must be an exact lower-case 40-hex source commit`);
+  }
+  return value;
+}
+
 export function digestKwragP0Canonical(value: unknown): Sha256Digest {
   return `sha256:${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
 }
@@ -170,6 +210,65 @@ export function digestKwragP0CanonicalWithoutField(value: unknown, field: string
   const body = { ...asRecord(value, "digest input") };
   delete body[field];
   return digestKwragP0Canonical(body);
+}
+
+export function assertKwragP0HandoffReceipt(
+  value: unknown,
+): asserts value is KwragP0HandoffReceipt {
+  const receipt = asRecord(value, "kwragP0HandoffReceipt");
+  assertExactKeys(receipt, RECEIPT_FIELDS, "kwragP0HandoffReceipt");
+  if (receipt.schema !== KWRAG_P0_HANDOFF_RECEIPT_SCHEMA) {
+    fail(`kwragP0HandoffReceipt.schema must be ${KWRAG_P0_HANDOFF_RECEIPT_SCHEMA}`);
+  }
+  const receiptDigest = digest(receipt.receiptDigest, "kwragP0HandoffReceipt.receiptDigest");
+  if (receiptDigest !== digestKwragP0CanonicalWithoutField(receipt, "receiptDigest")) {
+    fail("kwragP0HandoffReceipt.receiptDigest does not match canonical bytes");
+  }
+  digest(receipt.handoffDigest, "kwragP0HandoffReceipt.handoffDigest");
+  exactCommit(receipt.productSourceCommit, "kwragP0HandoffReceipt.productSourceCommit");
+  identifier(receipt.runId, "kwragP0HandoffReceipt.runId");
+  identifier(receipt.traceId, "kwragP0HandoffReceipt.traceId");
+  identifier(receipt.sessionId, "kwragP0HandoffReceipt.sessionId");
+  identifier(receipt.slotInstanceId, "kwragP0HandoffReceipt.slotInstanceId");
+  digest(receipt.mountAuthorityDigest, "kwragP0HandoffReceipt.mountAuthorityDigest");
+  digest(receipt.slotRuntimeBindingDigest, "kwragP0HandoffReceipt.slotRuntimeBindingDigest");
+  if (receipt.operationSchema !== KWRAG_OPERATION_RECEIPT_SCHEMA) {
+    fail(`kwragP0HandoffReceipt.operationSchema must be ${KWRAG_OPERATION_RECEIPT_SCHEMA}`);
+  }
+  identifier(receipt.operationId, "kwragP0HandoffReceipt.operationId");
+  digest(receipt.operationReceiptDigest, "kwragP0HandoffReceipt.operationReceiptDigest");
+  if (receipt.resultSchema !== KWRAG_RESULT_RECEIPT_SCHEMA) {
+    fail(`kwragP0HandoffReceipt.resultSchema must be ${KWRAG_RESULT_RECEIPT_SCHEMA}`);
+  }
+  identifier(receipt.resultId, "kwragP0HandoffReceipt.resultId");
+  digest(receipt.resultReceiptDigest, "kwragP0HandoffReceipt.resultReceiptDigest");
+  if (receipt.consumptionSchema !== KWRAG_CONSUMPTION_RECEIPT_SCHEMA) {
+    fail(`kwragP0HandoffReceipt.consumptionSchema must be ${KWRAG_CONSUMPTION_RECEIPT_SCHEMA}`);
+  }
+  identifier(receipt.consumptionId, "kwragP0HandoffReceipt.consumptionId");
+  digest(receipt.consumptionReceiptDigest, "kwragP0HandoffReceipt.consumptionReceiptDigest");
+  if (receipt.consumptionStatus !== "not_consumed") {
+    fail("kwragP0HandoffReceipt.consumptionStatus must be not_consumed for P0");
+  }
+  if (receipt.promptInjectionApplied !== false) {
+    fail("kwragP0HandoffReceipt.promptInjectionApplied must be false for P0");
+  }
+  const p1Identity = asRecord(receipt.p1Identity, "kwragP0HandoffReceipt.p1Identity");
+  assertExactKeys(p1Identity, P1_IDENTITY_FIELDS, "kwragP0HandoffReceipt.p1Identity");
+  if (
+    p1Identity.status !== KWRAG_P1_UNRESOLVED_IDENTITY.status ||
+    p1Identity.pipelineFactoryDigest !== null ||
+    p1Identity.backendId !== null ||
+    p1Identity.pipelineFingerprint !== null ||
+    p1Identity.researchDecisionDigest !== null
+  ) {
+    fail("kwragP0HandoffReceipt.p1Identity must remain unresolved for P0");
+  }
+}
+
+export function serializeKwragP0HandoffReceipt(receipt: KwragP0HandoffReceipt): string {
+  assertKwragP0HandoffReceipt(receipt);
+  return stableStringify(receipt);
 }
 
 function parseHandoff(value: unknown): KwragP0Handoff {
@@ -270,8 +369,9 @@ export function verifyOptionalKwragP0Handoff(params: {
   input?: KwragP0CallerHandoff;
   runId: string;
   sessionId: string;
+  productSourceCommit?: string;
 }): KwragP0HandoffReceipt | null {
-  if (!params.input) {
+  if (params.input === undefined) {
     return null;
   }
   const input = asRecord(params.input, "retrievalHandoff");
@@ -306,6 +406,7 @@ export function verifyOptionalKwragP0Handoff(params: {
   const body = {
     schema: KWRAG_P0_HANDOFF_RECEIPT_SCHEMA,
     handoffDigest: handoff.handoffDigest,
+    productSourceCommit: exactCommit(params.productSourceCommit, "productSourceCommit"),
     runId: handoff.runId,
     traceId: handoff.traceId,
     sessionId: identifier(params.sessionId, "sessionId"),
@@ -325,8 +426,10 @@ export function verifyOptionalKwragP0Handoff(params: {
     promptInjectionApplied: false as const,
     p1Identity: KWRAG_P1_UNRESOLVED_IDENTITY,
   };
-  return Object.freeze({
+  const receipt = Object.freeze({
     ...body,
     receiptDigest: digestKwragP0Canonical(body),
   });
+  assertKwragP0HandoffReceipt(receipt);
+  return receipt;
 }

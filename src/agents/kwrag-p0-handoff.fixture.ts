@@ -8,15 +8,15 @@ import {
   type Sha256Digest,
 } from "./kwrag-p0-handoff.js";
 
-export const KWRAG_P0_TEST_OPERATION_DIGEST = `sha256:${"1".repeat(64)}` as Sha256Digest;
-export const KWRAG_P0_TEST_RESULT_DIGEST = `sha256:${"2".repeat(64)}` as Sha256Digest;
-export const KWRAG_P0_TEST_CONSUMPTION_DIGEST = `sha256:${"3".repeat(64)}` as Sha256Digest;
-export const KWRAG_P0_TEST_MOUNT_DIGEST = `sha256:${"4".repeat(64)}` as Sha256Digest;
-export const KWRAG_P0_TEST_BINDING_DIGEST = `sha256:${"5".repeat(64)}` as Sha256Digest;
+export const KWRAG_P0_TEST_OPERATION_DIGEST: Sha256Digest = `sha256:${"1".repeat(64)}`;
+export const KWRAG_P0_TEST_RESULT_DIGEST: Sha256Digest = `sha256:${"2".repeat(64)}`;
+export const KWRAG_P0_TEST_CONSUMPTION_DIGEST: Sha256Digest = `sha256:${"3".repeat(64)}`;
+export const KWRAG_P0_TEST_MOUNT_DIGEST: Sha256Digest = `sha256:${"4".repeat(64)}`;
+export const KWRAG_P0_TEST_BINDING_DIGEST: Sha256Digest = `sha256:${"5".repeat(64)}`;
 export const KWRAG_P0_TEST_HANDOFF_DIGEST =
   "sha256:2f1c5cf09e54542a7f872ec3150705e93d38de40a2ce6215578edc15d47971f8";
 export const KWRAG_P0_TEST_RECEIPT_DIGEST =
-  "sha256:2944d2855e7814567d5ef544153d240d3f36afd946f5885325309008f28259e3";
+  "sha256:5f4b242cc6af2b9ab32346556849ea50704c4e7dbc839b80c0070936423ac5f3";
 
 export function buildKwragP0TestHandoff(
   mutate?: (body: Record<string, unknown>) => void,

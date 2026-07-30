@@ -180,6 +180,15 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     },
   },
   {
+    commandPath: ["kwrag-p0"],
+    policy: {
+      bypassConfigGuard: true,
+      loadPlugins: "never",
+      ensureCliPath: false,
+      networkProxy: "bypass",
+    },
+  },
+  {
     commandPath: ["sessions"],
     exact: true,
     policy: { ensureCliPath: false, networkProxy: "bypass" },

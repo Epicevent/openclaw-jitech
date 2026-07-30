@@ -156,6 +156,7 @@ describe("CLI attempt execution", () => {
     sessionStore: Record<string, SessionEntry>;
     body: string;
     runId: string;
+    retrievalHandoff?: unknown;
   }) {
     await runAgentAttempt({
       providerOverride: "claude-cli",
@@ -173,7 +174,12 @@ describe("CLI attempt execution", () => {
       resolvedThinkLevel: "medium",
       timeoutMs: 1_000,
       runId: params.runId,
-      opts: { senderIsOwner: false } as Parameters<typeof runAgentAttempt>[0]["opts"],
+      opts: {
+        senderIsOwner: false,
+        ...(params.retrievalHandoff !== undefined
+          ? { retrievalHandoff: params.retrievalHandoff }
+          : {}),
+      } as Parameters<typeof runAgentAttempt>[0]["opts"],
       runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
       spawnedBy: undefined,
       messageChannel: undefined,
@@ -187,6 +193,32 @@ describe("CLI attempt execution", () => {
       sessionHasHistory: false,
     });
   }
+
+  it.each([null, false, 0, ""])(
+    "rejects runtime-invalid falsy handoff %j before CLI or embedded dispatch",
+    async (retrievalHandoff) => {
+      const sessionKey = "agent:main:direct:kwrag-p0-invalid";
+      const sessionEntry: SessionEntry = {
+        sessionId: "openclaw-session-kwrag-p0-invalid",
+        updatedAt: Date.now(),
+      };
+      const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
+
+      await expect(
+        runClaudeCliAttempt({
+          sessionKey,
+          sessionEntry,
+          sessionStore,
+          body: "must never dispatch",
+          runId: "run-p0-invalid",
+          retrievalHandoff,
+        }),
+      ).rejects.toThrow(/requires the embedded PI runner/u);
+
+      expect(runCliAgentMock).not.toHaveBeenCalled();
+      expect(runEmbeddedPiAgentMock).not.toHaveBeenCalled();
+    },
+  );
 
   async function writeClaudeCliAssistantTranscript(cliSessionId: string) {
     const homeDir = path.join(tmpDir, `home-${cliSessionId}`);
@@ -1149,7 +1181,6 @@ describe("CLI attempt execution", () => {
     const sessionStore: Record<string, SessionEntry> = { [sessionKey]: sessionEntry };
     await fs.writeFile(storePath, JSON.stringify(sessionStore, null, 2), "utf-8");
     const retrievalHandoff = buildKwragP0TestHandoff();
-    const onRetrievalHandoffReceipt = vi.fn();
     runEmbeddedPiAgentMock.mockResolvedValueOnce({
       payloads: [{ text: "fixed embedded stub" }],
       meta: {
@@ -1179,7 +1210,6 @@ describe("CLI attempt execution", () => {
         message: "original user prompt",
         senderIsOwner: false,
         retrievalHandoff,
-        onRetrievalHandoffReceipt,
       } as Parameters<typeof runAgentAttempt>[0]["opts"],
       runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
       spawnedBy: undefined,
@@ -1199,7 +1229,6 @@ describe("CLI attempt execution", () => {
       expect.objectContaining({
         prompt: "original user prompt",
         retrievalHandoff,
-        onRetrievalHandoffReceipt,
       }),
     );
   });

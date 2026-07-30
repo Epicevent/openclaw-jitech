@@ -15,6 +15,8 @@ import {
   verifyOptionalKwragP0Handoff,
 } from "./kwrag-p0-handoff.js";
 
+const PRODUCT_SOURCE_COMMIT = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 describe("caller-explicit KWRAG P0 handoff", () => {
   it("binds exact operation, result, and non-consumed receipt identities", () => {
     const input = buildKwragP0TestHandoff();
@@ -22,6 +24,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
       input,
       runId: "run-p0-1",
       sessionId: "session-p0-1",
+      productSourceCommit: PRODUCT_SOURCE_COMMIT,
     });
 
     expect((input.handoff as { handoffDigest: string }).handoffDigest).toBe(
@@ -37,6 +40,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
         consumptionReceiptDigest: KWRAG_P0_TEST_CONSUMPTION_DIGEST,
         consumptionStatus: "not_consumed",
         promptInjectionApplied: false,
+        productSourceCommit: PRODUCT_SOURCE_COMMIT,
         p1Identity: KWRAG_P1_UNRESOLVED_IDENTITY,
       }),
     );
@@ -53,6 +57,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
         input,
         runId: "run-p0-1",
         sessionId: "session-p0-1",
+        productSourceCommit: PRODUCT_SOURCE_COMMIT,
       }),
     ).toThrow(/handoffDigest does not match canonical bytes/u);
   });
@@ -68,6 +73,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
         input,
         runId: "run-p0-1",
         sessionId: "session-p0-1",
+        productSourceCommit: PRODUCT_SOURCE_COMMIT,
       }),
     ).toThrow(/must link the exact operation and result receipts/u);
   });
@@ -82,6 +88,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
         input,
         runId: "run-p0-1",
         sessionId: "session-p0-1",
+        productSourceCommit: PRODUCT_SOURCE_COMMIT,
       }),
     ).toThrow(/fields must be exactly/u);
   });
@@ -95,6 +102,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
         input,
         runId: "run-p0-1",
         sessionId: "session-p0-1",
+        productSourceCommit: PRODUCT_SOURCE_COMMIT,
       }),
     ).toThrow(/retrievalHandoff.expected fields must be exactly/u);
   });
@@ -108,6 +116,7 @@ describe("caller-explicit KWRAG P0 handoff", () => {
         input,
         runId: "run-p0-1",
         sessionId: "session-p0-1",
+        productSourceCommit: PRODUCT_SOURCE_COMMIT,
       }),
     ).toThrow(/same-slot read-only boundary/u);
   });
@@ -129,4 +138,18 @@ describe("caller-explicit KWRAG P0 handoff", () => {
       }),
     ).toBeNull();
   });
+
+  it.each([null, false, 0, ""])(
+    "rejects runtime-invalid falsy input %j instead of treating it as default-off",
+    (input) => {
+      expect(() =>
+        verifyOptionalKwragP0Handoff({
+          input: input as never,
+          runId: "run-p0-1",
+          sessionId: "session-p0-1",
+          productSourceCommit: PRODUCT_SOURCE_COMMIT,
+        }),
+      ).toThrow(/retrievalHandoff must be an object/u);
+    },
+  );
 });
