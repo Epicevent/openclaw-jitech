@@ -90,10 +90,8 @@ describe("runEmbeddedPiAgent KWRAG P0 handoff", () => {
         handoff,
         promptContext,
         contextDigest: `sha256:${createHash("sha256").update(promptContext).digest("hex")}`,
-        contextBytes: Buffer.byteLength(promptContext),
         resultDigest,
         resultCount: 1,
-        p1IdentityDigest: "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a",
       },
     });
 
@@ -131,11 +129,8 @@ describe("runEmbeddedPiAgent KWRAG P0 handoff", () => {
           handoff,
           promptContext,
           contextDigest: `sha256:${createHash("sha256").update(promptContext).digest("hex")}`,
-          contextBytes: Buffer.byteLength(promptContext),
           resultDigest,
           resultCount: 1,
-          p1IdentityDigest:
-            "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a",
         },
       }),
     ).rejects.toThrow(/already committed; refusing retry or fallback/u);
@@ -179,11 +174,8 @@ describe("runEmbeddedPiAgent KWRAG P0 handoff", () => {
           handoff,
           promptContext,
           contextDigest: `sha256:${createHash("sha256").update(promptContext).digest("hex")}`,
-          contextBytes: Buffer.byteLength(promptContext),
           resultDigest,
           resultCount: 1,
-          p1IdentityDigest:
-            "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a",
         },
       }),
     ).rejects.toThrow(/does not match its immutable handoff/u);

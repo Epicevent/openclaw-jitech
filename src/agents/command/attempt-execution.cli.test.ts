@@ -226,10 +226,8 @@ describe("CLI attempt execution", () => {
       handoff,
       promptContext: "verified evidence",
       contextDigest: `sha256:${"1".repeat(64)}`,
-      contextBytes: 17,
       resultDigest: `sha256:${"2".repeat(64)}`,
       resultCount: 1,
-      p1IdentityDigest: `sha256:${"3".repeat(64)}`,
     } as const;
     runEmbeddedPiAgentMock.mockResolvedValueOnce({ payloads: [], meta: { durationMs: 1 } });
 

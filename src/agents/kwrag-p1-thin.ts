@@ -13,6 +13,7 @@ const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f
 const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
 const P1 = "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a";
 const PIPELINE = "sha256:53e14752cc9d147dfb4129e00234d1c7fb9f6558df00da7c03189db8da8e4606";
+const RESOURCE = "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed";
 const SHA = /^sha256:[0-9a-f]{64}$/u;
 const BINDING_KEYS =
   "attachmentData,componentDigest,containerNasRoot,contractDigest,enabled,family,hostPortCount,instanceId,mountReadOnly,p1Identity,proofMode,resourceProfileDigest,runtimeProfileDigest,schema,transport";
@@ -30,10 +31,8 @@ export type KwragP1VerifiedEvidence = {
   handoff: p0.KwragP0CallerHandoff;
   promptContext: string;
   contextDigest: p0.Sha256Digest;
-  contextBytes: number;
   resultDigest: p0.Sha256Digest;
   resultCount: number;
-  p1IdentityDigest: p0.Sha256Digest;
 };
 
 function fail(reason: string): never {
@@ -88,8 +87,9 @@ function canonicalFile(path: string): Json {
 export function assertKwragP1EvidenceInput(
   value: unknown,
 ): asserts value is KwragP1VerifiedEvidence | undefined {
-  if (value !== undefined && Object(value) !== value)
+  if (value !== undefined && Object(value) !== value) {
     fail("verified retrieval evidence must be an object");
+  }
 }
 function observe() {
   const value = canonicalFile(BINDING);
@@ -109,8 +109,7 @@ function observe() {
     value.mountReadOnly !== true ||
     value.componentDigest !== COMPONENT ||
     value.contractDigest !== CONTRACT ||
-    value.resourceProfileDigest !==
-      "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed" ||
+    value.resourceProfileDigest !== RESOURCE ||
     !SHA.test(String(value.runtimeProfileDigest)) ||
     digest(identity) !== P1 ||
     (enabled && (!data || Object.values(data).some((item) => !SHA.test(String(item))))) ||
@@ -125,7 +124,6 @@ function observe() {
     enabled,
     instanceId: value.instanceId,
     bindingDigest: digest(value),
-    resourceProfileDigest: value.resourceProfileDigest as p0.Sha256Digest,
     data: data as Record<string, string> | null,
   };
 }
@@ -214,10 +212,8 @@ function prepare(raw: string, current: ReturnType<typeof observe>, request: Json
     handoff,
     promptContext,
     contextDigest: digest(promptContext),
-    contextBytes: Buffer.byteLength(promptContext),
     resultDigest: resultReceiptDigest,
     resultCount: count,
-    p1IdentityDigest: P1 as p0.Sha256Digest,
   });
 }
 
@@ -231,9 +227,7 @@ export function bindKwragP1Evidence(
     evidence.resultDigest !== stored.receipt.resultReceiptDigest ||
     !evidence.promptContext.startsWith(PREFIX) ||
     digest(evidence.promptContext.slice(PREFIX.length)) !== evidence.resultDigest ||
-    evidence.contextDigest !== digest(evidence.promptContext) ||
-    evidence.contextBytes !== Buffer.byteLength(evidence.promptContext) ||
-    evidence.p1IdentityDigest !== P1
+    evidence.contextDigest !== digest(evidence.promptContext)
   ) {
     return fail("evidence does not match its immutable handoff");
   }
@@ -263,10 +257,10 @@ export function commitKwragP1Event(params: {
     runId: params.runId,
     sessionId: params.sessionId,
     attempt: params.attempt,
-    p1IdentityDigest: params.evidence.p1IdentityDigest,
+    p1IdentityDigest: P1,
     resultReceiptDigest: params.evidence.resultDigest,
     contextDigest: params.evidence.contextDigest,
-    contextBytes: params.evidence.contextBytes,
+    contextBytes: Buffer.byteLength(params.evidence.promptContext),
     resultCount: params.evidence.resultCount,
     consumptionStatus: params.stage,
     promptProjectionApplied: true,
@@ -306,7 +300,7 @@ export function readKwragP1AttachmentStatus() {
     enabled: current.enabled,
     componentDigest: COMPONENT,
     bindingDigest: current.bindingDigest,
-    resourceProfileDigest: current.resourceProfileDigest,
+    resourceProfileDigest: RESOURCE,
     p1IdentityDigest: P1,
     attachmentDataDigest: data ? digest(data) : null,
     hostPortCount: 0,
@@ -335,7 +329,9 @@ function userTurnProof(enabled: boolean, receipts: readonly unknown[] = []) {
 }
 export async function runKwragP1UserTurnProof(query: string) {
   const current = observe();
-  if (!current.enabled) return userTurnProof(false);
+  if (!current.enabled) {
+    return userTurnProof(false);
+  }
   if (typeof query !== "string" || !query.trim() || query.length > 4_000) {
     return fail("caller query is invalid");
   }

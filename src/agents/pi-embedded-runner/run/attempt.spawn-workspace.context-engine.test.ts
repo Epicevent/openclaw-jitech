@@ -811,10 +811,8 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
       handoff: {} as never,
       promptContext: "verified hit text",
       contextDigest: `sha256:${"1".repeat(64)}` as const,
-      contextBytes: 17,
       resultDigest: `sha256:${"2".repeat(64)}` as const,
       resultCount: 1,
-      p1IdentityDigest: `sha256:${"3".repeat(64)}` as const,
       p0LedgerSeq: stored.ledgerSeq,
       p0ReceiptDigest: stored.receipt.receiptDigest,
     };

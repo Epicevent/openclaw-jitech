@@ -29,7 +29,6 @@ import { readKwragP1AttachmentStatus, runKwragP1UserTurnProof } from "./kwrag-p1
 
 const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a";
 const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
-const P1_IDENTITY = "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a";
 const DATABASE = `sha256:${"2".repeat(64)}`;
 const MANIFEST = `sha256:${"3".repeat(64)}`;
 const SOURCE = `sha256:${"4".repeat(64)}`;
@@ -264,7 +263,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     expect(agentCommandMock.mock.calls[0]?.[0]).toMatchObject({
       message: QUERY,
       transcriptMessage: QUERY,
-      retrievalEvidence: { resultCount: 1, p1IdentityDigest: P1_IDENTITY },
+      retrievalEvidence: { resultCount: 1 },
     });
     expect(closeLedgerMock).toHaveBeenCalledOnce();
   });
