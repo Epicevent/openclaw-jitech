@@ -281,6 +281,22 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     expect(ledgerMock).not.toHaveBeenCalled();
   });
 
+  it("keeps zero-hit output outside the positive attachment proof without dispatching", async () => {
+    installBindings(true);
+    execFileSyncMock.mockImplementation((_path, _args, options) =>
+      fixedOutput(JSON.parse(options.input as string), (output) => {
+        const consumable = output.consumable as Record<string, unknown>;
+        const linkage = output.linkage as Record<string, unknown>;
+        consumable.result_status = "zero_hits";
+        consumable.results = [];
+        linkage.result_digest = `sha256:${createHash("sha256").update("[]").digest("hex")}`;
+      }),
+    );
+    await expect(runKwragP1UserTurnProof(QUERY)).rejects.toThrow(/producer output/u);
+    expect(agentCommandMock).not.toHaveBeenCalled();
+    expect(ledgerMock).not.toHaveBeenCalled();
+  });
+
   it("sanitizes producer failures", async () => {
     installBindings(true);
     execFileSyncMock.mockImplementation(() => {

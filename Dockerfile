@@ -12,6 +12,8 @@ ARG OPENCLAW_BUNDLED_PLUGIN_DIR=extensions
 ARG OPENCLAW_NODE_BOOKWORM_IMAGE="node:24-bookworm@sha256:3a09aa6354567619221ef6c45a5051b671f953f0a1924d1f819ffb236e520e6b"
 ARG OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE="node:24-bookworm-slim@sha256:e8e2e91b1378f83c5b2dd15f0247f34110e2fe895f6ca7719dbb780f929368eb"
 ARG OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST="sha256:e8e2e91b1378f83c5b2dd15f0247f34110e2fe895f6ca7719dbb780f929368eb"
+ARG OPENCLAW_PYTHON_BOOKWORM_SLIM_IMAGE="python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b"
+ARG OPENCLAW_PYTHON_BOOKWORM_SLIM_DIGEST="sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b"
 # Keep in sync with .github/actions/setup-node-env/action.yml bun-version.
 # To update: docker buildx imagetools inspect oven/bun:<version> and use the manifest-list digest.
 ARG OPENCLAW_BUN_IMAGE="oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c2a3c971f4f345a01da08ea6262ae30e"
@@ -20,8 +22,8 @@ ARG OPENCLAW_BUN_IMAGE="oven/bun:1.3.13@sha256:87416c977a612a204eb54ab9f3927023c
 # Dependabot refreshes these blessed digests; release builds consume the
 # reviewed base snapshot instead of mutating distro state on every build.
 # To update, run: docker buildx imagetools inspect node:24-bookworm and
-# node:24-bookworm-slim (or podman) and replace the digests below with the
-# current multi-arch manifest list entries.
+# node:24-bookworm-slim and python:3.12-slim-bookworm (or podman), then replace
+# the digests below with the current multi-arch manifest list entries.
 
 FROM ${OPENCLAW_NODE_BOOKWORM_IMAGE} AS workspace-deps
 ARG OPENCLAW_EXTENSIONS
@@ -146,6 +148,8 @@ RUN --mount=type=cache,id=openclaw-pnpm-store,target=/root/.local/share/pnpm/sto
     node scripts/check-package-dist-imports.mjs /app
 
 # ── Runtime base image ──────────────────────────────────────────
+FROM ${OPENCLAW_PYTHON_BOOKWORM_SLIM_IMAGE} AS kwrag-python-runtime
+
 FROM ${OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE} AS base-runtime
 ARG OPENCLAW_NODE_BOOKWORM_SLIM_DIGEST
 LABEL org.opencontainers.image.base.name="docker.io/library/node:24-bookworm-slim" \
@@ -154,6 +158,9 @@ LABEL org.opencontainers.image.base.name="docker.io/library/node:24-bookworm-sli
 # ── Stage 3: Runtime ────────────────────────────────────────────
 FROM base-runtime
 ARG OPENCLAW_BUNDLED_PLUGIN_DIR
+ARG OPENCLAW_PYTHON_BOOKWORM_SLIM_DIGEST
+
+COPY --from=kwrag-python-runtime /usr/local /usr/local
 
 # OCI base-image metadata for downstream image consumers.
 # If you change these annotations, also update:
@@ -192,6 +199,8 @@ LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-embedded-retrieval/v1
   com.epicevent.openclaw.kwrag.p1.caller-explicit="true" \
   com.epicevent.openclaw.kwrag.p1.component-manifest-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
   com.epicevent.openclaw.kwrag.p1.component-wheel-digest="sha256:023f861b016d421add0528d0129373249590d18a7a51bfe9b5b06f3c1836fbd5" \
+  com.epicevent.openclaw.kwrag.p1.python-runtime-digest="${OPENCLAW_PYTHON_BOOKWORM_SLIM_DIGEST}" \
+  com.epicevent.openclaw.kwrag.p1.python-version="3.12.13" \
   com.epicevent.openclaw.kwrag.p1.default-enabled="false" \
   com.epicevent.openclaw.kwrag.p1.status-schema="jitech-embedded-retrieval-attachment-status/v1" \
   com.epicevent.openclaw.kwrag.p1.verify-command.json="[\"openclaw\",\"kwrag-p0\",\"p1-attachment-status\",\"--json\"]"
@@ -219,7 +228,8 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     --mount=type=cache,id=openclaw-bookworm-apt-lists,target=/var/lib/apt,sharing=locked \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      ca-certificates curl git hostname lsof openssl procps python3 tini && \
+      ca-certificates curl git hostname libgdbm6 libgssapi-krb5-2 libncursesw6 libnsl2 \
+      libreadline8 libsqlite3-0 libtirpc3 lsof netbase openssl procps readline-common tini && \
     update-ca-certificates
 
 COPY runtime-components/kwrag/kwrag_product_service-0.2.0-py3-none-any.whl /tmp/kwrag.whl
