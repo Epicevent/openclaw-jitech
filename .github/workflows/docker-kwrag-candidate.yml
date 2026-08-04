@@ -1,0 +1,140 @@
+name: Docker KWRAG Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact merged OpenClaw source commit to build
+        required: true
+        type: string
+      image_tag:
+        description: Candidate tag (kwrag-p1-<sha8>-<yyyymmdd>)
+        required: true
+        type: string
+
+concurrency:
+  group: docker-kwrag-candidate-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  IMAGE_REPOSITORY: ghcr.io/epicevent/openclaw-jitech
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      source_sha: ${{ steps.validate.outputs.source_sha }}
+      image_tag: ${{ steps.validate.outputs.image_tag }}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Validate merged source and candidate tag
+        id: validate
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          git fetch --quiet origin main
+          git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+          expected_prefix="kwrag-p1-${SOURCE_SHA:0:8}-"
+          [[ "$IMAGE_TAG" =~ ^kwrag-p1-[0-9a-f]{8}-[0-9]{8}$ ]]
+          [[ "$IMAGE_TAG" == "$expected_prefix"* ]]
+          {
+            echo "source_sha=$SOURCE_SHA"
+            echo "image_tag=$IMAGE_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+  build-arm64:
+    needs: validate
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Check out validated source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Recheck exact source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          [[ -z "$(git status --porcelain)" ]]
+
+      - name: Set up Docker Builder
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push arm64 candidate
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/arm64
+          build-args: |
+            OPENCLAW_EXTENSIONS=diagnostics-otel,codex
+            OPENCLAW_BUILD_VERSION=${{ needs.validate.outputs.image_tag }}
+          tags: ${{ env.IMAGE_REPOSITORY }}:${{ needs.validate.outputs.image_tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.validate.outputs.source_sha }}
+            org.opencontainers.image.source=https://github.com/Epicevent/openclaw-jitech
+            org.opencontainers.image.version=${{ needs.validate.outputs.image_tag }}
+            com.epicevent.openclaw.kwrag-candidate=true
+          sbom: true
+          provenance: mode=max
+          push: true
+
+      - name: Verify immutable candidate identity
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+          IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          image_ref="$IMAGE_REPOSITORY@$IMAGE_DIGEST"
+          docker buildx imagetools inspect "$image_ref" >/dev/null
+          jq -cn \
+            --arg schema "jitech-openclaw-kwrag-candidate-publication/v1" \
+            --arg sourceCommit "$SOURCE_SHA" \
+            --arg imageTag "$IMAGE_TAG" \
+            --arg image "$image_ref" \
+            --arg platform "linux/arm64" \
+            '{schema:$schema,sourceCommit:$sourceCommit,imageTag:$imageTag,image:$image,platform:$platform}' \
+            > candidate-image-receipt.json
+          cat candidate-image-receipt.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized publication receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: kwrag-candidate-image-receipt
+          path: candidate-image-receipt.json
+          if-no-files-found: error
+          retention-days: 30
