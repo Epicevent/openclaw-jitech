@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { stableStringify } from "../agents/stable-stringify.js";
 
 const statusMock = vi.hoisted(() => vi.fn());
 const proofMock = vi.hoisted(() => vi.fn());
@@ -33,7 +34,7 @@ describe("kwrag-p1 attachment CLI", () => {
     await program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-attachment-status", "--json"]);
 
     expect(statusMock).toHaveBeenCalledOnce();
-    expect(write).toHaveBeenCalledWith(`${JSON.stringify(status)}\n`);
+    expect(write).toHaveBeenCalledWith(`${stableStringify(status)}\n`);
   });
 
   it("runs the actual user-turn proof from the fixed private request", async () => {
@@ -44,7 +45,7 @@ describe("kwrag-p1 attachment CLI", () => {
     await program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof", "--json"]);
 
     expect(proofMock).toHaveBeenCalledWith();
-    expect(write).toHaveBeenCalledWith(`${JSON.stringify(proof)}\n`);
+    expect(write).toHaveBeenCalledWith(`${stableStringify(proof)}\n`);
   });
 
   it.each(["p1-attachment-status"])(

@@ -12,6 +12,7 @@ const BINDING = "/run/kwrag/attachment-binding-v2.json";
 const FIXED_BINDING = "/run/kwrag/fixed-producer-binding.json";
 const AUTHORITY = "/run/kwrag/read-only-authority.json";
 const PROOF_REQUEST = "/run/kwrag/proof-request.json";
+const NEGATIVE_PROOF_REQUEST = "/run/kwrag/negative-proof-request.json";
 const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a";
 const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
 const P1 = "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a";
@@ -158,6 +159,7 @@ function observe() {
     authority.mountReadOnly !== true ||
     authority.allBoundFilesReadOnly !== true ||
     authority.indexManifestDigest !== producerBinding.index_manifest_digest ||
+    typeof authority.releaseRelativeRoot !== "string" ||
     `${authority.releaseRelativeRoot}/index-manifest.json` !==
       producerBinding.index_manifest_relative ||
     corpusAuthorities.size !== 1 ||
@@ -185,7 +187,12 @@ function runProducer(request: Json): string {
     return fail("fixed producer execution failed");
   }
 }
-function prepare(raw: string, current: ReturnType<typeof observe>, request: Json) {
+function verifyProducer(
+  raw: string,
+  current: ReturnType<typeof observe>,
+  request: Json,
+  expectedStatus: "hits" | "zero_hits",
+) {
   const output = object(canonical(raw, "fixed producer output"), OUTPUT_KEYS, "producer output");
   const value = object(output.consumable, CONSUMABLE_KEYS, "producer consumable");
   const linkage = object(output.linkage, LINK_KEYS, "producer linkage");
@@ -200,18 +207,21 @@ function prepare(raw: string, current: ReturnType<typeof observe>, request: Json
     value.attempt !== 1 ||
     value.index_manifest !== current.data?.indexManifestDigest ||
     value.pipeline_fingerprint !== PIPELINE ||
-    value.result_status !== "hits" ||
-    count < 1 ||
-    count > 5 ||
+    value.result_status !== expectedStatus ||
+    (expectedStatus === "hits" ? count < 1 || count > 5 : count !== 0) ||
     linkage.result_digest !== digest(results) ||
     Object.values(linkage).some((item) => !SHA.test(String(item)))
   ) {
     return fail("fixed producer output is invalid");
   }
+  return { count, linkage, results };
+}
+function prepare(raw: string, current: ReturnType<typeof observe>, request: Json) {
+  const { count, linkage, results } = verifyProducer(raw, current, request, "hits");
   const runId = String(request.run_id);
   const traceId = `${runId}.trace`;
   const operationReceiptDigest = linkage.operation_receipt_digest as p0.Sha256Digest;
-  const resultReceiptDigest = linkage.result_digest;
+  const resultReceiptDigest = linkage.result_digest as p0.Sha256Digest;
   const consumptionReceiptDigest = digest({
     schema: "jitech-openclaw-kwrag-source-consumption/v1",
     status: "not_consumed",
@@ -362,7 +372,11 @@ export function readKwragP1AttachmentStatus() {
     revocationStatus: current.enabled ? null : "complete",
   });
 }
-function userTurnProof(enabled: boolean, receipts: readonly unknown[] = []) {
+function userTurnProof(
+  enabled: boolean,
+  receipts: readonly unknown[] = [],
+  negativeControl: Readonly<Json> | null = null,
+) {
   return Object.freeze({
     schema: "jitech-openclaw-kwrag-user-turn-proof/v1",
     enabled,
@@ -370,30 +384,28 @@ function userTurnProof(enabled: boolean, receipts: readonly unknown[] = []) {
     projectionCount: Number(enabled),
     dispatchCount: Number(enabled),
     responseObservedCount: Number(enabled),
+    negativeControl,
     receipts,
   });
 }
-export async function runKwragP1UserTurnProof() {
-  const current = observe();
-  if (!current.enabled) {
-    return userTurnProof(false);
-  }
-  const proofRequest = canonicalFile(PROOF_REQUEST, PROOF_REQUEST_KEYS, "proof request");
-  const query = proofRequest.query;
+function privateRequest(path: string) {
+  const value = canonicalFile(path, PROOF_REQUEST_KEYS, "proof request");
   if (
-    proofRequest.schema !== "kwrag-two-canary-private-proof-request/v1" ||
-    typeof proofRequest.corpus !== "string" ||
-    !proofRequest.corpus ||
-    typeof query !== "string" ||
-    !query.trim() ||
-    query.length > 4_000
+    value.schema !== "kwrag-two-canary-private-proof-request/v1" ||
+    typeof value.corpus !== "string" ||
+    !value.corpus ||
+    typeof value.query !== "string" ||
+    !value.query.trim() ||
+    value.query.length > 4_000
   ) {
     return fail("caller query is invalid");
   }
-  const runId = `kwrag-p1-${randomUUID()}`;
-  const request = {
+  return value as { corpus: string; query: string; schema: string };
+}
+function slotRequest(proofRequest: { corpus: string; query: string }, runId: string) {
+  return {
     schema_version: "kwrag-slot-search-request-v1",
-    query,
+    query: proofRequest.query,
     request_id: `${runId}.request`,
     operation_id: `${runId}.operation`,
     run_id: runId,
@@ -401,12 +413,40 @@ export async function runKwragP1UserTurnProof() {
     max_results: 5,
     corpus: proofRequest.corpus,
   };
+}
+export async function runKwragP1UserTurnProof() {
+  const current = observe();
+  if (!current.enabled) {
+    return userTurnProof(false);
+  }
+  const proofRequest = privateRequest(PROOF_REQUEST);
+  const negativeRequest = privateRequest(NEGATIVE_PROOF_REQUEST);
+  const negativeRunId = `kwrag-p1-negative-${randomUUID()}`;
+  const negativeSlotRequest = slotRequest(negativeRequest, negativeRunId);
+  const negative = verifyProducer(
+    runProducer(negativeSlotRequest),
+    current,
+    negativeSlotRequest,
+    "zero_hits",
+  );
+  const negativeControl = Object.freeze({
+    resultStatus: "zero_hits",
+    retrievalCount: 1,
+    projectionCount: 0,
+    dispatchCount: 0,
+    responseObservedCount: 0,
+    operationReceiptDigest: negative.linkage.operation_receipt_digest,
+    resultReceiptDigest: negative.linkage.result_digest,
+    sourceExchangeDigest: negative.linkage.source_exchange_digest,
+  });
+  const runId = `kwrag-p1-${randomUUID()}`;
+  const request = slotRequest(proofRequest, runId);
   const evidence = prepare(runProducer(request), current, request);
   const sessionId = `kwrag-p1-${randomUUID()}`;
   const { agentCommand } = await import("./agent-command.js");
   await agentCommand({
-    message: query,
-    transcriptMessage: query,
+    message: proofRequest.query,
+    transcriptMessage: proofRequest.query,
     sessionId,
     runId,
     deliver: false,
@@ -429,5 +469,5 @@ export async function runKwragP1UserTurnProof() {
   ) {
     return fail("retrieval receipt chain is incomplete");
   }
-  return userTurnProof(true, receipts);
+  return userTurnProof(true, receipts, negativeControl);
 }

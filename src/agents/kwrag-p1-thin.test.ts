@@ -131,6 +131,11 @@ function installBindings(
     corpus: "room",
     query: QUERY,
   });
+  const negativeProof = stableStringify({
+    schema: "kwrag-two-canary-private-proof-request/v1",
+    corpus: "room",
+    query: "synthetic out of scope negative",
+  });
   const authority = stableStringify(authorityValue);
   readFileSyncMock.mockImplementation((path: string | number) => {
     if (path === 42) {
@@ -145,6 +150,9 @@ function installBindings(
     if (path === 45) {
       return authority;
     }
+    if (path === 46) {
+      return negativeProof;
+    }
     if (path === "/proc/self/mountinfo") {
       return `11 1 0:1 / /home/node/nas_docs ${mountMode},relatime - ext4 /dev/test rw\n`;
     }
@@ -156,6 +164,7 @@ function installBindings(
       "/run/kwrag/fixed-producer-binding.json": [43, fixed],
       "/run/kwrag/proof-request.json": [44, proof],
       "/run/kwrag/read-only-authority.json": [45, authority],
+      "/run/kwrag/negative-proof-request.json": [46, negativeProof],
     };
     const entry = entries[String(absolutePath)];
     if (!entry) {
@@ -215,6 +224,19 @@ function fixedOutput(
   };
   mutate?.(value);
   return stableStringify(value);
+}
+
+function fixedProofOutput(request: Record<string, unknown>) {
+  return fixedOutput(request, (output) => {
+    if (!String(request.run_id).includes("negative")) {
+      return;
+    }
+    const consumable = output.consumable as Record<string, unknown>;
+    const linkage = output.linkage as Record<string, unknown>;
+    consumable.result_status = "zero_hits";
+    consumable.results = [];
+    linkage.result_digest = `sha256:${createHash("sha256").update("[]").digest("hex")}`;
+  });
 }
 
 describe("KWRAG P1 fixed-producer thin adapter", () => {
@@ -318,7 +340,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
   it("runs exact fixed producer stdin through the actual user-turn caller and receipt chain", async () => {
     installBindings(true);
     execFileSyncMock.mockImplementation((_path, _args, options) =>
-      fixedOutput(JSON.parse(options.input as string)),
+      fixedProofOutput(JSON.parse(options.input as string)),
     );
     agentCommandMock.mockResolvedValueOnce({ payloads: [{ text: "answer" }], meta: {} });
     ledgerMock.mockImplementation((_env, runId) => {
@@ -353,11 +375,18 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
       projectionCount: 1,
       dispatchCount: 1,
       responseObservedCount: 1,
+      negativeControl: {
+        resultStatus: "zero_hits",
+        retrievalCount: 1,
+        projectionCount: 0,
+        dispatchCount: 0,
+        responseObservedCount: 0,
+      },
     });
-    expect(execFileSyncMock).toHaveBeenCalledOnce();
-    expect(execFileSyncMock.mock.calls[0]?.[0]).toBe("/opt/jitech/kwrag/bin/kwrag-fixed-producer");
-    expect(execFileSyncMock.mock.calls[0]?.[1]).toEqual([]);
-    expect(JSON.parse(execFileSyncMock.mock.calls[0]?.[2].input)).toMatchObject({
+    expect(execFileSyncMock).toHaveBeenCalledTimes(2);
+    expect(execFileSyncMock.mock.calls[1]?.[0]).toBe("/opt/jitech/kwrag/bin/kwrag-fixed-producer");
+    expect(execFileSyncMock.mock.calls[1]?.[1]).toEqual([]);
+    expect(JSON.parse(execFileSyncMock.mock.calls[1]?.[2].input)).toMatchObject({
       schema_version: "kwrag-slot-search-request-v1",
       query: QUERY,
       corpus: "room",
@@ -373,26 +402,24 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
 
   it("rejects producer correlation tamper before the actual user-turn caller", async () => {
     installBindings(true);
-    execFileSyncMock.mockImplementation((_path, _args, options) =>
-      fixedOutput(JSON.parse(options.input as string), (output) => {
+    execFileSyncMock.mockImplementation((_path, _args, options) => {
+      const request = JSON.parse(options.input as string);
+      if (String(request.run_id).includes("negative")) {
+        return fixedProofOutput(request);
+      }
+      return fixedOutput(request, (output) => {
         (output.consumable as Record<string, unknown>).run_id = "foreign-run";
-      }),
-    );
+      });
+    });
     await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
     expect(agentCommandMock).not.toHaveBeenCalled();
     expect(ledgerMock).not.toHaveBeenCalled();
   });
 
-  it("keeps zero-hit output outside the positive attachment proof without dispatching", async () => {
+  it("rejects a negative control that unexpectedly returns hits before dispatch", async () => {
     installBindings(true);
     execFileSyncMock.mockImplementation((_path, _args, options) =>
-      fixedOutput(JSON.parse(options.input as string), (output) => {
-        const consumable = output.consumable as Record<string, unknown>;
-        const linkage = output.linkage as Record<string, unknown>;
-        consumable.result_status = "zero_hits";
-        consumable.results = [];
-        linkage.result_digest = `sha256:${createHash("sha256").update("[]").digest("hex")}`;
-      }),
+      fixedOutput(JSON.parse(options.input as string)),
     );
     await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
     expect(agentCommandMock).not.toHaveBeenCalled();
