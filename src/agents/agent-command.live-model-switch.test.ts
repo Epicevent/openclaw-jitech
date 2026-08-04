@@ -618,6 +618,7 @@ beforeAll(async () => {
 type FallbackRunnerParams = {
   provider: string;
   model: string;
+  fallbacksOverride?: string[];
   run: (provider: string, model: string) => Promise<unknown>;
   onFallbackStep?: (step: Record<string, unknown>) => void | Promise<void>;
   classifyResult?: (params: {
@@ -1036,6 +1037,31 @@ describe("agentCommand – LiveSessionModelSwitchError retry", () => {
     expect(attemptCalls).toHaveLength(2);
     expect(attemptCalls[0]?.suppressPromptPersistenceOnRetry).toBe(true);
     expect(attemptCalls[1]?.suppressPromptPersistenceOnRetry).toBe(true);
+  });
+
+  it("disables outer model fallback for a verified retrieval evidence turn", async () => {
+    let observedFallbacks: string[] | undefined;
+    state.runWithModelFallbackMock.mockImplementation(async (params: FallbackRunnerParams) => {
+      observedFallbacks = params.fallbacksOverride;
+      const result = await params.run(params.provider, params.model);
+      return {
+        result,
+        provider: params.provider,
+        model: params.model,
+        attempts: [],
+      };
+    });
+    state.runAgentAttemptMock.mockResolvedValue(makeSuccessResult("openai", "gpt-5.4"));
+
+    await agentCommand({
+      message: "caller-explicit retrieval turn",
+      to: "+1234567890",
+      senderIsOwner: true,
+      retrievalEvidence: {} as never,
+    });
+
+    expect(observedFallbacks).toEqual([]);
+    expect(state.runAgentAttemptMock).toHaveBeenCalledOnce();
   });
 
   it("propagates non-switch errors without retrying and emits lifecycle error", async () => {

@@ -4116,6 +4116,9 @@ export async function runEmbeddedAttempt(
                 });
               }
               if (params.kwragP1Evidence) {
+                if (aborted || params.abortSignal?.aborted) {
+                  throw new Error("retrieval dispatch cancelled before handoff commit");
+                }
                 kwragDispatchReceipt = commitKwragP1Event({
                   stage: "evidence_dispatch_handoff_committed",
                   evidence: params.kwragP1Evidence,
@@ -4808,6 +4811,7 @@ export async function runEmbeddedAttempt(
         idleTimedOut,
         timedOutDuringCompaction,
         timedOutDuringToolExecution,
+        kwragDispatchHandoffCommitted: Boolean(kwragDispatchReceipt),
         promptError,
         promptErrorSource,
         preflightRecovery,

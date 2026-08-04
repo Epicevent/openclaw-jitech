@@ -1124,7 +1124,6 @@ async function agentCommandInternal(
             ? false
             : hasStoredAutoFallbackProvenance,
         });
-
         let fallbackAttemptIndex = 0;
         let currentTurnUserMessagePersisted = false;
         const fallbackResult = await runWithModelFallback<AgentAttemptResult>({
@@ -1147,7 +1146,7 @@ async function agentCommandInternal(
               workspaceDir,
             });
           },
-          fallbacksOverride: effectiveFallbacksOverride,
+          fallbacksOverride: opts.retrievalEvidence ? [] : effectiveFallbacksOverride,
           onFallbackStep: (step) => {
             fallbackTrajectoryRecorder?.recordEvent("model.fallback_step", step);
           },
@@ -1183,7 +1182,7 @@ async function agentCommandInternal(
             return attemptExecutionRuntime.runAgentAttempt({
               providerOverride,
               modelOverride,
-              modelFallbacksOverride: effectiveFallbacksOverride,
+              modelFallbacksOverride: opts.retrievalEvidence ? [] : effectiveFallbacksOverride,
               originalProvider: provider,
               cfg,
               sessionEntry: attemptSessionEntry,

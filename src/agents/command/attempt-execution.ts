@@ -26,6 +26,7 @@ import { getCliSessionBinding, setCliSessionBinding } from "../cli-session.js";
 import { FailoverError } from "../failover-error.js";
 import { resolveAvailableAgentHarnessPolicy } from "../harness/selection.js";
 import { KwragP0HandoffContractError } from "../kwrag-p0-handoff.js";
+import { assertKwragP1EvidenceInput } from "../kwrag-p1-thin.js";
 import { resolveCliRuntimeExecutionProvider } from "../model-runtime-aliases.js";
 import { isCliProvider } from "../model-selection.js";
 import { resolveOpenAIRuntimeProviderForPi } from "../openai-codex-routing.js";
@@ -484,12 +485,7 @@ export function runAgentAttempt(params: {
     (agentHarnessPolicy.runtime === "pi" && embeddedPiProvider !== params.providerOverride
       ? "pi"
       : undefined);
-  if (
-    params.opts.retrievalEvidence !== undefined &&
-    (params.opts.retrievalEvidence === null || typeof params.opts.retrievalEvidence !== "object")
-  ) {
-    throw new KwragP0HandoffContractError("verified retrieval evidence must be an object");
-  }
+  assertKwragP1EvidenceInput(params.opts.retrievalEvidence);
   if (params.opts.retrievalEvidence !== undefined && params.opts.retrievalHandoff !== undefined) {
     throw new KwragP0HandoffContractError("P0 and consumed retrieval inputs cannot be combined");
   }

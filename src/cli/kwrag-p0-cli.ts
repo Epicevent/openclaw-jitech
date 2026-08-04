@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import { InvalidArgumentError } from "commander";
 import { readKwragP0Status } from "../agents/kwrag-p0-status.js";
 import { readKwragP1AttachmentStatus, runKwragP1UserTurnProof } from "../agents/kwrag-p1-thin.js";
+import { stableStringify } from "../agents/stable-stringify.js";
 
 function requireJson(opts: { json: boolean }): void {
   if (!opts.json) {
@@ -20,7 +21,7 @@ export function registerKwragP0Cli(program: Command): void {
     .option("--json", "Emit the exact machine-readable status contract", false)
     .action((opts: { json: boolean }) => {
       requireJson(opts);
-      process.stdout.write(`${JSON.stringify(readKwragP0Status())}\n`);
+      process.stdout.write(`${stableStringify(readKwragP0Status())}\n`);
     });
 
   kwragP0
@@ -28,7 +29,7 @@ export function registerKwragP0Cli(program: Command): void {
     .option("--json", "Emit the exact machine status", false)
     .action((opts: { json: boolean }) => {
       requireJson(opts);
-      process.stdout.write(`${JSON.stringify(readKwragP1AttachmentStatus())}\n`);
+      process.stdout.write(`${stableStringify(readKwragP1AttachmentStatus())}\n`);
     });
 
   kwragP0
@@ -36,6 +37,6 @@ export function registerKwragP0Cli(program: Command): void {
     .option("--json", "Emit the actual user-turn retrieval proof", false)
     .action(async (opts: { json: boolean }) => {
       requireJson(opts);
-      process.stdout.write(`${JSON.stringify(await runKwragP1UserTurnProof())}\n`);
+      process.stdout.write(`${stableStringify(await runKwragP1UserTurnProof())}\n`);
     });
 }

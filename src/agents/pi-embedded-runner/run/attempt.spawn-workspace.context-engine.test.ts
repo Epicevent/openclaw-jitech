@@ -811,10 +811,8 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
       handoff: {} as never,
       promptContext: "verified hit text",
       contextDigest: `sha256:${"1".repeat(64)}` as const,
-      contextBytes: 17,
       resultDigest: `sha256:${"2".repeat(64)}` as const,
       resultCount: 1,
-      p1IdentityDigest: `sha256:${"3".repeat(64)}` as const,
       p0LedgerSeq: stored.ledgerSeq,
       p0ReceiptDigest: stored.receipt.receiptDigest,
     };
@@ -888,6 +886,13 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
     db.close();
     expect(events).toHaveLength(2);
     expect(JSON.stringify(events)).not.toContain("verified hit text");
+    expect(
+      events.find((event) => event.stage === "evidence_dispatch_handoff_committed")
+        ?.consumptionStatus,
+    ).toBe("evidence_dispatch_handoff_committed");
+    expect(events.find((event) => event.stage === "response_observed")?.consumptionStatus).toBe(
+      "response_observed",
+    );
     expect(events.find((event) => event.stage === "response_observed")?.previousReceiptDigest).toBe(
       events.find((event) => event.stage === "evidence_dispatch_handoff_committed")?.receiptDigest,
     );

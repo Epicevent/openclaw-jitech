@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,9 +47,7 @@ describe("Dockerfile", () => {
     const runtimeIndex = collapsed.indexOf(
       "FROM ${OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE} AS base-runtime",
     );
-    const caInstallIndex = collapsed.indexOf(
-      "ca-certificates curl git hostname lsof openssl procps python3",
-    );
+    const caInstallIndex = collapsed.indexOf("ca-certificates curl git hostname libgdbm6");
 
     expect(runtimeIndex).toBeGreaterThan(-1);
     expect(caInstallIndex).toBeGreaterThan(runtimeIndex);
@@ -57,22 +56,60 @@ describe("Dockerfile", () => {
     expect(collapsed).toContain("update-ca-certificates");
   });
 
-  it("installs python3 and tini in the slim runtime stage", async () => {
+  it("installs tini and runtime utilities in the slim runtime stage", async () => {
     const dockerfile = collapseDockerContinuations(await readFile(dockerfilePath, "utf8"));
     const runtimeIndex = dockerfile.indexOf(
       "FROM ${OPENCLAW_NODE_BOOKWORM_SLIM_IMAGE} AS base-runtime",
     );
-    const pythonInstallIndex = dockerfile.indexOf(
-      "ca-certificates curl git hostname lsof openssl procps python3",
-    );
+    const runtimeInstallIndex = dockerfile.indexOf("ca-certificates curl git hostname libgdbm6");
 
     expect(runtimeIndex).toBeGreaterThan(-1);
-    expect(pythonInstallIndex).toBeGreaterThan(runtimeIndex);
-    expect(pythonInstallIndex).toBeLessThan(dockerfile.indexOf("RUN chown node:node /app"));
-    expect(dockerfile).toContain(
-      "ca-certificates curl git hostname lsof openssl procps python3 tini",
-    );
+    expect(runtimeInstallIndex).toBeGreaterThan(runtimeIndex);
+    expect(runtimeInstallIndex).toBeLessThan(dockerfile.indexOf("RUN chown node:node /app"));
+    expect(dockerfile).toContain("libreadline8 libsqlite3-0 libtirpc3 lsof netbase");
     expect(dockerfile).toContain('ENTRYPOINT ["tini", "-s", "--"]');
+  });
+
+  it("packages the exact default-off slot-local KWRAG component", async () => {
+    const componentRoot = join(repoRoot, "runtime-components/kwrag");
+    const wheel = await readFile(
+      join(componentRoot, "kwrag_product_service-0.2.0-py3-none-any.whl"),
+    );
+    const manifestBytes = await readFile(join(componentRoot, "component-manifest.json"));
+    const manifest = JSON.parse(manifestBytes.toString("utf8")) as {
+      source: { commit: string };
+      surface: { argv: string[]; host_ports: number; network: boolean };
+      wheel: { sha256: string };
+    };
+    const launcher = await readFile(join(componentRoot, "kwrag-fixed-producer"), "utf8");
+    const dockerfile = await readFile(dockerfilePath, "utf8");
+
+    expect(`sha256:${createHash("sha256").update(wheel).digest("hex")}`).toBe(
+      manifest.wheel.sha256,
+    );
+    expect(manifest.source.commit).toBe("4de8d5b1ed4a08d5564e72f7a55608e196902897");
+    expect(manifest.surface.argv).toEqual(["kwrag-fixed-producer"]);
+    expect(manifest.surface.host_ports).toBe(0);
+    expect(manifest.surface.network).toBe(false);
+    expect(launcher).toBe(
+      "#!/usr/bin/env -S PYTHONPATH=/opt/jitech/kwrag/lib python3 -m kwrag.fixed_producer\n",
+    );
+    expect(launcher).not.toContain("/bin/sh");
+    expect(dockerfile).toContain(
+      'ARG OPENCLAW_PYTHON_BOOKWORM_SLIM_IMAGE="python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b"',
+    );
+    expect(dockerfile).toContain(
+      "FROM ${OPENCLAW_PYTHON_BOOKWORM_SLIM_IMAGE} AS kwrag-python-runtime",
+    );
+    expect(dockerfile).toContain("COPY --from=kwrag-python-runtime /usr/local /usr/local");
+    expect(dockerfile).toContain('com.epicevent.openclaw.kwrag.p1.python-version="3.12.13"');
+    expect(dockerfile).toContain(
+      `com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:${createHash("sha256").update(manifestBytes).digest("hex")}"`,
+    );
+    expect(dockerfile).toContain(
+      'com.epicevent.agent-runtime.retrieval.verify-command.json="[\\"openclaw\\",\\"kwrag-p0\\",\\"p1-attachment-status\\",\\"--json\\"]"',
+    );
+    expect(dockerfile).toContain("python3 -m zipfile -e /tmp/kwrag.whl /opt/jitech/kwrag/lib");
   });
 
   it("installs optional browser dependencies after pnpm install", async () => {
