@@ -267,7 +267,7 @@ export async function runKwragP1UserTurnProof() {
     retrievalEvidence: prepared.evidence,
   });
   closeKwragP0HandoffReceiptStore();
-  const snapshot = readKwragP0HandoffLedgerSnapshot();
+  const snapshot = readKwragP0HandoffLedgerSnapshot(process.env, prepared.runId);
   const receipts = snapshot.latestEvidenceEvents ?? fail("retrieval receipts missing");
   if (
     snapshot.latest?.receipt.runId !== prepared.runId ||

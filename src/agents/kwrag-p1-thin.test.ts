@@ -238,7 +238,7 @@ describe("KWRAG P1 thin product adapter", () => {
       transcriptMessage: "actual user ask",
       retrievalEvidence: { handoff, resultDigest, resultCount: 1 },
     });
-    expect(ledgerMock).toHaveBeenCalledOnce();
+    expect(ledgerMock).toHaveBeenCalledWith(process.env, "p1-run");
   });
 
   it("rejects a valid foreign-slot handoff before the actual user-turn caller", async () => {

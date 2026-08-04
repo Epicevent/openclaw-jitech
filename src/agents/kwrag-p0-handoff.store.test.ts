@@ -188,6 +188,30 @@ describe("KWRAG P0 handoff receipt store", () => {
     }
   });
 
+  it("accepts the embedded runner attempt ceiling and rejects the next attempt", () => {
+    const stored = appendKwragP0HandoffReceipt(buildReceipt());
+    appendKwragP0EvidenceEvent(buildEvidenceEvent(stored, { attempt: 160 }));
+
+    expect(() =>
+      appendKwragP0EvidenceEvent(buildEvidenceEvent(stored, { attempt: 161 })),
+    ).toThrow();
+    expect(readKwragP0HandoffLedgerSnapshot().latestEvidenceEvents).toHaveLength(1);
+  });
+
+  it("selects the exact run receipt chain instead of the mutable global latest", () => {
+    const first = appendKwragP0HandoffReceipt(buildReceipt());
+    const firstEvent = buildEvidenceEvent(first);
+    appendKwragP0EvidenceEvent(firstEvent);
+    const second = appendKwragP0HandoffReceipt(buildIndexedReceipt(2));
+    appendKwragP0EvidenceEvent(buildEvidenceEvent(second));
+    closeKwragP0HandoffReceiptStore();
+
+    const selected = readKwragP0HandoffLedgerSnapshot(process.env, first.receipt.runId);
+    expect(selected.latest).toEqual(first);
+    expect(selected.latestEvidenceEvents).toEqual([JSON.parse(firstEvent.receiptJson)]);
+    expect(selected.highWatermark).toBe(second.ledgerSeq);
+  });
+
   it("rejects evidence events with no exact P0 parent or invalid canonical bytes", () => {
     const stored = appendKwragP0HandoffReceipt(buildReceipt());
     const event = buildEvidenceEvent(stored);

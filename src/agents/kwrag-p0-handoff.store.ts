@@ -16,7 +16,7 @@ import { stableStringify } from "./stable-stringify.js";
 const RECEIPT_DIR_MODE = 0o700;
 const RECEIPT_FILE_MODE = 0o600;
 export const KWRAG_P0_MAX_LEDGER_RECEIPTS = 64;
-const KWRAG_P0_MAX_EVIDENCE_EVENTS = KWRAG_P0_MAX_LEDGER_RECEIPTS * 16 * 2;
+const KWRAG_P0_MAX_EVIDENCE_EVENTS = KWRAG_P0_MAX_LEDGER_RECEIPTS * 160 * 2;
 
 type ReceiptRow = {
   ledger_seq: number | bigint;
@@ -111,7 +111,7 @@ function ensureSchema(db: DatabaseSync): void {
       ON kwrag_p0_handoff_receipt(consumption_receipt_digest);
     CREATE TABLE IF NOT EXISTS kwrag_p0_evidence_event (
       p0_ledger_seq INTEGER NOT NULL,
-      attempt INTEGER NOT NULL CHECK(attempt BETWEEN 1 AND 16),
+      attempt INTEGER NOT NULL CHECK(attempt BETWEEN 1 AND 160),
       stage TEXT NOT NULL CHECK(stage IN ('evidence_dispatch_handoff_committed', 'response_observed')),
       receipt_digest TEXT NOT NULL UNIQUE,
       receipt_json TEXT NOT NULL,
@@ -444,7 +444,7 @@ function readEvidenceEvents(db: DatabaseSync, receipts: StoredKwragP0HandoffRece
   });
 }
 
-function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapshot {
+function readSnapshotFromDatabase(db: DatabaseSync, runId?: string): KwragP0HandoffLedgerSnapshot {
   db.exec("BEGIN");
   try {
     const receipts = readCanonicalReceiptRows(db);
@@ -471,13 +471,14 @@ function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapsho
     }
     const hasEventTable = db.prepare("PRAGMA table_info(kwrag_p0_evidence_event)").all().length;
     const events = hasEventTable ? readEvidenceEvents(db, receipts) : [];
-    const latestEvents = events.filter((event) => event.p0LedgerSeq === highWatermarkRaw);
+    const selected = runId ? (receipts.find((row) => row.receipt.runId === runId) ?? null) : latest;
+    const latestEvents = events.filter((event) => event.p0LedgerSeq === selected?.ledgerSeq);
     db.exec("COMMIT");
     return Object.freeze({
       ledgerAvailable: true,
       highWatermark: highWatermarkRaw,
       receiptCount: receipts.length,
-      latest,
+      latest: selected,
       ...(latestEvents.length > 0 ? { latestEvidenceEvents: latestEvents } : {}),
     });
   } catch (error) {
@@ -488,6 +489,7 @@ function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapsho
 
 export function readKwragP0HandoffLedgerSnapshot(
   env: NodeJS.ProcessEnv = process.env,
+  runId?: string,
 ): KwragP0HandoffLedgerSnapshot {
   const pathname = resolveKwragP0HandoffReceiptDbPath(env);
   if (!existsSync(pathname)) {
@@ -500,13 +502,13 @@ export function readKwragP0HandoffLedgerSnapshot(
   }
   const cached = cachedDatabase?.path === pathname ? cachedDatabase.db : null;
   if (cached) {
-    return readSnapshotFromDatabase(cached);
+    return readSnapshotFromDatabase(cached, runId);
   }
   const { DatabaseSync } = requireNodeSqlite();
   const db = new DatabaseSync(pathname, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000;");
-    return readSnapshotFromDatabase(db);
+    return readSnapshotFromDatabase(db, runId);
   } finally {
     db.close();
   }
