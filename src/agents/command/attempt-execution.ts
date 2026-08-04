@@ -484,13 +484,23 @@ export function runAgentAttempt(params: {
     (agentHarnessPolicy.runtime === "pi" && embeddedPiProvider !== params.providerOverride
       ? "pi"
       : undefined);
-  if (params.opts.retrievalHandoff !== undefined && isRawModelRun) {
+  if (
+    params.opts.retrievalEvidence !== undefined &&
+    (params.opts.retrievalEvidence === null || typeof params.opts.retrievalEvidence !== "object")
+  ) {
+    throw new KwragP0HandoffContractError("verified retrieval evidence must be an object");
+  }
+  if (params.opts.retrievalEvidence !== undefined && params.opts.retrievalHandoff !== undefined) {
+    throw new KwragP0HandoffContractError("P0 and consumed retrieval inputs cannot be combined");
+  }
+  const retrievalHandoff = params.opts.retrievalEvidence?.handoff ?? params.opts.retrievalHandoff;
+  if (retrievalHandoff !== undefined && isRawModelRun) {
     throw new KwragP0HandoffContractError(
       "caller-explicit retrieval handoff is unavailable for raw model runs",
     );
   }
   if (!isRawModelRun && isCliProvider(cliExecutionProvider, params.cfg)) {
-    if (params.opts.retrievalHandoff !== undefined) {
+    if (retrievalHandoff !== undefined) {
       throw new KwragP0HandoffContractError(
         "caller-explicit retrieval handoff requires the embedded PI runner",
       );
@@ -664,6 +674,10 @@ export function runAgentAttempt(params: {
     agentHarnessRuntimeOverride: embeddedPiHarnessOverride,
     skillsSnapshot: params.skillsSnapshot,
     prompt: effectivePrompt,
+    transcriptPrompt:
+      params.opts.retrievalEvidence !== undefined
+        ? (params.opts.transcriptMessage ?? params.opts.message)
+        : undefined,
     images: params.isFallbackRetry ? undefined : params.opts.images,
     imageOrder: params.isFallbackRetry ? undefined : params.opts.imageOrder,
     clientTools: params.opts.clientTools,
@@ -678,7 +692,8 @@ export function runAgentAttempt(params: {
     bashElevated: params.opts.bashElevated,
     timeoutMs: params.timeoutMs,
     runId: params.runId,
-    retrievalHandoff: params.opts.retrievalHandoff,
+    retrievalHandoff,
+    retrievalEvidence: params.opts.retrievalEvidence,
     lane: params.opts.lane,
     abortSignal: params.opts.abortSignal,
     extraSystemPrompt: params.opts.extraSystemPrompt,

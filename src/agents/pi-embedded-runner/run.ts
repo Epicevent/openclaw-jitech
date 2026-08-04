@@ -53,6 +53,7 @@ import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
 import { selectAgentHarness } from "../harness/selection.js";
 import { KwragP0HandoffContractError, verifyOptionalKwragP0Handoff } from "../kwrag-p0-handoff.js";
 import { appendKwragP0HandoffReceipt } from "../kwrag-p0-handoff.store.js";
+import { bindKwragP1Evidence, type KwragP1BoundEvidence } from "../kwrag-p1-thin.js";
 import { LiveSessionModelSwitchError } from "../live-model-switch-error.js";
 import { shouldSwitchToLiveModel, clearLiveModelSwitchPending } from "../live-model-switch.js";
 import {
@@ -404,6 +405,20 @@ function buildHandledReplyPayloads(reply?: ReplyPayload) {
 export async function runEmbeddedPiAgent(
   params: RunEmbeddedPiAgentParams,
 ): Promise<EmbeddedPiRunResult> {
+  if (
+    params.retrievalEvidence !== undefined &&
+    (params.retrievalEvidence === null || typeof params.retrievalEvidence !== "object")
+  ) {
+    throw new KwragP0HandoffContractError("verified retrieval evidence must be an object");
+  }
+  if (params.retrievalEvidence !== undefined && params.retrievalHandoff === undefined) {
+    throw new KwragP0HandoffContractError("verified retrieval evidence requires its P0 handoff");
+  }
+  if (params.retrievalEvidence !== undefined && params.transcriptPrompt === undefined) {
+    throw new KwragP0HandoffContractError(
+      "verified retrieval evidence requires a visible transcript prompt",
+    );
+  }
   // Resolve sessionKey early so all downstream consumers (hooks, LCM, compaction)
   // receive a non-null key even when callers omit it. See #60552.
   const effectiveSessionKey = backfillSessionKey({
@@ -539,6 +554,7 @@ export async function runEmbeddedPiAgent(
       startupStages.mark("runtime-plugins");
       notifyExecutionPhase("runtime_plugins");
 
+      let kwragP1Evidence: KwragP1BoundEvidence | undefined;
       if (params.retrievalHandoff !== undefined) {
         const productSourceCommit = resolveExactCommitHash({ moduleUrl: import.meta.url });
         if (!productSourceCommit) {
@@ -555,7 +571,10 @@ export async function runEmbeddedPiAgent(
         if (!retrievalHandoffReceipt) {
           throw new KwragP0HandoffContractError("enabled handoff produced no receipt");
         }
-        appendKwragP0HandoffReceipt(retrievalHandoffReceipt);
+        const storedKwragReceipt = appendKwragP0HandoffReceipt(retrievalHandoffReceipt);
+        if (params.retrievalEvidence) {
+          kwragP1Evidence = bindKwragP1Evidence(params.retrievalEvidence, storedKwragReceipt);
+        }
       }
 
       let provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
@@ -1481,6 +1500,7 @@ export async function runEmbeddedPiAgent(
               modelId,
               providerUsageRun,
               providerUsageAttempt: runLoopIterations,
+              kwragP1Evidence,
               // Use the harness selected before model/auth setup for the actual
               // attempt too. Otherwise plugin-owned transports can skip PI auth
               // bootstrap but drift back to PI when the attempt is created.

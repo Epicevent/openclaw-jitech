@@ -13,6 +13,7 @@ import {
 } from "./kwrag-p0-handoff.js";
 import { resolveKwragP0HandoffReceiptDbPath } from "./kwrag-p0-handoff.paths.js";
 import {
+  appendKwragP0EvidenceEvent,
   appendKwragP0HandoffReceipt,
   closeKwragP0HandoffReceiptStore,
   KWRAG_P0_MAX_LEDGER_RECEIPTS,
@@ -21,6 +22,7 @@ import {
   KwragP0HandoffReceiptLedgerCorruptError,
   readKwragP0HandoffLedgerSnapshot,
 } from "./kwrag-p0-handoff.store.js";
+import { stableStringify } from "./stable-stringify.js";
 
 const PRODUCT_SOURCE_COMMIT = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -73,6 +75,48 @@ function buildIndexedReceipt(index: number): KwragP0HandoffReceipt {
   });
 }
 
+function buildEvidenceEvent(
+  stored: ReturnType<typeof appendKwragP0HandoffReceipt>,
+  overrides: Record<string, unknown> = {},
+) {
+  const body = {
+    schema: "jitech-openclaw-kwrag-evidence-event/v1",
+    stage: "evidence_dispatch_handoff_committed",
+    p0LedgerSeq: stored.ledgerSeq,
+    p0ReceiptDigest: stored.receipt.receiptDigest,
+    runId: stored.receipt.runId,
+    sessionId: stored.receipt.sessionId,
+    attempt: 1,
+    p1IdentityDigest: `sha256:${"1".repeat(64)}`,
+    resultReceiptDigest: stored.receipt.resultReceiptDigest,
+    contextDigest: `sha256:${"2".repeat(64)}`,
+    contextBytes: 1,
+    resultCount: 1,
+    consumptionStatus: "consumed",
+    promptProjectionApplied: true,
+    previousReceiptDigest: null,
+    provider: "google",
+    model: "gemini-test",
+    finishReason: null,
+    ...overrides,
+  };
+  const receipt = {
+    ...body,
+    receiptDigest: digestKwragP0CanonicalWithoutField(
+      { ...body, receiptDigest: "ignored" },
+      "receiptDigest",
+    ),
+  };
+  return {
+    p0LedgerSeq: receipt.p0LedgerSeq,
+    p0ReceiptDigest: receipt.p0ReceiptDigest as string,
+    attempt: receipt.attempt,
+    stage: receipt.stage as "evidence_dispatch_handoff_committed" | "response_observed",
+    receiptDigest: receipt.receiptDigest,
+    receiptJson: stableStringify(receipt),
+  };
+}
+
 describe("KWRAG P0 handoff receipt store", () => {
   let stateDir: string;
 
@@ -115,6 +159,80 @@ describe("KWRAG P0 handoff receipt store", () => {
     expect(readKwragP0HandoffLedgerSnapshot().highWatermark).toBe(1);
   });
 
+  it("binds evidence events to one canonical P0 row and rejects altered replay", () => {
+    const stored = appendKwragP0HandoffReceipt(buildReceipt());
+    const event = buildEvidenceEvent(stored);
+    appendKwragP0EvidenceEvent(event);
+    appendKwragP0EvidenceEvent(event);
+
+    expect(() =>
+      appendKwragP0EvidenceEvent(buildEvidenceEvent(stored, { model: "changed-model" })),
+    ).toThrow(KwragP0HandoffReceiptConflictError);
+    closeKwragP0HandoffReceiptStore();
+    expect(readKwragP0HandoffLedgerSnapshot().latestEvidenceEvents).toEqual([
+      JSON.parse(event.receiptJson),
+    ]);
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+      readOnly: true,
+    });
+    try {
+      expect(db.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_evidence_event").get()).toEqual({
+        count: 1,
+      });
+      expect(db.prepare("SELECT receipt_json FROM kwrag_p0_evidence_event").get()).toEqual({
+        receipt_json: event.receiptJson,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("rejects evidence events with no exact P0 parent or invalid canonical bytes", () => {
+    const stored = appendKwragP0HandoffReceipt(buildReceipt());
+    const event = buildEvidenceEvent(stored);
+    expect(() =>
+      appendKwragP0EvidenceEvent({ ...event, p0LedgerSeq: stored.ledgerSeq + 1 }),
+    ).toThrow(KwragP0HandoffReceiptLedgerCorruptError);
+    expect(() =>
+      appendKwragP0EvidenceEvent({
+        ...event,
+        p0ReceiptDigest: `sha256:${"f".repeat(64)}`,
+      }),
+    ).toThrow(KwragP0HandoffReceiptLedgerCorruptError);
+    expect(() =>
+      appendKwragP0EvidenceEvent({ ...event, receiptJson: `${event.receiptJson} ` }),
+    ).toThrow(KwragP0HandoffReceiptLedgerCorruptError);
+    closeKwragP0HandoffReceiptStore();
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+      readOnly: true,
+    });
+    try {
+      expect(db.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_evidence_event").get()).toEqual({
+        count: 0,
+      });
+    } finally {
+      db.close();
+    }
+  });
+
+  it("fails closed when linked evidence bytes drift on disk", () => {
+    const stored = appendKwragP0HandoffReceipt(buildReceipt());
+    appendKwragP0EvidenceEvent(buildEvidenceEvent(stored));
+    closeKwragP0HandoffReceiptStore();
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env));
+    try {
+      db.prepare("UPDATE kwrag_p0_evidence_event SET receipt_json = ?").run('{"drift":true}');
+    } finally {
+      db.close();
+    }
+    expect(() => readKwragP0HandoffLedgerSnapshot()).toThrow(
+      KwragP0HandoffReceiptLedgerCorruptError,
+    );
+  });
+
   it("rejects rebinding one consumption receipt to a different handoff", () => {
     appendKwragP0HandoffReceipt(buildReceipt());
 
@@ -133,6 +251,34 @@ describe("KWRAG P0 handoff receipt store", () => {
       latest: null,
     });
     expect(existsSync(dbPath)).toBe(false);
+  });
+
+  it("keeps a pre-evidence P0 ledger readable without migrating it", () => {
+    const stored = appendKwragP0HandoffReceipt(buildReceipt());
+    closeKwragP0HandoffReceiptStore();
+    const { DatabaseSync } = requireNodeSqlite();
+    const dbPath = resolveKwragP0HandoffReceiptDbPath(process.env);
+    const db = new DatabaseSync(dbPath);
+    try {
+      db.exec("DROP TABLE kwrag_p0_evidence_event");
+    } finally {
+      db.close();
+    }
+
+    expect(readKwragP0HandoffLedgerSnapshot()).toEqual({
+      ledgerAvailable: true,
+      highWatermark: 1,
+      receiptCount: 1,
+      latest: stored,
+    });
+    const verifyDb = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      expect(
+        verifyDb.prepare("SELECT 1 FROM sqlite_master WHERE name='kwrag_p0_evidence_event'").get(),
+      ).toBeUndefined();
+    } finally {
+      verifyDb.close();
+    }
   });
 
   it("fails closed when persisted canonical bytes are corrupted", () => {
