@@ -1077,6 +1077,7 @@ export async function runEmbeddedPiAgent(
       let autoCompactionCount = 0;
       let lastCompactionTokensAfter: number | undefined;
       let runLoopIterations = 0;
+      let kwragDispatchHandoffCommitted = false;
       let overloadProfileRotations = 0;
       let planningOnlyRetryAttempts = 0;
       let reasoningOnlyRetryAttempts = 0;
@@ -1330,6 +1331,11 @@ export async function runEmbeddedPiAgent(
         // Hoisted so the retry-limit error path can use the most recent API total.
         let lastTurnTotal: number | undefined;
         while (true) {
+          if (kwragDispatchHandoffCommitted) {
+            throw new KwragP0HandoffContractError(
+              "retrieval evidence dispatch handoff already committed; refusing retry or fallback",
+            );
+          }
           if (runLoopIterations >= MAX_RUN_LOOP_ITERATIONS) {
             const message =
               `Exceeded retry limit after ${runLoopIterations} attempts ` +
@@ -1616,6 +1622,16 @@ export async function runEmbeddedPiAgent(
             lastAssistant: sessionLastAssistant,
             currentAttemptAssistant,
           } = attempt;
+          kwragDispatchHandoffCommitted = attempt.kwragDispatchHandoffCommitted === true;
+          if (
+            kwragDispatchHandoffCommitted &&
+            !aborted &&
+            (promptError || !currentAttemptAssistant || currentAttemptAssistant.errorMessage)
+          ) {
+            throw new KwragP0HandoffContractError(
+              "retrieval evidence dispatch handoff already committed; refusing retry or fallback",
+            );
+          }
           const timedOutDuringToolExecution = attempt.timedOutDuringToolExecution ?? false;
           if (sessionIdUsed && sessionIdUsed !== activeSessionId) {
             activeSessionId = sessionIdUsed;

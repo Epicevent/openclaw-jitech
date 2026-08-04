@@ -287,7 +287,10 @@ export function commitKwragP1Event(params: {
     contextDigest: params.evidence.contextDigest,
     contextBytes: params.evidence.contextBytes,
     resultCount: params.evidence.resultCount,
-    consumptionStatus: "consumed",
+    consumptionStatus:
+      params.stage === "evidence_dispatch_handoff_committed"
+        ? "evidence_dispatch_handoff_committed"
+        : "response_observed",
     promptProjectionApplied: true,
     previousReceiptDigest: params.previousReceiptDigest ?? null,
     provider: params.provider,
@@ -394,7 +397,9 @@ export async function runKwragP1UserTurnProof(query: string) {
     snapshot.latest.receipt.resultReceiptDigest !== evidence.resultDigest ||
     receipts.length !== 2 ||
     receipts[0]?.stage !== "evidence_dispatch_handoff_committed" ||
-    receipts[1]?.stage !== "response_observed"
+    receipts[0]?.consumptionStatus !== "evidence_dispatch_handoff_committed" ||
+    receipts[1]?.stage !== "response_observed" ||
+    receipts[1]?.consumptionStatus !== "response_observed"
   ) {
     return fail("retrieval receipt chain is incomplete");
   }

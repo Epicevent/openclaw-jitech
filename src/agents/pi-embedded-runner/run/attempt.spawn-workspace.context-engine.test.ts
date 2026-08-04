@@ -888,6 +888,13 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
     db.close();
     expect(events).toHaveLength(2);
     expect(JSON.stringify(events)).not.toContain("verified hit text");
+    expect(
+      events.find((event) => event.stage === "evidence_dispatch_handoff_committed")
+        ?.consumptionStatus,
+    ).toBe("evidence_dispatch_handoff_committed");
+    expect(events.find((event) => event.stage === "response_observed")?.consumptionStatus).toBe(
+      "response_observed",
+    );
     expect(events.find((event) => event.stage === "response_observed")?.previousReceiptDigest).toBe(
       events.find((event) => event.stage === "evidence_dispatch_handoff_committed")?.receiptDigest,
     );

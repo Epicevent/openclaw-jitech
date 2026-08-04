@@ -231,8 +231,16 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
           },
         },
         latestEvidenceEvents: [
-          { stage: "evidence_dispatch_handoff_committed", receiptDigest: OPERATION },
-          { stage: "response_observed", receiptDigest: PRODUCER_RECEIPT },
+          {
+            stage: "evidence_dispatch_handoff_committed",
+            consumptionStatus: "evidence_dispatch_handoff_committed",
+            receiptDigest: OPERATION,
+          },
+          {
+            stage: "response_observed",
+            consumptionStatus: "response_observed",
+            receiptDigest: PRODUCER_RECEIPT,
+          },
         ],
       };
     });

@@ -83,6 +83,8 @@ export type EmbeddedRunAttemptResult = {
   timedOutDuringCompaction: boolean;
   /** Optional because this type is re-exported as `AgentHarnessAttemptResult`. */
   timedOutDuringToolExecution?: boolean;
+  /** A durable KWRAG evidence handoff exists, so this turn must never be retried or fallen back. */
+  kwragDispatchHandoffCommitted?: boolean;
   promptError: unknown;
   /**
    * Identifies which phase produced the promptError.
