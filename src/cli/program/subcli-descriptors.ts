@@ -34,6 +34,12 @@ const subCliCommandCatalog = defineCommandDescriptorCatalog([
     parentDefaultHelp: true,
   },
   {
+    name: "kwrag-p0",
+    description: "Inspect the default-off content-free KWRAG P0 handoff ledger",
+    hasSubcommands: true,
+    parentDefaultHelp: true,
+  },
+  {
     name: "infer",
     description: "Run provider-backed model, media, search, and embedding commands",
     hasSubcommands: true,

@@ -54,12 +54,13 @@ async function makeFakeGitRepo(
 describe("git commit resolution", () => {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   let resolveCommitHash: (typeof import("./git-commit.js"))["resolveCommitHash"];
+  let resolveExactCommitHash: (typeof import("./git-commit.js"))["resolveExactCommitHash"];
   let testing: (typeof import("./git-commit.js"))["testing"];
 
   beforeAll(async () => {
     vi.doUnmock("node:fs");
     vi.doUnmock("node:module");
-    ({ resolveCommitHash, testing } = await import("./git-commit.js"));
+    ({ resolveCommitHash, resolveExactCommitHash, testing } = await import("./git-commit.js"));
   });
 
   beforeEach(() => {
@@ -325,6 +326,38 @@ describe("git commit resolution", () => {
     expect(resolveCommitHash({ cwd: temp, env: { GIT_COMMIT: "" } })).toBeNull();
   });
 
+  it("resolves exact immutable source revisions without accepting abbreviated hashes", async () => {
+    const temp = await makeTempDir("git-commit-exact-env");
+    const exact = "abcdef0123456789abcdef0123456789abcdef01";
+
+    expect(resolveExactCommitHash({ cwd: temp, env: { GIT_COMMIT: exact.toUpperCase() } })).toBe(
+      exact,
+    );
+    expect(resolveExactCommitHash({ cwd: temp, env: { GIT_SHA: `commit ${exact} dirty` } })).toBe(
+      exact,
+    );
+    expect(
+      resolveExactCommitHash({ cwd: temp, env: { GIT_COMMIT: exact.slice(0, 12) } }),
+    ).toBeNull();
+  });
+
+  it("uses an exact baked build-info revision when checkout metadata is unavailable", async () => {
+    const temp = await makeTempDir("git-commit-exact-build-info");
+    const exact = "1234567890abcdef1234567890abcdef12345678";
+
+    expect(
+      resolveExactCommitHash({
+        cwd: temp,
+        env: {},
+        readers: {
+          readGitCommit: () => undefined,
+          readBuildInfoCommit: () => exact,
+          readPackageJsonCommit: () => null,
+        },
+      }),
+    ).toBe(exact);
+  });
+
   it("rejects unsafe HEAD refs and accepts valid refs", async () => {
     const temp = await makeTempDir("git-commit-refs");
     const absoluteRepo = path.join(temp, "absolute");
@@ -347,6 +380,16 @@ describe("git commit resolution", () => {
       },
     });
     expect(resolveCommitHash({ cwd: validRepo, env: {} })).toBe("aaaaaaa");
+    expect(resolveExactCommitHash({ cwd: validRepo, env: {} })).toBe(
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    testing.clearCachedGitCommits();
+    expect(
+      resolveExactCommitHash({
+        cwd: validRepo,
+        env: { GIT_COMMIT: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      }),
+    ).toBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
   });
 
   it("resolves refs from the git commondir in worktree layouts", async () => {
@@ -365,6 +408,9 @@ describe("git commit resolution", () => {
     });
 
     expect(resolveCommitHash({ cwd: repoRoot, env: {} })).toBe("bbbbbbb");
+    expect(resolveExactCommitHash({ cwd: repoRoot, env: {} })).toBe(
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
   });
 
   it("reads full HEAD refs before parsing long branch names", async () => {

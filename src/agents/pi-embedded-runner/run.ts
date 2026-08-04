@@ -12,6 +12,7 @@ import { emitAgentPlanEvent } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
 import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import { resolveExactCommitHash } from "../../infra/git-commit.js";
 import { buildAgentHookContextChannelFields } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { resolveProviderAuthProfileId } from "../../plugins/provider-runtime.js";
@@ -50,6 +51,8 @@ import {
 } from "../failover-error.js";
 import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
 import { selectAgentHarness } from "../harness/selection.js";
+import { KwragP0HandoffContractError, verifyOptionalKwragP0Handoff } from "../kwrag-p0-handoff.js";
+import { appendKwragP0HandoffReceipt } from "../kwrag-p0-handoff.store.js";
 import { LiveSessionModelSwitchError } from "../live-model-switch-error.js";
 import { shouldSwitchToLiveModel, clearLiveModelSwitchPending } from "../live-model-switch.js";
 import {
@@ -535,6 +538,25 @@ export async function runEmbeddedPiAgent(
       });
       startupStages.mark("runtime-plugins");
       notifyExecutionPhase("runtime_plugins");
+
+      if (params.retrievalHandoff !== undefined) {
+        const productSourceCommit = resolveExactCommitHash({ moduleUrl: import.meta.url });
+        if (!productSourceCommit) {
+          throw new KwragP0HandoffContractError(
+            "caller-explicit retrieval handoff requires an exact product source commit",
+          );
+        }
+        const retrievalHandoffReceipt = verifyOptionalKwragP0Handoff({
+          input: params.retrievalHandoff,
+          runId: params.runId,
+          sessionId: params.sessionId,
+          productSourceCommit,
+        });
+        if (!retrievalHandoffReceipt) {
+          throw new KwragP0HandoffContractError("enabled handoff produced no receipt");
+        }
+        appendKwragP0HandoffReceipt(retrievalHandoffReceipt);
+      }
 
       let provider = (params.provider ?? DEFAULT_PROVIDER).trim() || DEFAULT_PROVIDER;
       let modelId = (params.model ?? DEFAULT_MODEL).trim() || DEFAULT_MODEL;

@@ -21,7 +21,16 @@ const formatCommit = (value?: string | null) => {
   return normalizeLowercaseStringOrEmpty(match[0].slice(0, 7));
 };
 
+const formatExactCommit = (value?: string | null) => {
+  if (!value) {
+    return null;
+  }
+  const match = value.trim().match(/(?:^|[^0-9a-fA-F])([0-9a-fA-F]{40})(?:$|[^0-9a-fA-F])/);
+  return match?.[1]?.toLowerCase() ?? null;
+};
+
 const cachedGitCommitBySearchDir = new Map<string, string | null>();
+const cachedExactGitCommitBySearchDir = new Map<string, string | null>();
 
 export type CommitMetadataReaders = {
   readGitCommit?: (searchDir: string, packageRoot: string | null) => string | null | undefined;
@@ -70,6 +79,7 @@ const cacheGitCommit = (searchDir: string, commit: string | null) => {
 
 const clearCachedGitCommits = () => {
   cachedGitCommitBySearchDir.clear();
+  cachedExactGitCommitBySearchDir.clear();
 };
 
 const resolveGitLookupDepth = (searchDir: string, packageRoot: string | null) => {
@@ -116,6 +126,61 @@ const readCommitFromGit = (
     return readCommitFromPackedRefs(refsBase, ref);
   }
   return formatCommit(head);
+};
+
+const readExactCommitFromPackedRefs = (refsBase: string, ref: string) => {
+  try {
+    const packedRefs = fs.readFileSync(path.join(refsBase, "packed-refs"), "utf-8");
+    for (const line of packedRefs.split("\n")) {
+      if (!line || line.startsWith("#") || line.startsWith("^")) {
+        continue;
+      }
+      const [commit, packedRef] = line.trim().split(/\s+/, 2);
+      if (packedRef === ref) {
+        return formatExactCommit(commit);
+      }
+    }
+    return null;
+  } catch (error) {
+    if (!isMissingPathError(error)) {
+      throw error;
+    }
+    return null;
+  }
+};
+
+const readExactCommitFromGit = (
+  searchDir: string,
+  packageRoot: string | null,
+): string | null | undefined => {
+  const headPath = resolveGitHeadPath(searchDir, {
+    maxDepth: resolveGitLookupDepth(searchDir, packageRoot),
+  });
+  if (!headPath) {
+    return undefined;
+  }
+  const head = fs.readFileSync(headPath, "utf-8").trim();
+  if (!head) {
+    return null;
+  }
+  if (head.startsWith("ref:")) {
+    const ref = head.replace(/^ref:\s*/i, "").trim();
+    const refsBase = resolveGitRefsBase(headPath);
+    const refPath = resolveRefPath(refsBase, ref);
+    if (!refPath) {
+      return null;
+    }
+    try {
+      const refHash = safeReadFilePrefix(refPath).trim();
+      return formatExactCommit(refHash);
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        throw error;
+      }
+    }
+    return readExactCommitFromPackedRefs(refsBase, ref);
+  }
+  return formatExactCommit(head);
 };
 
 const resolveGitRefsBase = (headPath: string) => {
@@ -187,6 +252,19 @@ const readCommitFromPackageJson = () => {
   }
 };
 
+const readExactCommitFromPackageJson = () => {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkg = require("../../package.json") as {
+      gitHead?: string;
+      githead?: string;
+    };
+    return formatExactCommit(pkg.gitHead ?? pkg.githead ?? null);
+  } catch {
+    return null;
+  }
+};
+
 const readCommitFromBuildInfo = () => {
   try {
     const require = createRequire(import.meta.url);
@@ -202,6 +280,27 @@ const readCommitFromBuildInfo = () => {
         }
       } catch {
         // ignore missing candidate
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const readExactCommitFromBuildInfo = () => {
+  try {
+    const require = createRequire(import.meta.url);
+    const candidates = ["../build-info.json", "./build-info.json"];
+    for (const candidate of candidates) {
+      try {
+        const info = require(candidate) as { commit?: string | null };
+        const formatted = formatExactCommit(info.commit ?? null);
+        if (formatted) {
+          return formatted;
+        }
+      } catch {
+        // Ignore a missing build-info candidate and continue to the next source.
       }
     }
     return null;
@@ -254,6 +353,66 @@ export const resolveCommitHash = (
     return cacheGitCommit(searchDir, readGitCommit(searchDir, packageRoot) ?? null);
   } catch {
     return cacheGitCommit(searchDir, null);
+  }
+};
+
+/** Resolve the exact 40-hex product source revision for immutable runtime evidence. */
+export const resolveExactCommitHash = (
+  options: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    moduleUrl?: string;
+    readers?: CommitMetadataReaders;
+  } = {},
+) => {
+  const env = options.env ?? process.env;
+  const readers = options.readers ?? {};
+  const searchDir = resolveCommitSearchDir(options);
+  if (cachedExactGitCommitBySearchDir.has(searchDir)) {
+    return cachedExactGitCommitBySearchDir.get(searchDir) ?? null;
+  }
+  const cache = (commit: string | null) => {
+    cachedExactGitCommitBySearchDir.set(searchDir, commit);
+    return commit;
+  };
+  const packageRoot = resolveOpenClawPackageRootSync({
+    cwd: options.cwd,
+    moduleUrl: options.moduleUrl,
+  });
+  try {
+    const readerCommit = readers.readGitCommit?.(searchDir, packageRoot);
+    const gitCommit = readers.readGitCommit
+      ? readerCommit === undefined
+        ? undefined
+        : formatExactCommit(readerCommit)
+      : readExactCommitFromGit(searchDir, packageRoot);
+    if (gitCommit !== undefined) {
+      return cache(gitCommit);
+    }
+  } catch {
+    // Fall through to baked metadata for packaged installs without a readable checkout.
+  }
+  const envCommit = env.GIT_COMMIT?.trim() || env.GIT_SHA?.trim();
+  const normalized = formatExactCommit(envCommit);
+  if (normalized) {
+    return normalized;
+  }
+  const buildInfoCommit = readers.readBuildInfoCommit
+    ? formatExactCommit(readers.readBuildInfoCommit())
+    : readExactCommitFromBuildInfo();
+  if (buildInfoCommit) {
+    return cache(buildInfoCommit);
+  }
+  const packageCommit = readers.readPackageJsonCommit
+    ? formatExactCommit(readers.readPackageJsonCommit())
+    : readExactCommitFromPackageJson();
+  if (packageCommit) {
+    return cache(packageCommit);
+  }
+  try {
+    return cache(readExactCommitFromGit(searchDir, packageRoot) ?? null);
+  } catch {
+    return cache(null);
   }
 };
 
