@@ -36,18 +36,26 @@ describe("kwrag-p1 attachment CLI", () => {
     expect(write).toHaveBeenCalledWith(`${JSON.stringify(status)}\n`);
   });
 
-  it("runs the actual user-turn proof only through the fixed no-input command", async () => {
+  it("runs the actual user-turn proof only with a caller-explicit query", async () => {
     const proof = { schema: "jitech-openclaw-kwrag-user-turn-proof/v1" };
     proofMock.mockResolvedValueOnce(proof);
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    await program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof", "--json"]);
+    await program().parseAsync([
+      "node",
+      "openclaw",
+      "kwrag-p0",
+      "p1-user-turn-proof",
+      "--query",
+      "fixture query",
+      "--json",
+    ]);
 
-    expect(proofMock).toHaveBeenCalledWith();
+    expect(proofMock).toHaveBeenCalledWith("fixture query");
     expect(write).toHaveBeenCalledWith(`${JSON.stringify(proof)}\n`);
   });
 
-  it.each(["p1-attachment-status", "p1-user-turn-proof"])(
+  it.each(["p1-attachment-status"])(
     "rejects %s without --json before product execution",
     async (command) => {
       await expect(program().parseAsync(["node", "openclaw", "kwrag-p0", command])).rejects.toThrow(
@@ -57,4 +65,11 @@ describe("kwrag-p1 attachment CLI", () => {
       expect(proofMock).not.toHaveBeenCalled();
     },
   );
+
+  it("rejects the user-turn proof without a caller query", async () => {
+    await expect(
+      program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof", "--json"]),
+    ).rejects.toThrow(/required option '--query <text>'/u);
+    expect(proofMock).not.toHaveBeenCalled();
+  });
 });

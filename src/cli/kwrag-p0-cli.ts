@@ -33,9 +33,10 @@ export function registerKwragP0Cli(program: Command): void {
 
   kwragP0
     .command("p1-user-turn-proof")
+    .requiredOption("--query <text>", "Caller-explicit bounded retrieval query")
     .option("--json", "Emit the actual user-turn retrieval proof", false)
-    .action(async (opts: { json: boolean }) => {
+    .action(async (opts: { json: boolean; query: string }) => {
       requireJson(opts);
-      process.stdout.write(`${JSON.stringify(await runKwragP1UserTurnProof())}\n`);
+      process.stdout.write(`${JSON.stringify(await runKwragP1UserTurnProof(opts.query))}\n`);
     });
 }

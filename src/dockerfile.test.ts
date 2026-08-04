@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -73,6 +74,40 @@ describe("Dockerfile", () => {
       "ca-certificates curl git hostname lsof openssl procps python3 tini",
     );
     expect(dockerfile).toContain('ENTRYPOINT ["tini", "-s", "--"]');
+  });
+
+  it("packages the exact default-off slot-local KWRAG component", async () => {
+    const componentRoot = join(repoRoot, "runtime-components/kwrag");
+    const wheel = await readFile(
+      join(componentRoot, "kwrag_product_service-0.2.0-py3-none-any.whl"),
+    );
+    const manifestBytes = await readFile(join(componentRoot, "component-manifest.json"));
+    const manifest = JSON.parse(manifestBytes.toString("utf8")) as {
+      source: { commit: string };
+      surface: { argv: string[]; host_ports: number; network: boolean };
+      wheel: { sha256: string };
+    };
+    const launcher = await readFile(join(componentRoot, "kwrag-fixed-producer"), "utf8");
+    const dockerfile = await readFile(dockerfilePath, "utf8");
+
+    expect(`sha256:${createHash("sha256").update(wheel).digest("hex")}`).toBe(
+      manifest.wheel.sha256,
+    );
+    expect(manifest.source.commit).toBe("4de8d5b1ed4a08d5564e72f7a55608e196902897");
+    expect(manifest.surface.argv).toEqual(["kwrag-fixed-producer"]);
+    expect(manifest.surface.host_ports).toBe(0);
+    expect(manifest.surface.network).toBe(false);
+    expect(launcher).toBe(
+      "#!/usr/bin/env -S PYTHONPATH=/opt/jitech/kwrag/lib python3 -m kwrag.fixed_producer\n",
+    );
+    expect(launcher).not.toContain("/bin/sh");
+    expect(dockerfile).toContain(
+      `com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:${createHash("sha256").update(manifestBytes).digest("hex")}"`,
+    );
+    expect(dockerfile).toContain(
+      'com.epicevent.agent-runtime.retrieval.verify-command.json="[\\"openclaw\\",\\"kwrag-p0\\",\\"p1-attachment-status\\",\\"--json\\"]"',
+    );
+    expect(dockerfile).toContain("python3 -m zipfile -e /tmp/kwrag.whl /opt/jitech/kwrag/lib");
   });
 
   it("installs optional browser dependencies after pnpm install", async () => {

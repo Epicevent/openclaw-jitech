@@ -174,6 +174,28 @@ LABEL com.epicevent.agent-runtime.selftest.name="openclaw-selftest-v1" \
   com.epicevent.agent-runtime.selftest.command="node dist/index.js selftest --json" \
   com.epicevent.agent-runtime.selftest.timeout="120"
 
+# Exact slot-local KWRAG capability. Retrieval stays caller-explicit and default-off;
+# these labels bind the packaged component and its fixed content-free verifier.
+LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-embedded-retrieval/v1" \
+  com.epicevent.agent-runtime.retrieval.component-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
+  com.epicevent.agent-runtime.retrieval.contract-digest="sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288" \
+  com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
+  com.epicevent.agent-runtime.retrieval.source-archive-digest="sha256:950359d60058fb8fd0a673805d4d4bbf74521b660fca981516a567fef54abf01" \
+  com.epicevent.agent-runtime.retrieval.source-revision="4de8d5b1ed4a08d5564e72f7a55608e196902897" \
+  com.epicevent.agent-runtime.retrieval.transport="in_process" \
+  com.epicevent.agent-runtime.retrieval.default-enabled="false" \
+  com.epicevent.agent-runtime.retrieval.host-port-count="0" \
+  com.epicevent.agent-runtime.retrieval.nas-read-only="true" \
+  com.epicevent.agent-runtime.retrieval.resource.json="{\"cpuReservationMillicores\":500,\"gpuAccess\":\"none\",\"memoryReservationBytes\":536870912,\"pidsReservation\":64,\"profileDigest\":\"sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed\"}" \
+  com.epicevent.agent-runtime.retrieval.verify-command.json="[\"openclaw\",\"kwrag-p0\",\"p1-attachment-status\",\"--json\"]" \
+  com.epicevent.openclaw.kwrag.p1.attachment-decision-digest="sha256:fd4d1068407d0b28d41e7813f8cef7b193a5fe43f39db166588911e6fde3bbb5" \
+  com.epicevent.openclaw.kwrag.p1.caller-explicit="true" \
+  com.epicevent.openclaw.kwrag.p1.component-manifest-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
+  com.epicevent.openclaw.kwrag.p1.component-wheel-digest="sha256:023f861b016d421add0528d0129373249590d18a7a51bfe9b5b06f3c1836fbd5" \
+  com.epicevent.openclaw.kwrag.p1.default-enabled="false" \
+  com.epicevent.openclaw.kwrag.p1.status-schema="jitech-embedded-retrieval-attachment-status/v1" \
+  com.epicevent.openclaw.kwrag.p1.verify-command.json="[\"openclaw\",\"kwrag-p0\",\"p1-attachment-status\",\"--json\"]"
+
 # Self-contained config contract: the image declares how to validate and migrate its own
 # on-disk config. agent-runtime-ops runs `config-validate.command` against the on-disk
 # config BEFORE recreating a container (a config the image would reject is gated, so the
@@ -199,6 +221,14 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates curl git hostname lsof openssl procps python3 tini && \
     update-ca-certificates
+
+COPY runtime-components/kwrag/kwrag_product_service-0.2.0-py3-none-any.whl /tmp/kwrag.whl
+COPY runtime-components/kwrag/component-manifest.json /opt/jitech/kwrag/component-manifest.json
+COPY runtime-components/kwrag/kwrag-fixed-producer /opt/jitech/kwrag/bin/kwrag-fixed-producer
+RUN python3 -m zipfile -e /tmp/kwrag.whl /opt/jitech/kwrag/lib && \
+    rm -f /tmp/kwrag.whl && \
+    chmod -R a+rX /opt/jitech/kwrag/lib /opt/jitech/kwrag/component-manifest.json && \
+    chmod 0755 /opt/jitech/kwrag/bin/kwrag-fixed-producer
 
 RUN chown node:node /app
 

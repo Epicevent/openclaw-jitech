@@ -53,7 +53,11 @@ import { ensureSelectedAgentHarnessPlugin } from "../harness/runtime-plugin.js";
 import { selectAgentHarness } from "../harness/selection.js";
 import { KwragP0HandoffContractError, verifyOptionalKwragP0Handoff } from "../kwrag-p0-handoff.js";
 import { appendKwragP0HandoffReceipt } from "../kwrag-p0-handoff.store.js";
-import { bindKwragP1Evidence, type KwragP1BoundEvidence } from "../kwrag-p1-thin.js";
+import {
+  assertKwragP1EvidenceInput,
+  bindKwragP1Evidence,
+  type KwragP1BoundEvidence,
+} from "../kwrag-p1-thin.js";
 import { LiveSessionModelSwitchError } from "../live-model-switch-error.js";
 import { shouldSwitchToLiveModel, clearLiveModelSwitchPending } from "../live-model-switch.js";
 import {
@@ -405,12 +409,7 @@ function buildHandledReplyPayloads(reply?: ReplyPayload) {
 export async function runEmbeddedPiAgent(
   params: RunEmbeddedPiAgentParams,
 ): Promise<EmbeddedPiRunResult> {
-  if (
-    params.retrievalEvidence !== undefined &&
-    (params.retrievalEvidence === null || typeof params.retrievalEvidence !== "object")
-  ) {
-    throw new KwragP0HandoffContractError("verified retrieval evidence must be an object");
-  }
+  assertKwragP1EvidenceInput(params.retrievalEvidence);
   if (params.retrievalEvidence !== undefined && params.retrievalHandoff === undefined) {
     throw new KwragP0HandoffContractError("verified retrieval evidence requires its P0 handoff");
   }

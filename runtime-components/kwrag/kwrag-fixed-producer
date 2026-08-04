@@ -1,0 +1,1 @@
+#!/usr/bin/env -S PYTHONPATH=/opt/jitech/kwrag/lib python3 -m kwrag.fixed_producer
