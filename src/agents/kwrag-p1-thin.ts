@@ -10,7 +10,7 @@ import {
 } from "./kwrag-p0-handoff.store.js";
 import { stableStringify } from "./stable-stringify.js";
 
-const COMPONENT = "sha256:6578b61f91151d6cfa2d6a100397a409a6293c1396ce957cd7e87cf0da74e811";
+const COMPONENT = "sha256:0f630fafa97044837e3531b2093e45921833cdf8b74f50f4d53911be0110eddf";
 const P1 = "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a";
 const SHA = /^sha256:[0-9a-f]{64}$/u;
 const DATA_KEYS =
