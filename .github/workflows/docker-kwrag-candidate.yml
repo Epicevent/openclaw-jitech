@@ -1,19 +1,11 @@
 name: Docker KWRAG Candidate
 
 on:
-  workflow_dispatch:
-    inputs:
-      source_sha:
-        description: Exact merged OpenClaw source commit to build
-        required: true
-        type: string
-      image_tag:
-        description: Candidate tag (kwrag-p1-<sha8>-<yyyymmdd>)
-        required: true
-        type: string
+  repository_dispatch:
+    types: [kwrag-candidate-image]
 
 concurrency:
-  group: docker-kwrag-candidate-${{ inputs.source_sha }}
+  group: docker-kwrag-candidate-${{ github.event.client_payload.source_sha }}
   cancel-in-progress: false
 
 permissions: {}
@@ -30,21 +22,23 @@ jobs:
     outputs:
       source_sha: ${{ steps.validate.outputs.source_sha }}
       image_tag: ${{ steps.validate.outputs.image_tag }}
+      app_version: ${{ steps.validate.outputs.app_version }}
     steps:
       - name: Check out exact source
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ github.event.client_payload.source_sha }}
           fetch-depth: 0
 
       - name: Validate merged source and candidate tag
         id: validate
         shell: bash
         env:
-          SOURCE_SHA: ${{ inputs.source_sha }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
+          SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+          IMAGE_TAG: ${{ github.event.client_payload.image_tag }}
         run: |
           set -euo pipefail
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
           git fetch --quiet origin main
@@ -52,9 +46,12 @@ jobs:
           expected_prefix="kwrag-p1-${SOURCE_SHA:0:8}-"
           [[ "$IMAGE_TAG" =~ ^kwrag-p1-[0-9a-f]{8}-[0-9]{8}$ ]]
           [[ "$IMAGE_TAG" == "$expected_prefix"* ]]
+          app_version="$(jq -er '.version | select(type == "string")' package.json)"
+          [[ "$app_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]
           {
             echo "source_sha=$SOURCE_SHA"
             echo "image_tag=$IMAGE_TAG"
+            echo "app_version=$app_version"
           } >> "$GITHUB_OUTPUT"
 
   build-arm64:
@@ -99,7 +96,7 @@ jobs:
           platforms: linux/arm64
           build-args: |
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
-            OPENCLAW_BUILD_VERSION=${{ needs.validate.outputs.image_tag }}
+            OPENCLAW_BUILD_VERSION=${{ needs.validate.outputs.app_version }}
           tags: ${{ env.IMAGE_REPOSITORY }}:${{ needs.validate.outputs.image_tag }}
           labels: |
             org.opencontainers.image.revision=${{ needs.validate.outputs.source_sha }}
@@ -115,6 +112,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
           IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
+          APP_VERSION: ${{ needs.validate.outputs.app_version }}
           IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
@@ -125,9 +123,10 @@ jobs:
             --arg schema "jitech-openclaw-kwrag-candidate-publication/v1" \
             --arg sourceCommit "$SOURCE_SHA" \
             --arg imageTag "$IMAGE_TAG" \
+            --arg appVersion "$APP_VERSION" \
             --arg image "$image_ref" \
             --arg platform "linux/arm64" \
-            '{schema:$schema,sourceCommit:$sourceCommit,imageTag:$imageTag,image:$image,platform:$platform}' \
+            '{schema:$schema,sourceCommit:$sourceCommit,imageTag:$imageTag,appVersion:$appVersion,image:$image,platform:$platform}' \
             > candidate-image-receipt.json
           cat candidate-image-receipt.json >> "$GITHUB_STEP_SUMMARY"
 
