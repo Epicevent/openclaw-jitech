@@ -187,7 +187,7 @@ function prepare(raw: string, current: Observation, request: Json): KwragP1Verif
   const runId = String(request.run_id);
   const traceId = `${runId}.trace`;
   const operationReceiptDigest = linkage.operation_receipt_digest as p0.Sha256Digest;
-  const resultReceiptDigest = linkage.result_digest as p0.Sha256Digest;
+  const resultReceiptDigest = linkage.result_digest;
   const consumptionReceiptDigest = digest({
     schema: "jitech-openclaw-kwrag-source-consumption/v1",
     status: "not_consumed",
