@@ -6,10 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HEARTBEAT_TRANSCRIPT_PROMPT } from "../../../auto-reply/heartbeat.js";
 import type { OpenClawConfig } from "../../../config/types.js";
 import { buildMemorySystemPromptAddition } from "../../../context-engine/delegate.js";
+import { requireNodeSqlite } from "../../../infra/node-sqlite.js";
 import {
   clearMemoryPluginState,
   registerMemoryPromptSection,
 } from "../../../plugins/memory-state.js";
+import { buildKwragP0TestHandoff } from "../../kwrag-p0-handoff.fixture.js";
+import { verifyOptionalKwragP0Handoff } from "../../kwrag-p0-handoff.js";
+import { resolveKwragP0HandoffReceiptDbPath } from "../../kwrag-p0-handoff.paths.js";
+import {
+  appendKwragP0HandoffReceipt,
+  closeKwragP0HandoffReceiptStore,
+} from "../../kwrag-p0-handoff.store.js";
 import {
   type AttemptContextEngine,
   buildLoopPromptCacheInfo,
@@ -205,8 +213,10 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
   });
 
   afterEach(async () => {
+    closeKwragP0HandoffReceiptStore();
     await cleanupTempPaths(tempPaths);
     clearMemoryPluginState();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -777,6 +787,122 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
         content: "dynamic hook context",
       },
     );
+  });
+
+  it("projects verified hits only into the current model context and commits the response chain", async () => {
+    const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-kwrag-context-"));
+    tempPaths.push(stateDir);
+    vi.stubEnv("OPENCLAW_STATE_DIR", stateDir);
+    const seen: { prompt?: string; messages?: unknown[]; systemPrompt?: string } = {};
+    let durableEventsAtProviderLeaf = 0;
+    const receipt = verifyOptionalKwragP0Handoff({
+      input: buildKwragP0TestHandoff((body) => {
+        body.runId = "run-context-engine-forwarding";
+      }),
+      runId: "run-context-engine-forwarding",
+      sessionId: embeddedSessionId,
+      productSourceCommit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    });
+    if (!receipt) {
+      throw new Error("expected P0 receipt");
+    }
+    const stored = appendKwragP0HandoffReceipt(receipt);
+    const boundEvidence = {
+      handoff: {} as never,
+      promptContext: "verified hit text",
+      contextDigest: `sha256:${"1".repeat(64)}` as const,
+      contextBytes: 17,
+      resultDigest: `sha256:${"2".repeat(64)}` as const,
+      resultCount: 1,
+      p1IdentityDigest: `sha256:${"3".repeat(64)}` as const,
+      p0LedgerSeq: stored.ledgerSeq,
+      p0ReceiptDigest: stored.receipt.receiptDigest,
+    };
+    const trajectoryWorkspaceIndex = tempPaths.length;
+    const activeSession = createDefaultEmbeddedSession({
+      prompt: async (session, prompt) => {
+        const { DatabaseSync } = requireNodeSqlite();
+        const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+          readOnly: true,
+        });
+        try {
+          durableEventsAtProviderLeaf = Number(
+            (
+              db.prepare("SELECT COUNT(*) AS count FROM kwrag_p0_evidence_event").get() as {
+                count: number | bigint;
+              }
+            ).count,
+          );
+        } finally {
+          db.close();
+        }
+        seen.prompt = prompt;
+        seen.messages = [...session.messages];
+        seen.systemPrompt = session.agent.state.systemPrompt;
+        session.messages = [
+          ...session.messages,
+          {
+            role: "assistant",
+            content: "done",
+            provider: "google",
+            model: "gemini-3.6-flash",
+            stopReason: "stop",
+            timestamp: 2,
+          },
+        ];
+      },
+    });
+    await createContextEngineAttemptRunner({
+      contextEngine: createContextEngineBootstrapAndAssemble(),
+      sessionKey,
+      tempPaths,
+      trajectory: true,
+      createSession: () => activeSession,
+      attemptOverrides: {
+        prompt: "visible ask",
+        transcriptPrompt: "visible ask",
+        providerUsageAttempt: 1,
+        kwragP1Evidence: boundEvidence,
+      },
+    });
+
+    expect(seen.prompt).toBe("visible ask");
+    expect(durableEventsAtProviderLeaf).toBe(1);
+    expect(seen.systemPrompt).toContain("verified hit text");
+    expect(activeSession.agent.state.systemPrompt).not.toContain("verified hit text");
+    expect(JSON.stringify(seen.messages)).not.toContain("verified hit text");
+    const trajectory = await fs.readFile(
+      path.join(tempPaths[trajectoryWorkspaceIndex] ?? "", "session.trajectory.jsonl"),
+      "utf8",
+    );
+    expect(trajectory).not.toContain("verified hit text");
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolveKwragP0HandoffReceiptDbPath(process.env), {
+      readOnly: true,
+    });
+    const events = (
+      db
+        .prepare("SELECT receipt_json FROM kwrag_p0_evidence_event ORDER BY attempt, stage")
+        .all() as unknown as Array<{ receipt_json: string }>
+    ).map((row) => JSON.parse(row.receipt_json));
+    db.close();
+    expect(events).toHaveLength(2);
+    expect(JSON.stringify(events)).not.toContain("verified hit text");
+    expect(events.find((event) => event.stage === "response_observed")?.previousReceiptDigest).toBe(
+      events.find((event) => event.stage === "evidence_dispatch_handoff_committed")?.receiptDigest,
+    );
+    const { commitKwragP1Event } = await import("../../kwrag-p1-thin.js");
+    expect(() =>
+      commitKwragP1Event({
+        stage: "evidence_dispatch_handoff_committed",
+        evidence: boundEvidence,
+        runId: "run-context-engine-forwarding",
+        sessionId: "embedded-session",
+        attempt: 1,
+        provider: "openai",
+        model: "different-model",
+      }),
+    ).toThrow(/receipt conflict/u);
   });
 
   it("keeps bootstrap truncation warnings out of WebChat runtime context", async () => {

@@ -220,6 +220,59 @@ describe("CLI attempt execution", () => {
     },
   );
 
+  it("forwards verified evidence and its visible transcript through the actual attempt caller", async () => {
+    const handoff = buildKwragP0TestHandoff();
+    const evidence = {
+      handoff,
+      promptContext: "verified evidence",
+      contextDigest: `sha256:${"1".repeat(64)}`,
+      contextBytes: 17,
+      resultDigest: `sha256:${"2".repeat(64)}`,
+      resultCount: 1,
+      p1IdentityDigest: `sha256:${"3".repeat(64)}`,
+    } as const;
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({ payloads: [], meta: { durationMs: 1 } });
+
+    await runAgentAttempt({
+      providerOverride: "openai",
+      originalProvider: "openai",
+      modelOverride: "kwrag-proof-only",
+      cfg: {},
+      sessionEntry: undefined,
+      spawnedBy: undefined,
+      messageChannel: undefined,
+      skillsSnapshot: undefined,
+      resolvedVerboseLevel: undefined,
+      sessionId: "kwrag-proof-session",
+      sessionKey: "agent:main:manual:kwrag-proof-session",
+      sessionAgentId: "main",
+      sessionFile: path.join(tmpDir, "kwrag-proof.jsonl"),
+      workspaceDir: tmpDir,
+      body: "",
+      isFallbackRetry: false,
+      resolvedThinkLevel: "off",
+      timeoutMs: 1_000,
+      runId: "kwrag-proof-run",
+      opts: {
+        message: "visible user ask",
+        senderIsOwner: false,
+        retrievalEvidence: evidence,
+      },
+      runContext: {} as Parameters<typeof runAgentAttempt>[0]["runContext"],
+      agentDir: tmpDir,
+      onAgentEvent: vi.fn(),
+      authProfileProvider: "openai",
+    });
+
+    expect(runEmbeddedPiAgentMock).toHaveBeenCalledOnce();
+    expect(firstEmbeddedPiAgentArg()).toMatchObject({
+      retrievalHandoff: handoff,
+      retrievalEvidence: evidence,
+      transcriptPrompt: "visible user ask",
+    });
+    expect(runCliAgentMock).not.toHaveBeenCalled();
+  });
+
   async function writeClaudeCliAssistantTranscript(cliSessionId: string) {
     const homeDir = path.join(tmpDir, `home-${cliSessionId}`);
     const projectsDir = path.join(homeDir, ".claude", "projects", "demo-workspace");

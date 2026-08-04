@@ -8,6 +8,7 @@ import type { ContextEngine, ContextEnginePromptCacheInfo } from "../../../conte
 import type { DiagnosticTraceContext } from "../../../infra/diagnostic-trace-context.js";
 import type { PluginHookBeforeAgentStartResult } from "../../../plugins/hook-before-agent-start.types.js";
 import type { AuthProfileStore } from "../../auth-profiles/types.js";
+import type { KwragP1BoundEvidence } from "../../kwrag-p1-thin.js";
 import type {
   MessagingToolSend,
   MessagingToolSourceReplyPayload,
@@ -22,7 +23,7 @@ import type { RunEmbeddedPiAgentParams } from "./params.js";
 import type { PreemptiveCompactionRoute } from "./preemptive-compaction.types.js";
 
 type EmbeddedRunAttemptBase = Omit<
-  RunEmbeddedPiAgentParams,
+  Omit<RunEmbeddedPiAgentParams, "retrievalHandoff" | "retrievalEvidence">,
   "provider" | "model" | "authProfileId" | "authProfileIdSource" | "thinkLevel" | "lane" | "enqueue"
 >;
 
@@ -35,6 +36,7 @@ export type EmbeddedRunContextWindowInfo = {
 export type EmbeddedRunAttemptParams = EmbeddedRunAttemptBase & {
   /** One-based outer embedded retry attempt for provider-call relationship receipts. */
   providerUsageAttempt?: number;
+  kwragP1Evidence?: KwragP1BoundEvidence;
   initialReplayState?: EmbeddedRunReplayState;
   /** Pluggable context engine for ingest/assemble/compact lifecycle. */
   contextEngine?: ContextEngine;

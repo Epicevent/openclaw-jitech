@@ -287,6 +287,7 @@ import {
   resolveTerminalAssistantTexts,
 } from "./attempt-trajectory-status.js";
 export { buildContextEnginePromptCacheInfo } from "./attempt.context-engine-helpers.js";
+import { commitKwragP1Event } from "../../kwrag-p1-thin.js";
 import {
   rotateTranscriptAfterCompaction,
   shouldRotateCompactionTranscript,
@@ -3482,6 +3483,7 @@ export async function runEmbeddedAttempt(
         }
       };
       let skipPromptSubmission = false;
+      let kwragDispatchReceipt: Readonly<Record<string, unknown>> | undefined;
       try {
         const promptStartedAt = Date.now();
         if (emptyExplicitToolAllowlistError) {
@@ -3519,11 +3521,12 @@ export async function runEmbeddedAttempt(
               legacyBeforeAgentStartResult: params.legacyBeforeAgentStartResult,
             });
         {
-          if (hookResult?.prependContext) {
-            effectivePrompt = `${hookResult.prependContext}\n\n${effectivePrompt}`;
-            log.debug(
-              `hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`,
-            );
+          const prependContext = [hookResult?.prependContext, params.kwragP1Evidence?.promptContext]
+            .filter((value): value is string => Boolean(value))
+            .join("\n\n");
+          if (prependContext) {
+            effectivePrompt = `${prependContext}\n\n${effectivePrompt}`;
+            log.debug(`hooks: prepended context to prompt (${prependContext.length} chars)`);
           }
           if (hookResult?.appendContext) {
             effectivePrompt = `${effectivePrompt}\n\n${hookResult.appendContext}`;
@@ -3642,8 +3645,7 @@ export async function runEmbeddedAttempt(
         if (!isRawModelRun) {
           effectivePrompt = annotateInterSessionPromptText(effectivePrompt, params.inputProvenance);
         }
-        const effectiveTranscriptPrompt =
-          params.transcriptPrompt === undefined ? undefined : params.transcriptPrompt;
+        const effectiveTranscriptPrompt = params.transcriptPrompt;
         const transcriptLeafId =
           (sessionManager.getLeafEntry() as { id?: string } | null | undefined)?.id ?? null;
         const heartbeatSummary =
@@ -3693,6 +3695,7 @@ export async function runEmbeddedAttempt(
                 appendSystemContext: buildRuntimeContextSystemContext(runtimeContextForHook),
               })
             : undefined;
+          const kwragBaseSystemPrompt = params.kwragP1Evidence ? systemPromptText : undefined;
           if (systemPromptReport) {
             systemPromptReport.currentTurn = {
               ...(params.currentInboundEventKind ? { kind: params.currentInboundEventKind } : {}),
@@ -3702,7 +3705,13 @@ export async function runEmbeddedAttempt(
                 : (runtimeContextForHook?.length ?? 0),
             };
           }
-          const systemPromptForHook = runtimeSystemPromptForHook ?? systemPromptText;
+          if (params.kwragP1Evidence && runtimeSystemPromptForHook) {
+            applySystemPromptOverrideToSession(activeSession, runtimeSystemPromptForHook);
+            systemPromptText = runtimeSystemPromptForHook;
+          }
+          const systemPromptForHook =
+            (params.kwragP1Evidence ? kwragBaseSystemPrompt : runtimeSystemPromptForHook) ??
+            systemPromptText;
 
           const persistBlockedBeforeAgentRun = async (block: {
             message: string;
@@ -4002,7 +4011,7 @@ export async function runEmbeddedAttempt(
                 ...(contextEnginePromptAuthority === "preassembly_may_overflow"
                   ? { unwindowedMessages: unwindowedContextEngineMessagesForPrecheck }
                   : {}),
-                systemPrompt: systemPromptForHook,
+                systemPrompt: systemPromptText,
                 prompt: promptForModel,
                 contextTokenBudget,
                 reserveTokens,
@@ -4099,20 +4108,37 @@ export async function runEmbeddedAttempt(
               messages: btwSnapshotMessages,
               inFlightPrompt: promptForModel,
             });
-            if (promptSubmission.runtimeOnly) {
-              await promptActiveSession(promptForModel);
-            } else {
-              await queueRuntimeContextForNextTurn({
-                session: activeSession,
-                runtimeContext: runtimeContextForHook,
-              });
-
-              // Only pass images option if there are actually images to pass
-              // This avoids potential issues with models that don't expect the images parameter
-              if (imageResult.images.length > 0) {
-                await promptActiveSession(promptForModel, { images: imageResult.images });
-              } else {
+            try {
+              if (!promptSubmission.runtimeOnly) {
+                await queueRuntimeContextForNextTurn({
+                  session: activeSession,
+                  runtimeContext: params.kwragP1Evidence ? undefined : runtimeContextForHook,
+                });
+              }
+              if (params.kwragP1Evidence) {
+                kwragDispatchReceipt = commitKwragP1Event({
+                  stage: "evidence_dispatch_handoff_committed",
+                  evidence: params.kwragP1Evidence,
+                  runId: params.runId,
+                  sessionId: params.sessionId,
+                  attempt: params.providerUsageAttempt ?? 1,
+                  provider: params.provider,
+                  model: params.modelId,
+                });
+              }
+              if (promptSubmission.runtimeOnly) {
                 await promptActiveSession(promptForModel);
+              } else {
+                if (imageResult.images.length > 0) {
+                  await promptActiveSession(promptForModel, { images: imageResult.images });
+                } else {
+                  await promptActiveSession(promptForModel);
+                }
+              }
+            } finally {
+              if (kwragBaseSystemPrompt !== undefined) {
+                applySystemPromptOverrideToSession(activeSession, kwragBaseSystemPrompt);
+                systemPromptText = kwragBaseSystemPrompt;
               }
             }
           }
@@ -4473,6 +4499,19 @@ export async function runEmbeddedAttempt(
             .catch((err) => {
               log.warn(`agent_end hook failed: ${err}`);
             });
+        }
+        if (kwragDispatchReceipt && currentAttemptAssistant && !promptError) {
+          commitKwragP1Event({
+            stage: "response_observed",
+            evidence: params.kwragP1Evidence!,
+            runId: params.runId,
+            sessionId: params.sessionId,
+            attempt: params.providerUsageAttempt ?? 1,
+            provider: currentAttemptAssistant.provider ?? params.provider,
+            model: currentAttemptAssistant.model ?? params.modelId,
+            previousReceiptDigest: kwragDispatchReceipt.receiptDigest as `sha256:${string}`,
+            finishReason: currentAttemptAssistant.stopReason,
+          });
         }
       } finally {
         clearTimeout(abortTimer);

@@ -7,6 +7,7 @@ import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 import type { ExecElevatedDefaults } from "../bash-tools.exec-types.js";
 import type { KwragP0CallerHandoff } from "../kwrag-p0-handoff.js";
+import type { KwragP1VerifiedEvidence } from "../kwrag-p1-thin.js";
 import type { AgentStreamParams, ClientToolDefinition } from "./shared-types.js";
 
 /** Image content block for Claude API multimodal messages. */
@@ -131,11 +132,12 @@ export type AgentCommandOpts = {
   suppressPromptPersistence?: boolean;
   /** Trusted internal P0 handoff. It carries content-free receipt identities only. */
   retrievalHandoff?: KwragP0CallerHandoff;
+  retrievalEvidence?: KwragP1VerifiedEvidence;
 };
 
 export type AgentCommandIngressOpts = Omit<
-  AgentCommandOpts,
-  "senderIsOwner" | "allowModelOverride" | "resultMetaOverrides" | "retrievalHandoff"
+  Omit<AgentCommandOpts, "retrievalHandoff" | "retrievalEvidence">,
+  "senderIsOwner" | "allowModelOverride" | "resultMetaOverrides"
 > & {
   /** Ingress callsites must always pass explicit owner-tool authorization state. */
   senderIsOwner: boolean;

@@ -16,6 +16,7 @@ import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.ex
 import type { AgentStreamParams, ClientToolDefinition } from "../../command/shared-types.js";
 import type { AgentInternalEvent } from "../../internal-events.js";
 import type { KwragP0CallerHandoff } from "../../kwrag-p0-handoff.js";
+import type { KwragP1VerifiedEvidence } from "../../kwrag-p1-thin.js";
 import type { BlockReplyPayload } from "../../pi-embedded-payloads.js";
 import type {
   BlockReplyChunking,
@@ -170,6 +171,7 @@ export type RunEmbeddedPiAgentParams = {
   providerUsageRun?: ProviderUsageRunContext;
   /** Trusted internal P0 handoff. It carries content-free receipt identities only. */
   retrievalHandoff?: KwragP0CallerHandoff;
+  retrievalEvidence?: KwragP1VerifiedEvidence;
   abortSignal?: AbortSignal;
   onExecutionStarted?: () => void;
   onExecutionPhase?: (info: {

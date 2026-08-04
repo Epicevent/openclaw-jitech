@@ -3,6 +3,7 @@ import type { DatabaseSync, StatementSync } from "node:sqlite";
 import { requireNodeSqlite } from "../infra/node-sqlite.js";
 import {
   assertKwragP0HandoffReceipt,
+  digestKwragP0Canonical,
   serializeKwragP0HandoffReceipt,
   type KwragP0HandoffReceipt,
 } from "./kwrag-p0-handoff.js";
@@ -10,10 +11,12 @@ import {
   resolveKwragP0HandoffReceiptDbPath,
   resolveKwragP0HandoffReceiptDir,
 } from "./kwrag-p0-handoff.paths.js";
+import { stableStringify } from "./stable-stringify.js";
 
 const RECEIPT_DIR_MODE = 0o700;
 const RECEIPT_FILE_MODE = 0o600;
 export const KWRAG_P0_MAX_LEDGER_RECEIPTS = 64;
+const KWRAG_P0_MAX_EVIDENCE_EVENTS = KWRAG_P0_MAX_LEDGER_RECEIPTS * 160 * 2;
 
 type ReceiptRow = {
   ledger_seq: number | bigint;
@@ -45,6 +48,7 @@ export type KwragP0HandoffLedgerSnapshot = Readonly<{
   highWatermark: number | null;
   receiptCount: number;
   latest: StoredKwragP0HandoffReceipt | null;
+  latestEvidenceEvents?: ReadonlyArray<Readonly<Record<string, unknown>>>;
 }>;
 
 let cachedDatabase: ReceiptDatabase | null = null;
@@ -105,6 +109,15 @@ function ensureSchema(db: DatabaseSync): void {
       ON kwrag_p0_handoff_receipt(handoff_digest);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_kwrag_p0_consumption_receipt_digest
       ON kwrag_p0_handoff_receipt(consumption_receipt_digest);
+    CREATE TABLE IF NOT EXISTS kwrag_p0_evidence_event (
+      p0_ledger_seq INTEGER NOT NULL,
+      attempt INTEGER NOT NULL CHECK(attempt BETWEEN 1 AND 160),
+      stage TEXT NOT NULL CHECK(stage IN ('evidence_dispatch_handoff_committed', 'response_observed')),
+      receipt_digest TEXT NOT NULL UNIQUE,
+      receipt_json TEXT NOT NULL,
+      PRIMARY KEY(p0_ledger_seq, attempt, stage),
+      FOREIGN KEY(p0_ledger_seq) REFERENCES kwrag_p0_handoff_receipt(ledger_seq)
+    );
   `);
 }
 
@@ -141,6 +154,7 @@ function openReceiptDatabase(): ReceiptDatabase {
   db.exec("PRAGMA journal_mode = DELETE;");
   db.exec("PRAGMA synchronous = FULL;");
   db.exec("PRAGMA busy_timeout = 5000;");
+  db.exec("PRAGMA foreign_keys = ON;");
   ensureSchema(db);
   ensureReceiptPermissions(pathname);
   cachedDatabase = { db, path: pathname, statements: createStatements(db) };
@@ -342,7 +356,95 @@ export function appendKwragP0HandoffReceipt(
   }
 }
 
-function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapshot {
+export function appendKwragP0EvidenceEvent(event: {
+  p0LedgerSeq: number;
+  p0ReceiptDigest: string;
+  attempt: number;
+  stage: "evidence_dispatch_handoff_committed" | "response_observed";
+  receiptDigest: string;
+  receiptJson: string;
+}): void {
+  const parsed = JSON.parse(event.receiptJson) as Record<string, unknown>;
+  const { receiptDigest, ...body } = parsed;
+  if (
+    stableStringify(parsed) !== event.receiptJson ||
+    receiptDigest !== event.receiptDigest ||
+    digestKwragP0Canonical(body) !== receiptDigest ||
+    parsed.p0LedgerSeq !== event.p0LedgerSeq ||
+    parsed.p0ReceiptDigest !== event.p0ReceiptDigest ||
+    parsed.attempt !== event.attempt ||
+    parsed.stage !== event.stage
+  ) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError("invalid linked evidence event");
+  }
+  const store = openReceiptDatabase();
+  store.db.exec("BEGIN IMMEDIATE");
+  try {
+    const parent = readCanonicalReceiptRows(store.db).find(
+      (row) => row.ledgerSeq === event.p0LedgerSeq,
+    );
+    if (!parent || parent.receipt.receiptDigest !== event.p0ReceiptDigest) {
+      throw new KwragP0HandoffReceiptLedgerCorruptError("evidence event has no P0 receipt");
+    }
+    const select = store.db.prepare(`
+      SELECT receipt_digest, receipt_json FROM kwrag_p0_evidence_event
+      WHERE p0_ledger_seq = ? AND attempt = ? AND stage = ?
+    `);
+    const existing = select.get(event.p0LedgerSeq, event.attempt, event.stage) as
+      | { receipt_digest: string; receipt_json: string }
+      | undefined;
+    if (existing) {
+      if (
+        existing.receipt_digest !== event.receiptDigest ||
+        existing.receipt_json !== event.receiptJson
+      ) {
+        throw new KwragP0HandoffReceiptConflictError(event.receiptDigest);
+      }
+    } else {
+      store.db
+        .prepare(`
+          INSERT INTO kwrag_p0_evidence_event
+            (p0_ledger_seq, attempt, stage, receipt_digest, receipt_json)
+          VALUES (?, ?, ?, ?, ?)
+        `)
+        .run(event.p0LedgerSeq, event.attempt, event.stage, event.receiptDigest, event.receiptJson);
+    }
+    store.db.exec("COMMIT");
+    ensureReceiptPermissions(store.path);
+  } catch (error) {
+    store.db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function readEvidenceEvents(db: DatabaseSync, receipts: StoredKwragP0HandoffReceipt[]) {
+  const rows = db
+    .prepare(`SELECT p0_ledger_seq, attempt, stage, receipt_digest, receipt_json
+      FROM kwrag_p0_evidence_event ORDER BY p0_ledger_seq, attempt, stage LIMIT ?`)
+    .all(KWRAG_P0_MAX_EVIDENCE_EVENTS + 1) as Array<Record<string, unknown>>;
+  if (rows.length > KWRAG_P0_MAX_EVIDENCE_EVENTS) {
+    throw new KwragP0HandoffReceiptLedgerCorruptError("too many linked evidence events");
+  }
+  const parents = new Map(receipts.map((value) => [value.ledgerSeq, value.receipt.receiptDigest]));
+  return rows.map((row) => {
+    const parsed = JSON.parse(String(row.receipt_json)) as Record<string, unknown>;
+    const { receiptDigest, ...body } = parsed;
+    if (
+      stableStringify(parsed) !== row.receipt_json ||
+      receiptDigest !== row.receipt_digest ||
+      digestKwragP0Canonical(body) !== receiptDigest ||
+      parsed.p0LedgerSeq !== row.p0_ledger_seq ||
+      parsed.attempt !== row.attempt ||
+      parsed.stage !== row.stage ||
+      parsed.p0ReceiptDigest !== parents.get(Number(row.p0_ledger_seq))
+    ) {
+      throw new KwragP0HandoffReceiptLedgerCorruptError("invalid linked evidence event");
+    }
+    return Object.freeze(parsed);
+  });
+}
+
+function readSnapshotFromDatabase(db: DatabaseSync, runId?: string): KwragP0HandoffLedgerSnapshot {
   db.exec("BEGIN");
   try {
     const receipts = readCanonicalReceiptRows(db);
@@ -367,12 +469,17 @@ function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapsho
         "latest receipt does not match the ledger high watermark",
       );
     }
+    const hasEventTable = db.prepare("PRAGMA table_info(kwrag_p0_evidence_event)").all().length;
+    const events = hasEventTable ? readEvidenceEvents(db, receipts) : [];
+    const selected = runId ? (receipts.find((row) => row.receipt.runId === runId) ?? null) : latest;
+    const latestEvents = events.filter((event) => event.p0LedgerSeq === selected?.ledgerSeq);
     db.exec("COMMIT");
     return Object.freeze({
       ledgerAvailable: true,
       highWatermark: highWatermarkRaw,
       receiptCount: receipts.length,
-      latest,
+      latest: selected,
+      ...(latestEvents.length > 0 ? { latestEvidenceEvents: latestEvents } : {}),
     });
   } catch (error) {
     db.exec("ROLLBACK");
@@ -382,6 +489,7 @@ function readSnapshotFromDatabase(db: DatabaseSync): KwragP0HandoffLedgerSnapsho
 
 export function readKwragP0HandoffLedgerSnapshot(
   env: NodeJS.ProcessEnv = process.env,
+  runId?: string,
 ): KwragP0HandoffLedgerSnapshot {
   const pathname = resolveKwragP0HandoffReceiptDbPath(env);
   if (!existsSync(pathname)) {
@@ -394,13 +502,13 @@ export function readKwragP0HandoffLedgerSnapshot(
   }
   const cached = cachedDatabase?.path === pathname ? cachedDatabase.db : null;
   if (cached) {
-    return readSnapshotFromDatabase(cached);
+    return readSnapshotFromDatabase(cached, runId);
   }
   const { DatabaseSync } = requireNodeSqlite();
   const db = new DatabaseSync(pathname, { readOnly: true });
   try {
     db.exec("PRAGMA busy_timeout = 5000;");
-    return readSnapshotFromDatabase(db);
+    return readSnapshotFromDatabase(db, runId);
   } finally {
     db.close();
   }
