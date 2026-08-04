@@ -33,7 +33,6 @@ const DATABASE = `sha256:${"2".repeat(64)}`;
 const MANIFEST = `sha256:${"3".repeat(64)}`;
 const SOURCE = `sha256:${"4".repeat(64)}`;
 const AUTHORITY = `sha256:${"5".repeat(64)}`;
-const RUNTIME_BINDING = `sha256:${"6".repeat(64)}`;
 const RUNTIME_PROFILE = `sha256:${"7".repeat(64)}`;
 const RESOURCE_PROFILE = "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed";
 const OPERATION = `sha256:${"8".repeat(64)}`;
@@ -43,6 +42,24 @@ const PIPELINE = "sha256:53e14752cc9d147dfb4129e00234d1c7fb9f6558df00da7c03189db
 const FACTORY = "sha256:0dbe54f5a8bc56a6c821e181a0dc6cfda85d25be8cea6a01235cb5e347782f0e";
 const DECISION = "sha256:81e6f4d83e6cde6a9c83a9aa435c65354a1122dded735bf607462c3497e9b25d";
 const QUERY = "actual user ask";
+
+function fixedBinding(enabled: boolean) {
+  return {
+    schema_version: "kwrag-fixed-producer-binding-v1",
+    enabled,
+    mount_root: "/home/node/nas_docs",
+    index_manifest_relative: "kw/package/.kwrag/releases/release/index-manifest.json",
+    index_manifest_digest: MANIFEST,
+    operation_receipt_path: "/home/node/.openclaw/kwrag/operation-receipts.jsonl",
+    producer_receipt_path: "/home/node/.openclaw/kwrag/producer-receipts.jsonl",
+    max_concurrent: 1,
+    selected_engine: {},
+    corpora: { room: {} },
+  };
+}
+const RUNTIME_BINDING = `sha256:${createHash("sha256")
+  .update(stableStringify(fixedBinding(true)))
+  .digest("hex")}`;
 
 function productBinding(enabled: boolean) {
   return {
@@ -80,27 +97,50 @@ function productBinding(enabled: boolean) {
 
 function installBindings(enabled: boolean, mountMode: "ro" | "rw" = "ro") {
   const product = stableStringify(productBinding(enabled));
+  const fixed = stableStringify(fixedBinding(enabled));
+  const proof = stableStringify({
+    schema: "kwrag-two-canary-private-proof-request/v1",
+    corpus: "room",
+    query: QUERY,
+  });
   readFileSyncMock.mockImplementation((path: string | number) => {
     if (path === 42) {
       return product;
+    }
+    if (path === 43) {
+      return fixed;
+    }
+    if (path === 44) {
+      return proof;
     }
     if (path === "/proc/self/mountinfo") {
       return `11 1 0:1 / /home/node/nas_docs ${mountMode},relatime - ext4 /dev/test rw\n`;
     }
     throw new Error(`unexpected read ${path}`);
   });
-  openRootFileSyncMock.mockReturnValue({
-    ok: true,
-    fd: 42,
-    path: "/run/kwrag/attachment-binding-v2.json",
-    rootRealPath: "/run/kwrag",
-    stat: {
-      isFile: () => true,
-      nlink: 1,
-      mode: 0o100444,
-      uid: 0,
-      size: Buffer.byteLength(product),
-    },
+  openRootFileSyncMock.mockImplementation(({ absolutePath }) => {
+    const entries: Record<string, [number, string]> = {
+      "/run/kwrag/attachment-binding-v2.json": [42, product],
+      "/run/kwrag/fixed-producer-binding.json": [43, fixed],
+      "/run/kwrag/proof-request.json": [44, proof],
+    };
+    const entry = entries[String(absolutePath)];
+    if (!entry) {
+      throw new Error(`unexpected open ${absolutePath}`);
+    }
+    return {
+      ok: true,
+      fd: entry[0],
+      path: absolutePath,
+      rootRealPath: "/run/kwrag",
+      stat: {
+        isFile: () => true,
+        nlink: 1,
+        mode: 0o100444,
+        uid: 0,
+        size: Buffer.byteLength(entry[1]),
+      },
+    };
   });
 }
 
@@ -199,6 +239,29 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     });
   });
 
+  it("rejects fixed producer binding drift before product or provider dispatch", () => {
+    installBindings(true);
+    const drifted = stableStringify({
+      ...fixedBinding(true),
+      index_manifest_digest: `sha256:${"f".repeat(64)}`,
+    });
+    readFileSyncMock.mockImplementation((path: string | number) => {
+      if (path === 42) {
+        return stableStringify(productBinding(true));
+      }
+      if (path === 43) {
+        return drifted;
+      }
+      if (path === "/proc/self/mountinfo") {
+        return "11 1 0:1 / /home/node/nas_docs ro,relatime - ext4 /dev/test rw\n";
+      }
+      throw new Error(`unexpected read ${path}`);
+    });
+    expect(() => readKwragP1AttachmentStatus()).toThrow(/fixed producer binding/u);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(agentCommandMock).not.toHaveBeenCalled();
+  });
+
   it.each(["rw", "noncanonical"])("fails closed for %s binding truth", (variant) => {
     installBindings(false, variant === "rw" ? "rw" : "ro");
     if (variant === "noncanonical") {
@@ -244,7 +307,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
       };
     });
 
-    await expect(runKwragP1UserTurnProof(QUERY)).resolves.toMatchObject({
+    await expect(runKwragP1UserTurnProof()).resolves.toMatchObject({
       enabled: true,
       retrievalCount: 1,
       projectionCount: 1,
@@ -257,7 +320,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     expect(JSON.parse(execFileSyncMock.mock.calls[0]?.[2].input)).toMatchObject({
       schema_version: "kwrag-slot-search-request-v1",
       query: QUERY,
-      corpus: null,
+      corpus: "room",
     });
     expect(agentCommandMock).toHaveBeenCalledOnce();
     expect(agentCommandMock.mock.calls[0]?.[0]).toMatchObject({
@@ -275,7 +338,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
         (output.consumable as Record<string, unknown>).run_id = "foreign-run";
       }),
     );
-    await expect(runKwragP1UserTurnProof(QUERY)).rejects.toThrow(/producer output/u);
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
     expect(agentCommandMock).not.toHaveBeenCalled();
     expect(ledgerMock).not.toHaveBeenCalled();
   });
@@ -291,7 +354,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
         linkage.result_digest = `sha256:${createHash("sha256").update("[]").digest("hex")}`;
       }),
     );
-    await expect(runKwragP1UserTurnProof(QUERY)).rejects.toThrow(/producer output/u);
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
     expect(agentCommandMock).not.toHaveBeenCalled();
     expect(ledgerMock).not.toHaveBeenCalled();
   });
@@ -301,15 +364,13 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     execFileSyncMock.mockImplementation(() => {
       throw new Error("SECRET_STDERR_VALUE");
     });
-    await expect(runKwragP1UserTurnProof(QUERY)).rejects.toThrow(
-      /fixed producer execution failed/u,
-    );
-    await expect(runKwragP1UserTurnProof(QUERY)).rejects.not.toThrow(/SECRET_STDERR_VALUE/u);
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/fixed producer execution failed/u);
+    await expect(runKwragP1UserTurnProof()).rejects.not.toThrow(/SECRET_STDERR_VALUE/u);
   });
 
   it("keeps retrieval, projection, and dispatch at zero after disabled restart", async () => {
     installBindings(false);
-    await expect(runKwragP1UserTurnProof(QUERY)).resolves.toMatchObject({
+    await expect(runKwragP1UserTurnProof()).resolves.toMatchObject({
       enabled: false,
       retrievalCount: 0,
       projectionCount: 0,
@@ -318,7 +379,7 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     });
     vi.resetModules();
     const restarted = await import("./kwrag-p1-thin.js");
-    await expect(restarted.runKwragP1UserTurnProof(QUERY)).resolves.toMatchObject({
+    await expect(restarted.runKwragP1UserTurnProof()).resolves.toMatchObject({
       enabled: false,
       retrievalCount: 0,
       projectionCount: 0,

@@ -36,22 +36,14 @@ describe("kwrag-p1 attachment CLI", () => {
     expect(write).toHaveBeenCalledWith(`${JSON.stringify(status)}\n`);
   });
 
-  it("runs the actual user-turn proof only with a caller-explicit query", async () => {
+  it("runs the actual user-turn proof from the fixed private request", async () => {
     const proof = { schema: "jitech-openclaw-kwrag-user-turn-proof/v1" };
     proofMock.mockResolvedValueOnce(proof);
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
-    await program().parseAsync([
-      "node",
-      "openclaw",
-      "kwrag-p0",
-      "p1-user-turn-proof",
-      "--query",
-      "fixture query",
-      "--json",
-    ]);
+    await program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof", "--json"]);
 
-    expect(proofMock).toHaveBeenCalledWith("fixture query");
+    expect(proofMock).toHaveBeenCalledWith();
     expect(write).toHaveBeenCalledWith(`${JSON.stringify(proof)}\n`);
   });
 
@@ -66,10 +58,10 @@ describe("kwrag-p1 attachment CLI", () => {
     },
   );
 
-  it("rejects the user-turn proof without a caller query", async () => {
+  it("rejects the user-turn proof without --json", async () => {
     await expect(
-      program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof", "--json"]),
-    ).rejects.toThrow(/required option '--query <text>'/u);
+      program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof"]),
+    ).rejects.toThrow(/requires --json/u);
     expect(proofMock).not.toHaveBeenCalled();
   });
 });

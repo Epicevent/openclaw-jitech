@@ -9,6 +9,8 @@ import { stableStringify } from "./stable-stringify.js";
 
 const PRODUCER = "/opt/jitech/kwrag/bin/kwrag-fixed-producer";
 const BINDING = "/run/kwrag/attachment-binding-v2.json";
+const FIXED_BINDING = "/run/kwrag/fixed-producer-binding.json";
+const PROOF_REQUEST = "/run/kwrag/proof-request.json";
 const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a";
 const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
 const P1 = "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a";
@@ -17,6 +19,9 @@ const RESOURCE = "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c1034
 const SHA = /^sha256:[0-9a-f]{64}$/u;
 const BINDING_KEYS =
   "attachmentData,componentDigest,containerNasRoot,contractDigest,enabled,family,hostPortCount,instanceId,mountReadOnly,p1Identity,proofMode,resourceProfileDigest,runtimeProfileDigest,schema,transport";
+const FIXED_BINDING_KEYS =
+  "corpora,enabled,index_manifest_digest,index_manifest_relative,max_concurrent,mount_root,operation_receipt_path,producer_receipt_path,schema_version,selected_engine";
+const PROOF_REQUEST_KEYS = "corpus,query,schema";
 const ID_KEYS = "backendId,pipelineFactoryDigest,pipelineFingerprint,researchDecisionDigest,status";
 const DATA_KEYS =
   "databaseSha256,indexManifestDigest,readOnlyAuthorityReceiptDigest,slotRuntimeBindingDigest,sourceSnapshotDigest";
@@ -57,7 +62,7 @@ function canonical(raw: string, label: string): unknown {
     return fail(`${label} is invalid`);
   }
 }
-function canonicalFile(path: string): Json {
+function canonicalFile(path: string, keys: string, label: string): Json {
   const opened = openRootFileSync({
     absolutePath: path,
     rootPath: "/run/kwrag",
@@ -78,7 +83,7 @@ function canonicalFile(path: string): Json {
     ) {
       return fail("binding file trust is invalid");
     }
-    return object(canonical(raw, "binding JSON"), BINDING_KEYS, "binding");
+    return object(canonical(raw, `${label} JSON`), keys, label);
   } finally {
     closeSync(opened.fd);
   }
@@ -92,7 +97,7 @@ export function assertKwragP1EvidenceInput(
   }
 }
 function observe() {
-  const value = canonicalFile(BINDING);
+  const value = canonicalFile(BINDING, BINDING_KEYS, "binding");
   const identity = object(value.p1Identity, ID_KEYS, "P1 identity");
   const enabled = value.enabled;
   const data = enabled ? object(value.attachmentData, DATA_KEYS, "attachment data") : null;
@@ -119,6 +124,14 @@ function observe() {
       .some((line) => /^\S+ \S+ \S+ \S+ \/home\/node\/nas_docs (?:\S+,)?ro(?:,\S+)? /u.test(line))
   ) {
     return fail("current binding observation is invalid or stale");
+  }
+  const producerBinding = canonicalFile(FIXED_BINDING, FIXED_BINDING_KEYS, "fixed binding");
+  if (
+    producerBinding.enabled !== enabled ||
+    producerBinding.schema_version !== "kwrag-fixed-producer-binding-v1" ||
+    (enabled && digest(producerBinding) !== data?.slotRuntimeBindingDigest)
+  ) {
+    return fail("fixed producer binding does not match attachment identity");
   }
   return {
     enabled,
@@ -327,12 +340,21 @@ function userTurnProof(enabled: boolean, receipts: readonly unknown[] = []) {
     receipts,
   });
 }
-export async function runKwragP1UserTurnProof(query: string) {
+export async function runKwragP1UserTurnProof() {
   const current = observe();
   if (!current.enabled) {
     return userTurnProof(false);
   }
-  if (typeof query !== "string" || !query.trim() || query.length > 4_000) {
+  const proofRequest = canonicalFile(PROOF_REQUEST, PROOF_REQUEST_KEYS, "proof request");
+  const query = proofRequest.query;
+  if (
+    proofRequest.schema !== "kwrag-two-canary-private-proof-request/v1" ||
+    typeof proofRequest.corpus !== "string" ||
+    !proofRequest.corpus ||
+    typeof query !== "string" ||
+    !query.trim() ||
+    query.length > 4_000
+  ) {
     return fail("caller query is invalid");
   }
   const runId = `kwrag-p1-${randomUUID()}`;
@@ -344,7 +366,7 @@ export async function runKwragP1UserTurnProof(query: string) {
     run_id: runId,
     attempt: 1,
     max_results: 5,
-    corpus: null,
+    corpus: proofRequest.corpus,
   };
   const evidence = prepare(runProducer(request), current, request);
   const sessionId = `kwrag-p1-${randomUUID()}`;
