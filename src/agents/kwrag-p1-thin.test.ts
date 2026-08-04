@@ -32,7 +32,6 @@ const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c
 const DATABASE = `sha256:${"2".repeat(64)}`;
 const MANIFEST = `sha256:${"3".repeat(64)}`;
 const SOURCE = `sha256:${"4".repeat(64)}`;
-const AUTHORITY = `sha256:${"5".repeat(64)}`;
 const RUNTIME_PROFILE = `sha256:${"7".repeat(64)}`;
 const RESOURCE_PROFILE = "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed";
 const OPERATION = `sha256:${"8".repeat(64)}`;
@@ -42,6 +41,23 @@ const PIPELINE = "sha256:53e14752cc9d147dfb4129e00234d1c7fb9f6558df00da7c03189db
 const FACTORY = "sha256:0dbe54f5a8bc56a6c821e181a0dc6cfda85d25be8cea6a01235cb5e347782f0e";
 const DECISION = "sha256:81e6f4d83e6cde6a9c83a9aa435c65354a1122dded735bf607462c3497e9b25d";
 const QUERY = "actual user ask";
+
+function authorityReceipt() {
+  return {
+    schema: "kwrag-read-only-authority-receipt/v1",
+    status: "observed",
+    slot: "oc14",
+    family: "openclaw",
+    containerNasRoot: "/home/node/nas_docs",
+    releaseRelativeRoot: "kw/package/.kwrag/releases/release",
+    indexManifestDigest: MANIFEST,
+    mountReadOnly: true,
+    allBoundFilesReadOnly: true,
+  };
+}
+const AUTHORITY = `sha256:${createHash("sha256")
+  .update(stableStringify(authorityReceipt()))
+  .digest("hex")}`;
 
 function fixedBinding(enabled: boolean) {
   return {
@@ -54,7 +70,15 @@ function fixedBinding(enabled: boolean) {
     producer_receipt_path: "/home/node/.openclaw/kwrag/producer-receipts.jsonl",
     max_concurrent: 1,
     selected_engine: {},
-    corpora: { room: {} },
+    corpora: {
+      room: {
+        database_relative: "kw/package/.kwrag/releases/release/room.sqlite3",
+        database_sha256: DATABASE,
+        source_snapshot_relative: "kw/package/.kwrag/releases/release/room-source.json",
+        source_snapshot_digest: SOURCE,
+        authority_receipt_digest: AUTHORITY,
+      },
+    },
   };
 }
 const RUNTIME_BINDING = `sha256:${createHash("sha256")
@@ -95,7 +119,11 @@ function productBinding(enabled: boolean) {
   };
 }
 
-function installBindings(enabled: boolean, mountMode: "ro" | "rw" = "ro") {
+function installBindings(
+  enabled: boolean,
+  mountMode: "ro" | "rw" = "ro",
+  authorityValue = authorityReceipt(),
+) {
   const product = stableStringify(productBinding(enabled));
   const fixed = stableStringify(fixedBinding(enabled));
   const proof = stableStringify({
@@ -103,6 +131,7 @@ function installBindings(enabled: boolean, mountMode: "ro" | "rw" = "ro") {
     corpus: "room",
     query: QUERY,
   });
+  const authority = stableStringify(authorityValue);
   readFileSyncMock.mockImplementation((path: string | number) => {
     if (path === 42) {
       return product;
@@ -112,6 +141,9 @@ function installBindings(enabled: boolean, mountMode: "ro" | "rw" = "ro") {
     }
     if (path === 44) {
       return proof;
+    }
+    if (path === 45) {
+      return authority;
     }
     if (path === "/proc/self/mountinfo") {
       return `11 1 0:1 / /home/node/nas_docs ${mountMode},relatime - ext4 /dev/test rw\n`;
@@ -123,6 +155,7 @@ function installBindings(enabled: boolean, mountMode: "ro" | "rw" = "ro") {
       "/run/kwrag/attachment-binding-v2.json": [42, product],
       "/run/kwrag/fixed-producer-binding.json": [43, fixed],
       "/run/kwrag/proof-request.json": [44, proof],
+      "/run/kwrag/read-only-authority.json": [45, authority],
     };
     const entry = entries[String(absolutePath)];
     if (!entry) {
@@ -258,6 +291,13 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
       throw new Error(`unexpected read ${path}`);
     });
     expect(() => readKwragP1AttachmentStatus()).toThrow(/fixed producer binding/u);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(agentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects live authority drift before product or provider dispatch", () => {
+    installBindings(true, "ro", { ...authorityReceipt(), mountReadOnly: false });
+    expect(() => readKwragP1AttachmentStatus()).toThrow(/read-only authority/u);
     expect(execFileSyncMock).not.toHaveBeenCalled();
     expect(agentCommandMock).not.toHaveBeenCalled();
   });

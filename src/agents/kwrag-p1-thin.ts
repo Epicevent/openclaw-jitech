@@ -10,6 +10,7 @@ import { stableStringify } from "./stable-stringify.js";
 const PRODUCER = "/opt/jitech/kwrag/bin/kwrag-fixed-producer";
 const BINDING = "/run/kwrag/attachment-binding-v2.json";
 const FIXED_BINDING = "/run/kwrag/fixed-producer-binding.json";
+const AUTHORITY = "/run/kwrag/read-only-authority.json";
 const PROOF_REQUEST = "/run/kwrag/proof-request.json";
 const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a";
 const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
@@ -21,6 +22,10 @@ const BINDING_KEYS =
   "attachmentData,componentDigest,containerNasRoot,contractDigest,enabled,family,hostPortCount,instanceId,mountReadOnly,p1Identity,proofMode,resourceProfileDigest,runtimeProfileDigest,schema,transport";
 const FIXED_BINDING_KEYS =
   "corpora,enabled,index_manifest_digest,index_manifest_relative,max_concurrent,mount_root,operation_receipt_path,producer_receipt_path,schema_version,selected_engine";
+const AUTHORITY_KEYS =
+  "allBoundFilesReadOnly,containerNasRoot,family,indexManifestDigest,mountReadOnly,releaseRelativeRoot,schema,slot,status";
+const CORPUS_KEYS =
+  "authority_receipt_digest,database_relative,database_sha256,source_snapshot_digest,source_snapshot_relative";
 const PROOF_REQUEST_KEYS = "corpus,query,schema";
 const ID_KEYS = "backendId,pipelineFactoryDigest,pipelineFingerprint,researchDecisionDigest,status";
 const DATA_KEYS =
@@ -47,12 +52,14 @@ function digest(value: string | Json): p0.Sha256Digest {
   const bytes = typeof value === "string" ? value : stableStringify(value);
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
-function object(value: unknown, keys: string, label: string): Json {
+function object(value: unknown, keys: string | undefined, label: string): Json {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return fail(`${label} is invalid`);
   }
   const result = value as Json;
-  return Object.keys(result).toSorted().join(",") === keys ? result : fail(`${label} is invalid`);
+  return !keys || Object.keys(result).toSorted().join(",") === keys
+    ? result
+    : fail(`${label} is invalid`);
 }
 function canonical(raw: string, label: string): unknown {
   try {
@@ -132,6 +139,32 @@ function observe() {
     (enabled && digest(producerBinding) !== data?.slotRuntimeBindingDigest)
   ) {
     return fail("fixed producer binding does not match attachment identity");
+  }
+  const corpora = object(producerBinding.corpora, undefined, "corpora");
+  const authority = canonicalFile(AUTHORITY, AUTHORITY_KEYS, "read-only authority");
+  const authorityDigest = digest(authority);
+  const corpusAuthorities = new Set(
+    Object.values(corpora).map(
+      (item) => object(item, CORPUS_KEYS, "corpus binding").authority_receipt_digest,
+    ),
+  );
+  if (
+    !Object.keys(corpora).length ||
+    Object.keys(corpora).length > 512 ||
+    authority.schema !== "kwrag-read-only-authority-receipt/v1" ||
+    authority.status !== "observed" ||
+    authority.family !== "openclaw" ||
+    authority.containerNasRoot !== "/home/node/nas_docs" ||
+    authority.mountReadOnly !== true ||
+    authority.allBoundFilesReadOnly !== true ||
+    authority.indexManifestDigest !== producerBinding.index_manifest_digest ||
+    `${authority.releaseRelativeRoot}/index-manifest.json` !==
+      producerBinding.index_manifest_relative ||
+    corpusAuthorities.size !== 1 ||
+    !corpusAuthorities.has(authorityDigest) ||
+    (enabled && data?.readOnlyAuthorityReceiptDigest !== authorityDigest)
+  ) {
+    return fail("read-only authority does not match fixed producer binding");
   }
   return {
     enabled,
