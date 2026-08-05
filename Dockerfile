@@ -53,9 +53,7 @@ ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 # Image builds stamp their tag into dist/build-info.json (see scripts/write-build-info.ts)
 # so the running slot reports the shipped version instead of the fork's package.json.
 ARG OPENCLAW_BUILD_VERSION=""
-ARG GIT_COMMIT=""
 ENV OPENCLAW_BUILD_VERSION=${OPENCLAW_BUILD_VERSION}
-ENV GIT_COMMIT=${GIT_COMMIT}
 
 # Copy pinned Bun binary from the official image instead of fetching via curl.
 COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
@@ -122,7 +120,8 @@ RUN pnpm_config_verify_deps_before_run=false pnpm canvas:a2ui:bundle || \
 # resolver prefers package.json over dist/build-info.json (src/version.ts), so the
 # tag must land here for the running slot to report the shipped version.
 RUN if [ -n "$OPENCLAW_BUILD_VERSION" ]; then npm pkg set version="$OPENCLAW_BUILD_VERSION"; fi
-RUN NODE_OPTIONS=--max-old-space-size=8192 pnpm_config_verify_deps_before_run=false pnpm build:docker
+ARG GIT_COMMIT=""
+RUN GIT_COMMIT="$GIT_COMMIT" NODE_OPTIONS=--max-old-space-size=8192 pnpm_config_verify_deps_before_run=false pnpm build:docker
 # Force pnpm for UI build (Bun may fail on ARM/Synology architectures)
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm_config_verify_deps_before_run=false pnpm ui:build

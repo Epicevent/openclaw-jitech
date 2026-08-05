@@ -285,9 +285,18 @@ raise SystemExit(main())
     const workflow = await readFile(dockerReleaseWorkflowPath, "utf8");
 
     expect(dockerfile).toContain('ARG GIT_COMMIT=""');
-    expect(dockerfile).toContain("ENV GIT_COMMIT=${GIT_COMMIT}");
+    expect(dockerfile).toContain(
+      'RUN GIT_COMMIT="$GIT_COMMIT" NODE_OPTIONS=--max-old-space-size=8192',
+    );
+    expect(dockerfile).not.toContain("ENV GIT_COMMIT=");
+    expect(dockerfile.indexOf('ARG GIT_COMMIT=""')).toBeGreaterThan(
+      dockerfile.indexOf("pnpm install --frozen-lockfile"),
+    );
     expect(trustedBuild).toContain('--build-arg "GIT_COMMIT=${sha}"');
-    expect(workflow.match(/GIT_COMMIT=\$\{\{ github\.sha \}\}/g)).toHaveLength(2);
+    expect(workflow.match(/echo "source_sha=\$\{source_sha\}"/g)).toHaveLength(2);
+    expect(
+      workflow.match(/GIT_COMMIT=\$\{\{ steps\.labels\.outputs\.source_sha \}\}/g),
+    ).toHaveLength(2);
   });
 
   it("does not override bundled plugin discovery in runtime images", async () => {
