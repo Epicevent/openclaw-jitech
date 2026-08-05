@@ -224,6 +224,9 @@ describe("CLI attempt execution", () => {
     const handoff = buildKwragP0TestHandoff();
     const evidence = {
       handoff,
+      corpus: "room",
+      expectedSourceGeneration: `sha256:${"3".repeat(64)}`,
+      expectedIndexManifest: `sha256:${"4".repeat(64)}`,
       promptContext: "verified evidence",
       contextDigest: `sha256:${"1".repeat(64)}`,
       resultDigest: `sha256:${"2".repeat(64)}`,

@@ -54,6 +54,7 @@ import { selectAgentHarness } from "../harness/selection.js";
 import { KwragP0HandoffContractError, verifyOptionalKwragP0Handoff } from "../kwrag-p0-handoff.js";
 import { appendKwragP0HandoffReceipt } from "../kwrag-p0-handoff.store.js";
 import {
+  assertKwragP1EvidenceCurrent,
   assertKwragP1EvidenceInput,
   bindKwragP1Evidence,
   type KwragP1BoundEvidence,
@@ -417,6 +418,9 @@ export async function runEmbeddedPiAgent(
     throw new KwragP0HandoffContractError(
       "verified retrieval evidence requires a visible transcript prompt",
     );
+  }
+  if (params.retrievalEvidence !== undefined) {
+    assertKwragP1EvidenceCurrent(params.retrievalEvidence);
   }
   // Resolve sessionKey early so all downstream consumers (hooks, LCM, compaction)
   // receive a non-null key even when callers omit it. See #60552.

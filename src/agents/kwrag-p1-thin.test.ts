@@ -25,7 +25,12 @@ vi.mock("./kwrag-p0-handoff.store.js", () => ({
   readKwragP0HandoffLedgerSnapshot: ledgerMock,
 }));
 
-import { readKwragP1AttachmentStatus, runKwragP1UserTurnProof } from "./kwrag-p1-thin.js";
+import {
+  assertKwragP1EvidenceCurrent,
+  readKwragP1AttachmentStatus,
+  runKwragP1UserTurnProof,
+  type KwragP1VerifiedEvidence,
+} from "./kwrag-p1-thin.js";
 
 const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a";
 const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
@@ -41,6 +46,10 @@ const PIPELINE = "sha256:53e14752cc9d147dfb4129e00234d1c7fb9f6558df00da7c03189db
 const FACTORY = "sha256:0dbe54f5a8bc56a6c821e181a0dc6cfda85d25be8cea6a01235cb5e347782f0e";
 const DECISION = "sha256:81e6f4d83e6cde6a9c83a9aa435c65354a1122dded735bf607462c3497e9b25d";
 const QUERY = "actual user ask";
+
+function digestJson(value: object) {
+  return `sha256:${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
+}
 
 function authorityReceipt() {
   return {
@@ -63,6 +72,7 @@ function fixedBinding(enabled: boolean) {
   return {
     schema_version: "kwrag-fixed-producer-binding-v1",
     enabled,
+    expected_source_generation: SOURCE,
     mount_root: "/home/node/nas_docs",
     index_manifest_relative: "kw/package/.kwrag/releases/release/index-manifest.json",
     index_manifest_digest: MANIFEST,
@@ -85,11 +95,12 @@ const RUNTIME_BINDING = `sha256:${createHash("sha256")
   .update(stableStringify(fixedBinding(true)))
   .digest("hex")}`;
 
-function productBinding(enabled: boolean) {
+function productBinding(enabled: boolean, runtimeBindingDigest = RUNTIME_BINDING) {
   return {
     schema: "agent-runtime-retrieval-binding/v2",
     proofMode: "attachment_only",
     enabled,
+    expected_source_generation: SOURCE,
     family: "openclaw",
     instanceId: "oc14",
     runtimeProfileDigest: RUNTIME_PROFILE,
@@ -113,7 +124,7 @@ function productBinding(enabled: boolean) {
           indexManifestDigest: MANIFEST,
           sourceSnapshotDigest: SOURCE,
           readOnlyAuthorityReceiptDigest: AUTHORITY,
-          slotRuntimeBindingDigest: RUNTIME_BINDING,
+          slotRuntimeBindingDigest: runtimeBindingDigest,
         }
       : null,
   };
@@ -123,9 +134,10 @@ function installBindings(
   enabled: boolean,
   mountMode: "ro" | "rw" = "ro",
   authorityValue = authorityReceipt(),
+  fixedValue = fixedBinding(enabled),
 ) {
-  const product = stableStringify(productBinding(enabled));
-  const fixed = stableStringify(fixedBinding(enabled));
+  const product = stableStringify(productBinding(enabled, digestJson(fixedValue)));
+  const fixed = stableStringify(fixedValue);
   const proof = stableStringify({
     schema: "kwrag-two-canary-private-proof-request/v1",
     corpus: "room",
@@ -210,6 +222,7 @@ function fixedOutput(
       operation_id: request.operation_id,
       run_id: request.run_id,
       attempt: 1,
+      source_generation: SOURCE,
       index_manifest: MANIFEST,
       pipeline_fingerprint: PIPELINE,
       result_status: "hits",
@@ -328,6 +341,47 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     expect(agentCommandMock).not.toHaveBeenCalled();
   });
 
+  it("rejects source generation drift between product and fixed runtime binding", () => {
+    installBindings(true);
+    const drifted = stableStringify({
+      ...fixedBinding(true),
+      expected_source_generation: `sha256:${"f".repeat(64)}`,
+    });
+    readFileSyncMock.mockImplementation((path: string | number) => {
+      if (path === 42) {
+        return stableStringify(productBinding(true));
+      }
+      if (path === 43) {
+        return drifted;
+      }
+      if (path === "/proc/self/mountinfo") {
+        return "11 1 0:1 / /home/node/nas_docs ro,relatime - ext4 /dev/test rw\n";
+      }
+      throw new Error(`unexpected read ${path}`);
+    });
+
+    expect(() => readKwragP1AttachmentStatus()).toThrow(/fixed producer binding/u);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(agentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects selected-corpus source generation drift before producer execution", async () => {
+    const drifted = {
+      ...fixedBinding(true),
+      corpora: {
+        room: {
+          ...fixedBinding(true).corpora.room,
+          source_snapshot_digest: `sha256:${"f".repeat(64)}`,
+        },
+      },
+    };
+    installBindings(true, "ro", authorityReceipt(), drifted);
+
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/current slot binding/u);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(agentCommandMock).not.toHaveBeenCalled();
+  });
+
   it("rejects live authority drift before product or provider dispatch", () => {
     installBindings(true, "ro", { ...authorityReceipt(), mountReadOnly: false });
     expect(() => readKwragP1AttachmentStatus()).toThrow(/read-only authority/u);
@@ -408,12 +462,19 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
       schema_version: "kwrag-slot-search-request-v1",
       query: QUERY,
       corpus: "room",
+      expected_source_generation: SOURCE,
+      expected_index_manifest: MANIFEST,
     });
     expect(agentCommandMock).toHaveBeenCalledOnce();
     expect(agentCommandMock.mock.calls[0]?.[0]).toMatchObject({
       message: QUERY,
       transcriptMessage: QUERY,
-      retrievalEvidence: { resultCount: 1 },
+      retrievalEvidence: {
+        corpus: "room",
+        expectedSourceGeneration: SOURCE,
+        expectedIndexManifest: MANIFEST,
+        resultCount: 1,
+      },
     });
     expect(agentCommandMock.mock.calls[0]?.[1]).toMatchObject({
       log: expect.any(Function),
@@ -460,6 +521,56 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
     expect(agentCommandMock).not.toHaveBeenCalled();
     expect(ledgerMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["source generation", "source_generation", `sha256:${"d".repeat(64)}`],
+    ["index manifest", "index_manifest", `sha256:${"e".repeat(64)}`],
+  ])("rejects %s drift before the actual user-turn caller", async (_label, field, value) => {
+    installBindings(true);
+    execFileSyncMock.mockImplementation((_path, _args, options) => {
+      const request = JSON.parse(options.input as string);
+      if (String(request.run_id).includes("negative")) {
+        return fixedProofOutput(request);
+      }
+      return fixedOutput(request, (output) => {
+        (output.consumable as Record<string, unknown>)[field] = value;
+      });
+    });
+
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
+    expect(agentCommandMock).not.toHaveBeenCalled();
+    expect(ledgerMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects current source drift and corpus membership drift", () => {
+    installBindings(true);
+    const handoff = {
+      expected: {
+        slotInstanceId: "oc14",
+        mountAuthorityDigest: AUTHORITY,
+        slotRuntimeBindingDigest: RUNTIME_BINDING,
+      },
+    };
+    const evidence = {
+      handoff,
+      corpus: "room",
+      expectedSourceGeneration: SOURCE,
+      expectedIndexManifest: MANIFEST,
+    } as unknown as KwragP1VerifiedEvidence;
+
+    expect(() => assertKwragP1EvidenceCurrent(evidence)).not.toThrow();
+    expect(() =>
+      assertKwragP1EvidenceCurrent({
+        ...evidence,
+        expectedSourceGeneration: `sha256:${"d".repeat(64)}`,
+      }),
+    ).toThrow(/source generation, index manifest, or corpus membership/u);
+    expect(() => assertKwragP1EvidenceCurrent({ ...evidence, corpus: "foreign-room" })).toThrow(
+      /source generation, index manifest, or corpus membership/u,
+    );
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(agentCommandMock).not.toHaveBeenCalled();
   });
 
   it("rejects a negative control that unexpectedly returns hits before dispatch", async () => {
