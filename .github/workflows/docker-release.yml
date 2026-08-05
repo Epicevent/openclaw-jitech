@@ -138,6 +138,7 @@ jobs:
           fi
           created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           {
+            echo "source_sha=${source_sha}"
             echo "value<<EOF"
             echo "org.opencontainers.image.revision=${source_sha}"
             echo "org.opencontainers.image.version=${version}"
@@ -156,6 +157,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-release-amd64
           build-args: |
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
+            GIT_COMMIT=${{ steps.labels.outputs.source_sha }}
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
           sbom: true
@@ -236,6 +238,7 @@ jobs:
           fi
           created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           {
+            echo "source_sha=${source_sha}"
             echo "value<<EOF"
             echo "org.opencontainers.image.revision=${source_sha}"
             echo "org.opencontainers.image.version=${version}"
@@ -254,6 +257,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-release-arm64
           build-args: |
             OPENCLAW_EXTENSIONS=diagnostics-otel,codex
+            GIT_COMMIT=${{ steps.labels.outputs.source_sha }}
           tags: ${{ steps.tags.outputs.value }}
           labels: ${{ steps.labels.outputs.value }}
           sbom: true

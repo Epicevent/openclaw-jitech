@@ -276,6 +276,29 @@ raise SystemExit(main())
     expect(workflow).not.toContain("OPENCLAW_EXTENSIONS=diagnostics-otel\n");
   });
 
+  it("stamps the exact source commit into trusted and official image build metadata", async () => {
+    const dockerfile = await readFile(dockerfilePath, "utf8");
+    const trustedBuild = await readFile(
+      join(repoRoot, "scripts/build-trusted-product-image.sh"),
+      "utf8",
+    );
+    const workflow = await readFile(dockerReleaseWorkflowPath, "utf8");
+
+    expect(dockerfile).toContain('ARG GIT_COMMIT=""');
+    expect(dockerfile).toContain(
+      'RUN GIT_COMMIT="$GIT_COMMIT" NODE_OPTIONS=--max-old-space-size=8192',
+    );
+    expect(dockerfile).not.toContain("ENV GIT_COMMIT=");
+    expect(dockerfile.indexOf('ARG GIT_COMMIT=""')).toBeGreaterThan(
+      dockerfile.indexOf("pnpm install --frozen-lockfile"),
+    );
+    expect(trustedBuild).toContain('--build-arg "GIT_COMMIT=${sha}"');
+    expect(workflow.match(/echo "source_sha=\$\{source_sha\}"/g)).toHaveLength(2);
+    expect(
+      workflow.match(/GIT_COMMIT=\$\{\{ steps\.labels\.outputs\.source_sha \}\}/g),
+    ).toHaveLength(2);
+  });
+
   it("does not override bundled plugin discovery in runtime images", async () => {
     const dockerfile = collapseDockerContinuations(await readFile(dockerfilePath, "utf8"));
     expect(dockerfile).toContain(`ARG OPENCLAW_BUNDLED_PLUGIN_DIR=${BUNDLED_PLUGIN_ROOT_DIR}`);
