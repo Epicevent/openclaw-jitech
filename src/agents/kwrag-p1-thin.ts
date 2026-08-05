@@ -62,10 +62,22 @@ function object(value: unknown, keys: string | undefined, label: string): Json {
     ? result
     : fail(`${label} is invalid`);
 }
-function canonical(raw: string, label: string): unknown {
+function normalizeJsonNumberLexemes(raw: string): string {
+  return raw.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/gu, (token) => {
+    if (token.startsWith('"') || !/[.eE]/u.test(token)) {
+      return token;
+    }
+    const value = Number(token);
+    return Number.isFinite(value)
+      ? JSON.stringify(value)
+      : fail("fixed producer output has an invalid number");
+  });
+}
+function canonical(raw: string, label: string, crossLanguageNumbers = false): unknown {
   try {
     const value = JSON.parse(raw) as unknown;
-    return stableStringify(value) === raw ? value : fail(`${label} is invalid`);
+    const comparable = crossLanguageNumbers ? normalizeJsonNumberLexemes(raw) : raw;
+    return stableStringify(value) === comparable ? value : fail(`${label} is invalid`);
   } catch {
     return fail(`${label} is invalid`);
   }
@@ -193,10 +205,17 @@ function verifyProducer(
   request: Json,
   expectedStatus: "hits" | "zero_hits",
 ) {
-  const output = object(canonical(raw, "fixed producer output"), OUTPUT_KEYS, "producer output");
+  const output = object(
+    canonical(raw, "fixed producer output", true),
+    OUTPUT_KEYS,
+    "producer output",
+  );
   const value = object(output.consumable, CONSUMABLE_KEYS, "producer consumable");
   const linkage = object(output.linkage, LINK_KEYS, "producer linkage");
   const results = stableStringify(value.results);
+  const rawResults =
+    raw.match(/"results":(\[.*\]),"run_id":/u)?.[1] ??
+    fail("fixed producer results field is invalid");
   const count = Array.isArray(value.results) ? value.results.length : 0;
   if (
     output.schema_version !== "kwrag-fixed-producer-output-v1" ||
@@ -209,7 +228,8 @@ function verifyProducer(
     value.pipeline_fingerprint !== PIPELINE ||
     value.result_status !== expectedStatus ||
     (expectedStatus === "hits" ? count < 1 || count > 5 : count !== 0) ||
-    linkage.result_digest !== digest(results) ||
+    normalizeJsonNumberLexemes(rawResults) !== results ||
+    linkage.result_digest !== digest(rawResults) ||
     Object.values(linkage).some((item) => !SHA.test(String(item)))
   ) {
     return fail("fixed producer output is invalid");

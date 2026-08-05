@@ -185,12 +185,10 @@ function installBindings(
     };
   });
 }
-
 function fixedOutput(
   request: Record<string, unknown>,
   mutate?: (value: Record<string, unknown>) => void,
-) {
-  const results = [
+  results = [
     {
       corpus: "room",
       id: "1",
@@ -200,7 +198,8 @@ function fixedOutput(
       source_ids: [],
       title: "t",
     },
-  ];
+  ],
+) {
   const resultDigest = `sha256:${createHash("sha256").update(stableStringify(results)).digest("hex")}`;
   const value: Record<string, unknown> = {
     schema_version: "kwrag-fixed-producer-output-v1",
@@ -225,7 +224,6 @@ function fixedOutput(
   mutate?.(value);
   return stableStringify(value);
 }
-
 function fixedProofOutput(request: Record<string, unknown>) {
   return fixedOutput(request, (output) => {
     if (!String(request.run_id).includes("negative")) {
@@ -238,7 +236,32 @@ function fixedProofOutput(request: Record<string, unknown>) {
     linkage.result_digest = `sha256:${createHash("sha256").update("[]").digest("hex")}`;
   });
 }
-
+function fixedPythonFloatOutput(request: Record<string, unknown>) {
+  const jsNumber = "0.0000028518518518518522";
+  const pythonNumber = "2.8518518518518522e-06";
+  const results = [
+    {
+      corpus: "room",
+      id: "1",
+      path: "p",
+      score: Number(jsNumber),
+      snippet: "evidence",
+      source_ids: [],
+      title: "t",
+    },
+  ];
+  const jsResults = stableStringify(results);
+  const pythonResults = jsResults.replace(jsNumber, pythonNumber);
+  const output = fixedOutput(
+    request,
+    (value) => {
+      const linkage = value.linkage as Record<string, unknown>;
+      linkage.result_digest = `sha256:${createHash("sha256").update(pythonResults).digest("hex")}`;
+    },
+    results,
+  );
+  return output.replace(jsResults, pythonResults);
+}
 describe("KWRAG P1 fixed-producer thin adapter", () => {
   beforeEach(() => {
     execFileSyncMock.mockReset();
@@ -337,11 +360,14 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     expect(() => readKwragP1AttachmentStatus()).toThrow(/binding|invalid or stale/u);
   });
 
-  it("runs exact fixed producer stdin through the actual user-turn caller and receipt chain", async () => {
+  it("accepts Python canonical floats through the actual user-turn caller and receipt chain", async () => {
     installBindings(true);
-    execFileSyncMock.mockImplementation((_path, _args, options) =>
-      fixedProofOutput(JSON.parse(options.input as string)),
-    );
+    execFileSyncMock.mockImplementation((_path, _args, options) => {
+      const request = JSON.parse(options.input as string);
+      return String(request.run_id).includes("negative")
+        ? fixedProofOutput(request)
+        : fixedPythonFloatOutput(request);
+    });
     agentCommandMock.mockResolvedValueOnce({ payloads: [{ text: "answer" }], meta: {} });
     ledgerMock.mockImplementation((_env, runId) => {
       const call = agentCommandMock.mock.calls[0]?.[0];
@@ -398,6 +424,20 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
       retrievalEvidence: { resultCount: 1 },
     });
     expect(closeLedgerMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects a tampered Python float before the actual user-turn caller", async () => {
+    installBindings(true);
+    execFileSyncMock.mockImplementation((_path, _args, options) => {
+      const request = JSON.parse(options.input as string);
+      return fixedPythonFloatOutput(request).replace(
+        "2.8518518518518522e-06",
+        "2.8518518518518522e-05",
+      );
+    });
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/producer output/u);
+    expect(agentCommandMock).not.toHaveBeenCalled();
+    expect(ledgerMock).not.toHaveBeenCalled();
   });
 
   it("rejects producer correlation tamper before the actual user-turn caller", async () => {
