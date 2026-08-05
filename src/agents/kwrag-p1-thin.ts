@@ -234,7 +234,7 @@ function verifyProducer(
   ) {
     return fail("fixed producer output is invalid");
   }
-  return { count, linkage, results };
+  return { count, linkage, results: rawResults };
 }
 function prepare(raw: string, current: ReturnType<typeof observe>, request: Json) {
   const { count, linkage, results } = verifyProducer(raw, current, request, "hits");
