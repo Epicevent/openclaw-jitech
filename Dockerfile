@@ -53,7 +53,9 @@ ARG OPENCLAW_BUNDLED_PLUGIN_DIR
 # Image builds stamp their tag into dist/build-info.json (see scripts/write-build-info.ts)
 # so the running slot reports the shipped version instead of the fork's package.json.
 ARG OPENCLAW_BUILD_VERSION=""
+ARG GIT_COMMIT=""
 ENV OPENCLAW_BUILD_VERSION=${OPENCLAW_BUILD_VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
 
 # Copy pinned Bun binary from the official image instead of fetching via curl.
 COPY --from=bun-binary /usr/local/bin/bun /usr/local/bin/bun
