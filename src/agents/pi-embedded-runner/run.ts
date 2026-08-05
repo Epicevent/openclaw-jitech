@@ -419,9 +419,6 @@ export async function runEmbeddedPiAgent(
       "verified retrieval evidence requires a visible transcript prompt",
     );
   }
-  if (params.retrievalEvidence !== undefined) {
-    assertKwragP1EvidenceCurrent(params.retrievalEvidence);
-  }
   // Resolve sessionKey early so all downstream consumers (hooks, LCM, compaction)
   // receive a non-null key even when callers omit it. See #60552.
   const effectiveSessionKey = backfillSessionKey({
@@ -559,6 +556,9 @@ export async function runEmbeddedPiAgent(
 
       let kwragP1Evidence: KwragP1BoundEvidence | undefined;
       if (params.retrievalHandoff !== undefined) {
+        if (params.retrievalEvidence !== undefined) {
+          assertKwragP1EvidenceCurrent(params.retrievalEvidence);
+        }
         const productSourceCommit = resolveExactCommitHash({ moduleUrl: import.meta.url });
         if (!productSourceCommit) {
           throw new KwragP0HandoffContractError(
