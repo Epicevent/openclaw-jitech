@@ -45,6 +45,7 @@ describe("kwrag-p1 attachment CLI", () => {
     await program().parseAsync(["node", "openclaw", "kwrag-p0", "p1-user-turn-proof", "--json"]);
 
     expect(proofMock).toHaveBeenCalledWith();
+    expect(write).toHaveBeenCalledOnce();
     expect(write).toHaveBeenCalledWith(`${stableStringify(proof)}\n`);
   });
 
