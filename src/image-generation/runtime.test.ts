@@ -410,6 +410,40 @@ describe("image-generation runtime", () => {
     expect(result.images).toEqual(pngBytes);
   });
 
+  it("delivers PNG when the provider cannot accept a native PNG override", async () => {
+    const providerBytes = [{ buffer: Buffer.from("jpeg-bytes"), mimeType: "image/jpeg" }];
+    const pngBytes = [{ buffer: Buffer.from("png-bytes"), mimeType: "image/png" }];
+    const normalizeOutputFormat = vi.fn().mockResolvedValue(pngBytes);
+    providers = [
+      {
+        id: "google",
+        capabilities: {
+          generate: {},
+          edit: { enabled: true },
+        },
+        async generateImage(req) {
+          expect(req.outputFormat).toBeUndefined();
+          return { images: providerBytes };
+        },
+      },
+    ];
+
+    const result = await generateImage(
+      {
+        cfg: {
+          agents: { defaults: { imageGenerationModel: { primary: "google/image-model" } } },
+        } as OpenClawConfig,
+        prompt: "draw a cat",
+        outputFormat: "png",
+      },
+      { ...runtimeDeps, normalizeOutputFormat },
+    );
+
+    expect(normalizeOutputFormat).toHaveBeenCalledWith(providerBytes, "png");
+    expect(result.images).toEqual(pngBytes);
+    expect(result.ignoredOverrides).toStrictEqual([]);
+  });
+
   it("drops unsupported image output hints and reports them", async () => {
     let seenRequest:
       | {

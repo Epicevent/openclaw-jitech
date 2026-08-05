@@ -127,7 +127,7 @@ export async function generateImage(
       }
       const images = await (deps.normalizeOutputFormat ?? normalizeGeneratedImageOutputFormat)(
         result.images,
-        sanitized.outputFormat,
+        sanitized.deliveryOutputFormat,
       );
       return {
         images,
