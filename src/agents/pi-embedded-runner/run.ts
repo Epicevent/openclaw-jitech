@@ -54,6 +54,7 @@ import { selectAgentHarness } from "../harness/selection.js";
 import { KwragP0HandoffContractError, verifyOptionalKwragP0Handoff } from "../kwrag-p0-handoff.js";
 import { appendKwragP0HandoffReceipt } from "../kwrag-p0-handoff.store.js";
 import {
+  assertKwragP1EvidenceCurrent,
   assertKwragP1EvidenceInput,
   bindKwragP1Evidence,
   type KwragP1BoundEvidence,
@@ -555,6 +556,9 @@ export async function runEmbeddedPiAgent(
 
       let kwragP1Evidence: KwragP1BoundEvidence | undefined;
       if (params.retrievalHandoff !== undefined) {
+        if (params.retrievalEvidence !== undefined) {
+          assertKwragP1EvidenceCurrent(params.retrievalEvidence);
+        }
         const productSourceCommit = resolveExactCommitHash({ moduleUrl: import.meta.url });
         if (!productSourceCommit) {
           throw new KwragP0HandoffContractError(

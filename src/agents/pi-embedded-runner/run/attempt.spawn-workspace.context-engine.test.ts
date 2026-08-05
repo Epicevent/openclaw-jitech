@@ -809,6 +809,9 @@ describe("runEmbeddedAttempt context engine sessionKey forwarding", () => {
     const stored = appendKwragP0HandoffReceipt(receipt);
     const boundEvidence = {
       handoff: {} as never,
+      corpus: "room",
+      expectedSourceGeneration: `sha256:${"3".repeat(64)}` as const,
+      expectedIndexManifest: `sha256:${"4".repeat(64)}` as const,
       promptContext: "verified hit text",
       contextDigest: `sha256:${"1".repeat(64)}` as const,
       resultDigest: `sha256:${"2".repeat(64)}` as const,
