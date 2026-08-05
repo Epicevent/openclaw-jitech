@@ -91,10 +91,17 @@ describe("Dockerfile", () => {
     expect(manifest.surface.argv).toEqual(["kwrag-fixed-producer"]);
     expect(manifest.surface.host_ports).toBe(0);
     expect(manifest.surface.network).toBe(false);
-    expect(launcher).toBe(
-      "#!/usr/bin/env -S PYTHONPATH=/opt/jitech/kwrag/lib python3 -m kwrag.fixed_producer\n",
-    );
+    expect(launcher).toBe(`#!/usr/local/bin/python3
+import sys
+
+sys.path.insert(0, "/opt/jitech/kwrag/lib")
+
+from kwrag.fixed_producer import main
+
+raise SystemExit(main())
+`);
     expect(launcher).not.toContain("/bin/sh");
+    expect(launcher).not.toContain("env -S");
     expect(dockerfile).toContain(
       'ARG OPENCLAW_PYTHON_BOOKWORM_SLIM_IMAGE="python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b"',
     );

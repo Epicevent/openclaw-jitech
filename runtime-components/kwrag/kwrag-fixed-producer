@@ -1,1 +1,8 @@
-#!/usr/bin/env -S PYTHONPATH=/opt/jitech/kwrag/lib python3 -m kwrag.fixed_producer
+#!/usr/local/bin/python3
+import sys
+
+sys.path.insert(0, "/opt/jitech/kwrag/lib")
+
+from kwrag.fixed_producer import main
+
+raise SystemExit(main())
