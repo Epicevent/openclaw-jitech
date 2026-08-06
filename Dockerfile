@@ -185,11 +185,11 @@ LABEL com.epicevent.agent-runtime.selftest.name="openclaw-selftest-v1" \
 # Exact slot-local KWRAG capability. Retrieval stays caller-explicit and default-off;
 # these labels bind the packaged component and its fixed content-free verifier.
 LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-embedded-retrieval/v1" \
-  com.epicevent.agent-runtime.retrieval.component-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
-  com.epicevent.agent-runtime.retrieval.contract-digest="sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288" \
-  com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
-  com.epicevent.agent-runtime.retrieval.source-archive-digest="sha256:950359d60058fb8fd0a673805d4d4bbf74521b660fca981516a567fef54abf01" \
-  com.epicevent.agent-runtime.retrieval.source-revision="4de8d5b1ed4a08d5564e72f7a55608e196902897" \
+  com.epicevent.agent-runtime.retrieval.component-digest="sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0" \
+  com.epicevent.agent-runtime.retrieval.contract-digest="sha256:9b6d60d1d72ffa7097a93a53c841107f5f7e39dd27dfd4cbb7c07f0207a5f4d5" \
+  com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0" \
+  com.epicevent.agent-runtime.retrieval.source-archive-digest="sha256:ebe835d005f79860d44d111c15f103b1239d0668bc3e2aaa64435a31eb7325a0" \
+  com.epicevent.agent-runtime.retrieval.source-revision="320d19fdf44010364d6abd53377105404e54fa36" \
   com.epicevent.agent-runtime.retrieval.transport="in_process" \
   com.epicevent.agent-runtime.retrieval.default-enabled="false" \
   com.epicevent.agent-runtime.retrieval.host-port-count="0" \
@@ -198,8 +198,8 @@ LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-embedded-retrieval/v1
   com.epicevent.agent-runtime.retrieval.verify-command.json="[\"openclaw\",\"kwrag-p0\",\"p1-attachment-status\",\"--json\"]" \
   com.epicevent.openclaw.kwrag.p1.attachment-decision-digest="sha256:fd4d1068407d0b28d41e7813f8cef7b193a5fe43f39db166588911e6fde3bbb5" \
   com.epicevent.openclaw.kwrag.p1.caller-explicit="true" \
-  com.epicevent.openclaw.kwrag.p1.component-manifest-digest="sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a" \
-  com.epicevent.openclaw.kwrag.p1.component-wheel-digest="sha256:023f861b016d421add0528d0129373249590d18a7a51bfe9b5b06f3c1836fbd5" \
+  com.epicevent.openclaw.kwrag.p1.component-manifest-digest="sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0" \
+  com.epicevent.openclaw.kwrag.p1.component-wheel-digest="sha256:c66c0c1ded1ee5de64ea85cfe14fd401f44c990cb9750c8873b495c08982e1f8" \
   com.epicevent.openclaw.kwrag.p1.python-runtime-digest="${OPENCLAW_PYTHON_BOOKWORM_SLIM_DIGEST}" \
   com.epicevent.openclaw.kwrag.p1.python-version="3.12.13" \
   com.epicevent.openclaw.kwrag.p1.default-enabled="false" \

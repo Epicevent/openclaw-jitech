@@ -60,6 +60,7 @@ Docs: https://docs.openclaw.ai
 - iOS: repair Release archive compilation for the TestFlight build. (#84255) Thanks @ngutman.
 - Agents/compaction: bound plugin-owned CLI transcript compaction with the host safety timeout so a hung context engine can no longer stall post-turn cleanup. (#84083) Thanks @100yenadmin.
 - Control UI/usage: truncate long context skill, tool, and file names in the usage panel while keeping the full name available on hover. (#42197) Thanks @Rain120.
+- Retrieval: bind caller-explicit Kakao RAG to the generation-aware fixed producer and preserve fail-closed source/index checks. (#88)
 
 ## 2026.5.19
 
