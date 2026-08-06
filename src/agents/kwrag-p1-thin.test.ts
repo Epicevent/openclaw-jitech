@@ -73,10 +73,20 @@ const AUTHORITY = `sha256:${createHash("sha256")
 
 function fixedBinding(
   enabled: boolean,
-  selectedEngine: Record<string, unknown> = {},
+  selectedEngine: Record<string, unknown> | undefined = undefined,
   sourceGeneration = SOURCE,
   sourceSnapshot = SOURCE,
 ) {
+  const defaultSelectedEngine = {
+    source_generation: sourceGeneration,
+    source_snapshot_sha256: sourceSnapshot,
+    source_database_sha256: DATABASE,
+    source_membership_sha256: `sha256:${"e".repeat(64)}`,
+    source_profile_sha256: `sha256:${"f".repeat(64)}`,
+    index_manifest_sha256: MANIFEST,
+    pipeline_fingerprint: PIPELINE,
+    embedding_fingerprint: `sha256:${"1".repeat(64)}`,
+  };
   return {
     schema_version: "kwrag-fixed-producer-binding-v1",
     enabled,
@@ -87,7 +97,7 @@ function fixedBinding(
     operation_receipt_path: "/home/node/.openclaw/kwrag/operation-receipts.jsonl",
     producer_receipt_path: "/home/node/.openclaw/kwrag/producer-receipts.jsonl",
     max_concurrent: 1,
-    selected_engine: selectedEngine,
+    selected_engine: selectedEngine ?? (enabled ? defaultSelectedEngine : {}),
     corpora: {
       room: {
         database_relative: "kw/package/.kwrag/releases/release/room.sqlite3",
@@ -360,9 +370,16 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     expect(readKwragP1AttachmentStatus()).toMatchObject({ enabled: false });
   });
 
+  it("rejects enabled binding without a server runtime handoff before producer dispatch", async () => {
+    installBindings(true, "ro", authorityReceipt(), fixedBinding(true, {}));
+    await expect(runKwragP1UserTurnProof()).rejects.toThrow(/fixed producer binding/u);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(agentCommandMock).not.toHaveBeenCalled();
+  });
+
   it("keeps source generation distinct from the server source snapshot hash", () => {
     const snapshot = `sha256:${"9".repeat(64)}`;
-    const fixed = fixedBinding(true, {}, SOURCE, snapshot);
+    const fixed = fixedBinding(true, undefined, SOURCE, snapshot);
     installBindings(true, "ro", authorityReceipt(), fixed, {}, SOURCE, snapshot);
     ledgerMock.mockReturnValueOnce({
       latest: {

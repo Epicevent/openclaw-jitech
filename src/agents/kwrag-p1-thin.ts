@@ -220,6 +220,7 @@ function observe() {
     producerBinding.enabled !== enabled ||
     producerBinding.schema_version !== "kwrag-fixed-producer-binding-v1" ||
     producerBinding.expected_source_generation !== value.expected_source_generation ||
+    (enabled && serverHandoff === null) ||
     (serverHandoff &&
       (serverHandoff.sourceGeneration !== value.expected_source_generation ||
         serverHandoff.indexManifestDigest !== producerBinding.index_manifest_digest ||
