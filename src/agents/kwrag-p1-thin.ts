@@ -16,8 +16,6 @@ const PROOF_REQUEST = "/run/kwrag/proof-request.json";
 const NEGATIVE_PROOF_REQUEST = "/run/kwrag/negative-proof-request.json";
 const COMPONENT = "sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0";
 const CONTRACT = "sha256:9b6d60d1d72ffa7097a93a53c841107f5f7e39dd27dfd4cbb7c07f0207a5f4d5";
-const P1 = "sha256:c74c42fd7931326f543398631287db40c0b9cdd7a159eb2d0931c1f724575b1a";
-const PIPELINE = "sha256:53e14752cc9d147dfb4129e00234d1c7fb9f6558df00da7c03189db8da8e4606";
 const RESOURCE = "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed";
 const SHA = /^sha256:[0-9a-f]{64}$/u;
 const BINDING_KEYS =
@@ -28,8 +26,14 @@ const AUTHORITY_KEYS =
   "allBoundFilesReadOnly,containerNasRoot,family,indexManifestDigest,mountReadOnly,releaseRelativeRoot,schema,slot,status";
 const CORPUS_KEYS =
   "authority_receipt_digest,database_relative,database_sha256,source_snapshot_digest,source_snapshot_relative";
+const SERVER_HANDOFF_KEYS =
+  "embedding_fingerprint,index_manifest_sha256,pipeline_fingerprint,source_database_sha256,source_generation,source_membership_sha256,source_profile_sha256,source_snapshot_sha256";
 const PROOF_REQUEST_KEYS = "corpus,query,schema";
-const ID_KEYS = "backendId,pipelineFactoryDigest,pipelineFingerprint,researchDecisionDigest,status";
+const ID_KEYS_MINIMAL = "pipelineFingerprint";
+const ID_KEYS_MINIMAL_WITH_EMBEDDING = "embeddingFingerprint,pipelineFingerprint";
+const ID_KEYS_LEGACY = "backendId,pipelineFactoryDigest,pipelineFingerprint,status";
+const ID_KEYS_LEGACY_WITH_RESEARCH =
+  "backendId,pipelineFactoryDigest,pipelineFingerprint,researchDecisionDigest,status";
 const DATA_KEYS =
   "databaseSha256,indexManifestDigest,readOnlyAuthorityReceiptDigest,slotRuntimeBindingDigest,sourceSnapshotDigest";
 const OUTPUT_KEYS = "consumable,linkage,schema_version";
@@ -48,11 +52,24 @@ export type KwragP1VerifiedEvidence = {
   handoff: p0.KwragP0CallerHandoff;
   corpus: string;
   expectedSourceGeneration: p0.Sha256Digest;
+  sourceSnapshotDigest?: p0.Sha256Digest;
   expectedIndexManifest: p0.Sha256Digest;
   promptContext: string;
   contextDigest: p0.Sha256Digest;
   resultDigest: p0.Sha256Digest;
   resultCount: number;
+  p1IdentityDigest?: p0.Sha256Digest;
+  pipelineFingerprint?: p0.Sha256Digest;
+};
+export type KwragServerRuntimeHandoff = {
+  sourceGeneration: p0.Sha256Digest;
+  sourceSnapshotDigest: p0.Sha256Digest;
+  sourceDatabaseDigest: p0.Sha256Digest;
+  sourceMembershipDigest: p0.Sha256Digest;
+  sourceProfileDigest: p0.Sha256Digest;
+  indexManifestDigest: p0.Sha256Digest;
+  pipelineFingerprint: p0.Sha256Digest;
+  embeddingFingerprint: p0.Sha256Digest;
 };
 
 function fail(reason: string): never {
@@ -70,6 +87,36 @@ function object(value: unknown, keys: string | undefined, label: string): Json {
   return !keys || Object.keys(result).toSorted().join(",") === keys
     ? result
     : fail(`${label} is invalid`);
+}
+function runtimeIdentity(value: unknown): Json {
+  const identity = object(value, undefined, "P1 identity");
+  const keys = Object.keys(identity).toSorted().join(",");
+  if (
+    keys !== ID_KEYS_MINIMAL &&
+    keys !== ID_KEYS_MINIMAL_WITH_EMBEDDING &&
+    keys !== ID_KEYS_LEGACY &&
+    keys !== ID_KEYS_LEGACY_WITH_RESEARCH
+  ) {
+    return fail("P1 identity is invalid");
+  }
+  return identity;
+}
+export function mapKwragServerRuntimeHandoff(value: unknown): KwragServerRuntimeHandoff {
+  const handoff = object(value, SERVER_HANDOFF_KEYS, "KWRAG server handoff");
+  if (Object.values(handoff).some((item) => !SHA.test(String(item)))) {
+    return fail("KWRAG server handoff is invalid");
+  }
+  return {
+    // Server source_generation is the request generation; it is not the source snapshot hash.
+    sourceGeneration: handoff.source_generation as p0.Sha256Digest,
+    sourceSnapshotDigest: handoff.source_snapshot_sha256 as p0.Sha256Digest,
+    sourceDatabaseDigest: handoff.source_database_sha256 as p0.Sha256Digest,
+    sourceMembershipDigest: handoff.source_membership_sha256 as p0.Sha256Digest,
+    sourceProfileDigest: handoff.source_profile_sha256 as p0.Sha256Digest,
+    indexManifestDigest: handoff.index_manifest_sha256 as p0.Sha256Digest,
+    pipelineFingerprint: handoff.pipeline_fingerprint as p0.Sha256Digest,
+    embeddingFingerprint: handoff.embedding_fingerprint as p0.Sha256Digest,
+  };
 }
 function normalizeJsonNumberLexemes(raw: string): string {
   return raw.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/gu, (token) => {
@@ -127,7 +174,7 @@ export function assertKwragP1EvidenceInput(
 }
 function observe() {
   const value = canonicalFile(BINDING, BINDING_KEYS, "binding");
-  const identity = object(value.p1Identity, ID_KEYS, "P1 identity");
+  const identity = runtimeIdentity(value.p1Identity);
   const enabled = value.enabled;
   const data = enabled ? object(value.attachmentData, DATA_KEYS, "attachment data") : null;
   if (
@@ -146,9 +193,17 @@ function observe() {
     value.resourceProfileDigest !== RESOURCE ||
     !SHA.test(String(value.expected_source_generation)) ||
     !SHA.test(String(value.runtimeProfileDigest)) ||
-    digest(identity) !== P1 ||
+    !SHA.test(String(identity.pipelineFingerprint)) ||
+    (identity.embeddingFingerprint !== undefined &&
+      !SHA.test(String(identity.embeddingFingerprint))) ||
+    (identity.status !== undefined && (typeof identity.status !== "string" || !identity.status)) ||
+    (identity.backendId !== undefined &&
+      (typeof identity.backendId !== "string" || !identity.backendId)) ||
+    (identity.pipelineFactoryDigest !== undefined &&
+      !SHA.test(String(identity.pipelineFactoryDigest))) ||
+    (identity.researchDecisionDigest !== undefined &&
+      !SHA.test(String(identity.researchDecisionDigest))) ||
     (enabled && (!data || Object.values(data).some((item) => !SHA.test(String(item))))) ||
-    (enabled && value.expected_source_generation !== data?.sourceSnapshotDigest) ||
     (!enabled && value.attachmentData !== null) ||
     !readFileSync("/proc/self/mountinfo", "utf8")
       .split("\n")
@@ -157,10 +212,20 @@ function observe() {
     return fail("current binding observation is invalid or stale");
   }
   const producerBinding = canonicalFile(FIXED_BINDING, FIXED_BINDING_KEYS, "fixed binding");
+  const serverHandoff =
+    Object.keys(object(producerBinding.selected_engine, undefined, "selected engine")).length > 0
+      ? mapKwragServerRuntimeHandoff(producerBinding.selected_engine)
+      : null;
   if (
     producerBinding.enabled !== enabled ||
     producerBinding.schema_version !== "kwrag-fixed-producer-binding-v1" ||
     producerBinding.expected_source_generation !== value.expected_source_generation ||
+    (serverHandoff &&
+      (serverHandoff.sourceGeneration !== value.expected_source_generation ||
+        serverHandoff.indexManifestDigest !== producerBinding.index_manifest_digest ||
+        serverHandoff.pipelineFingerprint !== identity.pipelineFingerprint ||
+        (identity.embeddingFingerprint !== undefined &&
+          serverHandoff.embeddingFingerprint !== identity.embeddingFingerprint))) ||
     (enabled && digest(producerBinding) !== data?.slotRuntimeBindingDigest)
   ) {
     return fail("fixed producer binding does not match attachment identity");
@@ -200,6 +265,9 @@ function observe() {
     enabled,
     instanceId: value.instanceId,
     bindingDigest: digest(value),
+    p1IdentityDigest: digest(identity),
+    pipelineFingerprint: identity.pipelineFingerprint as p0.Sha256Digest,
+    serverHandoff,
     data: data as Record<string, string> | null,
     corpora: corpusBindings,
     expectedSourceGeneration: value.expected_source_generation as p0.Sha256Digest,
@@ -214,9 +282,14 @@ export function assertKwragP1EvidenceCurrent(evidence: KwragP1VerifiedEvidence):
     !current.data ||
     !corpus ||
     evidence.expectedSourceGeneration !== current.expectedSourceGeneration ||
-    evidence.expectedSourceGeneration !== current.data.sourceSnapshotDigest ||
-    evidence.expectedSourceGeneration !== corpus.source_snapshot_digest ||
+    !SHA.test(String(evidence.sourceSnapshotDigest)) ||
+    evidence.sourceSnapshotDigest !== current.data.sourceSnapshotDigest ||
+    evidence.sourceSnapshotDigest !== corpus.source_snapshot_digest ||
     evidence.expectedIndexManifest !== current.data.indexManifestDigest ||
+    !SHA.test(String(evidence.p1IdentityDigest)) ||
+    !SHA.test(String(evidence.pipelineFingerprint)) ||
+    evidence.p1IdentityDigest !== current.p1IdentityDigest ||
+    evidence.pipelineFingerprint !== current.pipelineFingerprint ||
     evidence.handoff.expected.slotInstanceId !== current.instanceId ||
     evidence.handoff.expected.mountAuthorityDigest !==
       current.data.readOnlyAuthorityReceiptDigest ||
@@ -266,7 +339,7 @@ function verifyProducer(
     value.source_generation !== request.expected_source_generation ||
     value.index_manifest !== request.expected_index_manifest ||
     value.index_manifest !== current.data?.indexManifestDigest ||
-    value.pipeline_fingerprint !== PIPELINE ||
+    value.pipeline_fingerprint !== current.pipelineFingerprint ||
     value.result_status !== expectedStatus ||
     (expectedStatus === "hits" ? count < 1 || count > 5 : count !== 0) ||
     normalizeJsonNumberLexemes(rawResults) !== results ||
@@ -329,11 +402,15 @@ function prepare(raw: string, current: ReturnType<typeof observe>, request: Json
     handoff,
     corpus: String(request.corpus),
     expectedSourceGeneration: request.expected_source_generation as p0.Sha256Digest,
+    sourceSnapshotDigest: current.corpora[String(request.corpus)]
+      .source_snapshot_digest as p0.Sha256Digest,
     expectedIndexManifest: request.expected_index_manifest as p0.Sha256Digest,
     promptContext,
     contextDigest: digest(promptContext),
     resultDigest: resultReceiptDigest,
     resultCount: count,
+    p1IdentityDigest: current.p1IdentityDigest,
+    pipelineFingerprint: current.pipelineFingerprint,
   });
 }
 
@@ -347,7 +424,10 @@ export function bindKwragP1Evidence(
     evidence.resultDigest !== stored.receipt.resultReceiptDigest ||
     !evidence.corpus ||
     !SHA.test(evidence.expectedSourceGeneration) ||
+    !SHA.test(String(evidence.sourceSnapshotDigest)) ||
     !SHA.test(evidence.expectedIndexManifest) ||
+    !SHA.test(String(evidence.p1IdentityDigest)) ||
+    !SHA.test(String(evidence.pipelineFingerprint)) ||
     !evidence.promptContext.startsWith(PREFIX) ||
     digest(evidence.promptContext.slice(PREFIX.length)) !== evidence.resultDigest ||
     evidence.contextDigest !== digest(evidence.promptContext)
@@ -380,14 +460,16 @@ export function commitKwragP1Event(params: {
     runId: params.runId,
     sessionId: params.sessionId,
     attempt: params.attempt,
-    p1IdentityDigest: P1,
+    p1IdentityDigest: params.evidence.p1IdentityDigest,
     corpus: params.evidence.corpus,
     expectedSourceGeneration: params.evidence.expectedSourceGeneration,
+    sourceSnapshotDigest: params.evidence.sourceSnapshotDigest,
     expectedIndexManifest: params.evidence.expectedIndexManifest,
     resultReceiptDigest: params.evidence.resultDigest,
     contextDigest: params.evidence.contextDigest,
     contextBytes: Buffer.byteLength(params.evidence.promptContext),
     resultCount: params.evidence.resultCount,
+    pipelineFingerprint: params.evidence.pipelineFingerprint,
     consumptionStatus: params.stage,
     promptProjectionApplied: true,
     previousReceiptDigest: params.previousReceiptDigest ?? null,
@@ -427,7 +509,7 @@ export function readKwragP1AttachmentStatus() {
     componentDigest: COMPONENT,
     bindingDigest: current.bindingDigest,
     resourceProfileDigest: RESOURCE,
-    p1IdentityDigest: P1,
+    p1IdentityDigest: current.p1IdentityDigest,
     attachmentDataDigest: data ? digest(data) : null,
     hostPortCount: 0,
     mountReadOnly: true,
@@ -482,11 +564,15 @@ function slotRequest(
     !current.enabled ||
     !current.data ||
     !corpus ||
-    corpus.source_snapshot_digest !== current.expectedSourceGeneration
+    corpus.source_snapshot_digest !== current.data.sourceSnapshotDigest ||
+    (current.serverHandoff &&
+      (current.serverHandoff.sourceSnapshotDigest !== corpus.source_snapshot_digest ||
+        current.serverHandoff.sourceDatabaseDigest !== corpus.database_sha256))
   ) {
     return fail("requested corpus is outside the current slot binding");
   }
   return {
+    // The producer request keeps generation and index identities in separate wire fields.
     schema_version: "kwrag-slot-search-request-v1",
     query: proofRequest.query,
     request_id: `${runId}.request`,
@@ -495,7 +581,10 @@ function slotRequest(
     attempt: 1,
     max_results: 5,
     corpus: proofRequest.corpus,
+    // `source_generation` maps to `expected_source_generation`; the source snapshot hash is
+    // carried separately in the corpus binding and evidence.
     expected_source_generation: current.expectedSourceGeneration,
+    // Server `index_manifest_sha256` maps to the producer's `expected_index_manifest`.
     expected_index_manifest: current.data.indexManifestDigest,
   };
 }
