@@ -61,6 +61,7 @@ Docs: https://docs.openclaw.ai
 - Agents/compaction: bound plugin-owned CLI transcript compaction with the host safety timeout so a hung context engine can no longer stall post-turn cleanup. (#84083) Thanks @100yenadmin.
 - Control UI/usage: truncate long context skill, tool, and file names in the usage panel while keeping the full name available on hover. (#42197) Thanks @Rain120.
 - Retrieval: bind caller-explicit Kakao RAG to the generation-aware fixed producer and preserve fail-closed source/index checks. (#88)
+- Retrieval: align the runtime verifier with the generation-aware producer manifest so attached Kakao RAG can pass its own binding checks.
 
 ## 2026.5.19
 
