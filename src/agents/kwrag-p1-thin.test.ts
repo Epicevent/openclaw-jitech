@@ -34,8 +34,8 @@ import {
   type KwragP1VerifiedEvidence,
 } from "./kwrag-p1-thin.js";
 
-const COMPONENT = "sha256:e471b4c3ef4258dff28b97f30ef81649dcf711a3b85b66a93da51f7704adac6a";
-const CONTRACT = "sha256:6d637d1a2a3202d8feb4b59bc0fe2167900311930e01d5e9fb5651c8e5c8f288";
+const COMPONENT = "sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0";
+const CONTRACT = "sha256:9b6d60d1d72ffa7097a93a53c841107f5f7e39dd27dfd4cbb7c07f0207a5f4d5";
 const DATABASE = `sha256:${"2".repeat(64)}`;
 const MANIFEST = `sha256:${"3".repeat(64)}`;
 const SOURCE = `sha256:${"4".repeat(64)}`;
