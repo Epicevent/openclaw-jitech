@@ -45,6 +45,15 @@ export const ChatSendParamsSchema = Type.Object(
     originatingAccountId: Type.Optional(Type.String()),
     originatingThreadId: Type.Optional(Type.String()),
     attachments: Type.Optional(Type.Array(Type.Unknown())),
+    retrieval: Type.Optional(
+      Type.Object(
+        {
+          corpus: Type.String({ minLength: 1, maxLength: 128 }),
+          query: Type.String({ minLength: 1, maxLength: 4_000 }),
+        },
+        { additionalProperties: false },
+      ),
+    ),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
     systemInputProvenance: Type.Optional(InputProvenanceSchema),
     systemProvenanceReceipt: Type.Optional(Type.String()),

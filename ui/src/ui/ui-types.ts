@@ -13,6 +13,7 @@ export type ChatQueueItem = {
   createdAt: number;
   kind?: "queued" | "steered";
   attachments?: ChatAttachment[];
+  retrieval?: { corpus: string; query: string };
   refreshSessions?: boolean;
   localCommandArgs?: string;
   localCommandName?: string;

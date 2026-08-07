@@ -999,6 +999,26 @@ describe("sendChatMessage", () => {
     expect(sendParams.message).toBe("continue");
   });
 
+  it("preserves an explicit retrieval request in chat.send", async () => {
+    const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    await sendChatMessage(state, "find the retention policy", undefined, {
+      corpus: "kakao-user",
+      query: "retention policy",
+    });
+
+    const [requestMethod, requestParams] = requireFirstRequestCall(request);
+    expect(requestMethod).toBe("chat.send");
+    expect(requireRecord(requestParams).retrieval).toEqual({
+      corpus: "kakao-user",
+      query: "retention policy",
+    });
+  });
+
   it("serializes non-image chat attachments as files", async () => {
     const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
     const state = createState({

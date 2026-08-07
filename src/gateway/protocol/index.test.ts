@@ -7,6 +7,7 @@ import {
   validateChatEvent,
   validateCommandsListParams,
   validateConnectParams,
+  validateChatSendParams,
   validateModelsListParams,
   validateNodeEventResult,
   validateNodePairRequestParams,
@@ -42,6 +43,33 @@ type CompileMethod = (schema: unknown, meta?: boolean) => unknown;
 type ProtocolValidator = (value: unknown) => boolean;
 
 describe("lazy protocol validators", () => {
+  it("accepts only bounded caller-explicit retrieval requests", () => {
+    const base = {
+      sessionKey: "main",
+      message: "What changed?",
+      idempotencyKey: "chat-retrieval-1",
+    };
+    expect(
+      validateChatSendParams({
+        ...base,
+        retrieval: { corpus: "kakao", query: "What changed?" },
+      }),
+    ).toBe(true);
+    expect(validateChatSendParams(base)).toBe(true);
+    expect(
+      validateChatSendParams({
+        ...base,
+        retrieval: { corpus: "kakao", query: "" },
+      }),
+    ).toBe(false);
+    expect(
+      validateChatSendParams({
+        ...base,
+        retrieval: { corpus: "c".repeat(129), query: "What changed?" },
+      }),
+    ).toBe(false);
+  });
+
   it("compiles on first use and reuses the compiled validator", () => {
     const ajvPrototype = (AjvPkg as unknown as { prototype: { compile: CompileMethod } }).prototype;
     const originalCompile = ajvPrototype.compile;

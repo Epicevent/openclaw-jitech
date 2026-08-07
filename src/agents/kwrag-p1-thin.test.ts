@@ -30,6 +30,7 @@ import {
   assertKwragP1EvidenceCurrent,
   bindKwragP1Evidence,
   mapKwragServerRuntimeHandoff,
+  prepareKwragP1EvidenceForExplicitQuery,
   readKwragP1AttachmentStatus,
   runKwragP1UserTurnProof,
   type KwragP1VerifiedEvidence,
@@ -542,6 +543,44 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
     await expect(runKwragP1UserTurnProof()).rejects.toThrow(/current slot binding/u);
     expect(execFileSyncMock).not.toHaveBeenCalled();
     expect(agentCommandMock).not.toHaveBeenCalled();
+  });
+
+  it("runs the fixed producer for a caller-explicit query with current runtime pins", () => {
+    installBindings(true);
+    execFileSyncMock.mockImplementation((_path, _args, options) =>
+      fixedOutput(JSON.parse(options.input as string)),
+    );
+
+    const evidence = prepareKwragP1EvidenceForExplicitQuery({
+      retrieval: { corpus: "room", query: QUERY },
+      runId: "chat-run-explicit",
+    });
+
+    expect(evidence).toMatchObject({
+      corpus: "room",
+      expectedSourceGeneration: SOURCE,
+      expectedIndexManifest: MANIFEST,
+      pipelineFingerprint: PIPELINE,
+      resultCount: 1,
+    });
+    expect(execFileSyncMock).toHaveBeenCalledOnce();
+    expect(JSON.parse(execFileSyncMock.mock.calls[0]?.[2].input)).toMatchObject({
+      query: QUERY,
+      expected_source_generation: SOURCE,
+      expected_index_manifest: MANIFEST,
+    });
+  });
+
+  it("rejects an enabled binding without a server handoff before producer dispatch", () => {
+    installBindings(true, "ro", authorityReceipt(), fixedBinding(true, {}));
+
+    expect(() =>
+      prepareKwragP1EvidenceForExplicitQuery({
+        retrieval: { corpus: "room", query: QUERY },
+        runId: "chat-run-missing-handoff",
+      }),
+    ).toThrow(/fixed producer binding/u);
+    expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
   it("rejects live authority drift before product or provider dispatch", () => {

@@ -72,6 +72,11 @@ export type KwragServerRuntimeHandoff = {
   embeddingFingerprint: p0.Sha256Digest;
 };
 
+export type KwragExplicitRetrievalRequest = {
+  corpus: string;
+  query: string;
+};
+
 function fail(reason: string): never {
   throw new Error(`KWRAG retrieval violation: ${reason}`);
 }
@@ -589,6 +594,40 @@ function slotRequest(
     expected_index_manifest: current.data.indexManifestDigest,
   };
 }
+
+/** Build evidence for a caller-explicit chat turn from the current slot binding. */
+export function prepareKwragP1EvidenceForExplicitQuery(params: {
+  retrieval: KwragExplicitRetrievalRequest;
+  runId: string;
+}): KwragP1VerifiedEvidence {
+  if (
+    typeof params.retrieval.corpus !== "string" ||
+    !params.retrieval.corpus.trim() ||
+    params.retrieval.corpus.length > 128 ||
+    typeof params.retrieval.query !== "string" ||
+    !params.retrieval.query.trim() ||
+    params.retrieval.query.length > 4_000
+  ) {
+    return fail("caller query is invalid");
+  }
+  if (typeof params.runId !== "string" || !params.runId.trim()) {
+    return fail("caller run id is invalid");
+  }
+  const current = observe();
+  if (!current.enabled) {
+    return fail("current KWRAG binding is disabled");
+  }
+  const request = slotRequest(
+    {
+      corpus: params.retrieval.corpus.trim(),
+      query: params.retrieval.query,
+    },
+    params.runId,
+    current,
+  );
+  return prepare(runProducer(request), current, request);
+}
+
 export async function runKwragP1UserTurnProof() {
   const current = observe();
   if (!current.enabled) {

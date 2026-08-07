@@ -28,6 +28,7 @@ import {
   sendChatMessage,
   sendDetachedChatMessage,
   sendSteerChatMessage,
+  type ChatRetrievalRequest,
   type ChatState,
 } from "./controllers/chat.ts";
 import { loadModels } from "./controllers/models.ts";
@@ -79,6 +80,8 @@ export type ChatHost = ChatInputHistoryState & {
 export type ChatSendOptions = {
   confirmReset?: boolean;
   restoreDraft?: boolean;
+  /** Explicit retrieval request; omitted means no retrieval is attempted. */
+  retrieval?: ChatRetrievalRequest;
 };
 
 export type ChatAbortOptions = {
@@ -186,6 +189,7 @@ function enqueueChatMessage(
   attachments?: ChatAttachment[],
   refreshSessions?: boolean,
   localCommand?: { args: string; name: string },
+  retrieval?: ChatRetrievalRequest,
 ) {
   const trimmed = text.trim();
   const hasAttachments = Boolean(attachments && attachments.length > 0);
@@ -199,6 +203,7 @@ function enqueueChatMessage(
       text: trimmed,
       createdAt: Date.now(),
       attachments: hasAttachments ? cloneChatAttachmentsMetadata(attachments ?? []) : undefined,
+      retrieval,
       refreshSessions,
       localCommandArgs: localCommand?.args,
       localCommandName: localCommand?.name,
@@ -240,12 +245,18 @@ async function sendChatMessageNow(
     previousAttachments?: ChatAttachment[];
     restoreAttachments?: boolean;
     refreshSessions?: boolean;
+    retrieval?: ChatRetrievalRequest;
   },
 ) {
   resetToolStream(host as unknown as Parameters<typeof resetToolStream>[0]);
   // Reset scroll state before sending to ensure auto-scroll works for the response
   resetChatScroll(host as unknown as Parameters<typeof resetChatScroll>[0]);
-  const runId = await sendChatMessage(host as unknown as ChatState, message, opts?.attachments);
+  const runId = await sendChatMessage(
+    host as unknown as ChatState,
+    message,
+    opts?.attachments,
+    opts?.retrieval,
+  );
   const ok = Boolean(runId);
   if (!ok && opts?.previousDraft != null) {
     host.chatMessage = opts.previousDraft;
@@ -481,6 +492,7 @@ async function flushChatQueue(host: ChatHost) {
     } else {
       ok = await sendChatMessageNow(host, next.text, {
         attachments: next.attachments,
+        retrieval: next.retrieval,
         refreshSessions: next.refreshSessions,
       });
     }
@@ -620,7 +632,14 @@ export async function handleSendChat(
       if (messageOverride == null) {
         recordNonTranscriptInputHistory(host, message);
       }
-      enqueueChatMessage(host, message, attachmentsToSend, refreshSessions);
+      enqueueChatMessage(
+        host,
+        message,
+        attachmentsToSend,
+        refreshSessions,
+        undefined,
+        opts?.retrieval,
+      );
       return;
     }
 
@@ -631,6 +650,7 @@ export async function handleSendChat(
       previousAttachments: cleared.previousAttachments,
       restoreAttachments: Boolean(messageOverride && opts?.restoreDraft),
       refreshSessions,
+      retrieval: opts?.retrieval,
     });
   });
 }
