@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import * as p0 from "./kwrag-p0-handoff.js";
 import type { KwragP1VerifiedEvidence } from "./kwrag-p1-thin.js";
@@ -38,25 +38,41 @@ function sha(value: unknown, label: string): p0.Sha256Digest {
   return value as p0.Sha256Digest;
 }
 
-function runProductSearch(
+async function runProductSearch(
   request: KwragProductRetrievalRequest & { runId: string },
-): ProductSearchObservation {
+  signal?: AbortSignal,
+): Promise<ProductSearchObservation> {
   let raw: string;
   try {
-    raw = execFileSync(CLI, ["search"], {
-      encoding: "utf8",
-      input: stableStringify({
-        query: request.query,
-        ...(request.corpus ? { corpus: request.corpus } : {}),
-        request_id: `${request.runId}.request`,
-        operation_id: `${request.runId}.operation`,
-        run_id: request.runId,
-        attempt: 1,
-        max_results: 5,
-      }),
-      maxBuffer: 512 * 1024,
-      timeout: 45_000,
-      windowsHide: true,
+    const input = stableStringify({
+      query: request.query,
+      ...(request.corpus ? { corpus: request.corpus } : {}),
+      request_id: `${request.runId}.request`,
+      operation_id: `${request.runId}.operation`,
+      run_id: request.runId,
+      attempt: 1,
+      max_results: 5,
+    });
+    raw = await new Promise<string>((resolve, reject) => {
+      const child = execFile(
+        CLI,
+        ["search"],
+        {
+          encoding: "utf8",
+          maxBuffer: 512 * 1024,
+          timeout: 45_000,
+          windowsHide: true,
+          signal,
+        },
+        (error, stdout) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(stdout);
+          }
+        },
+      );
+      child.stdin?.end(input);
     });
   } catch {
     throw new Error("KWRAG retrieval violation: product search unavailable");
@@ -94,12 +110,13 @@ function runProductSearch(
   return { output, response, operation, runtime, runtimeDigest, indexManifest, sourceState };
 }
 
-export function prepareKwragProductEvidenceForExplicitQuery(params: {
+export async function prepareKwragProductEvidenceForExplicitQuery(params: {
   retrieval: KwragProductRetrievalRequest;
   runId: string;
   sessionId: string;
   slotInstanceId?: string;
-}): KwragP1VerifiedEvidence {
+  signal?: AbortSignal;
+}): Promise<KwragP1VerifiedEvidence> {
   if (
     !params.retrieval ||
     (params.retrieval.corpus !== undefined &&
@@ -122,7 +139,7 @@ export function prepareKwragProductEvidenceForExplicitQuery(params: {
       : {}),
     query: params.retrieval.query,
     runId: params.runId,
-  });
+  }, params.signal);
   const response = record(observed.response, "product response");
   const operation = record(observed.operation, "operation receipt");
   const runtimeDigest = observed.runtimeDigest;

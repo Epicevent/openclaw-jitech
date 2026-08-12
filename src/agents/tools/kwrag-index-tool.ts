@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { Type } from "typebox";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, ToolInputError } from "./common.js";
@@ -9,7 +9,10 @@ const CLI = process.env.JITECH_KWRAG_PRODUCT_CLI ?? "/opt/jitech/kwrag/bin/kwrag
  * Explicit operator/user action only. Searching never refreshes the index and
  * this tool never accepts a path, digest, or release chosen by the caller.
  */
-export function createKwragIndexTool(): AnyAgentTool {
+export function createKwragIndexTool(): AnyAgentTool | null {
+  if (process.env.JITECH_KWRAG_RUNTIME_PROFILE !== "openclaw") {
+    return null;
+  }
   return {
     label: "Kakao RAG index",
     name: "kwrag_index_build",
@@ -19,14 +22,28 @@ export function createKwragIndexTool(): AnyAgentTool {
       "Do not call for an ordinary question or to invent a query. The source is the slot's " +
       "read-only mount; the index is rebuilt in Workspace.",
     parameters: Type.Object({}, { additionalProperties: false }),
-    execute: async () => {
+    execute: async (_toolCallId, _params, signal) => {
       try {
-        const raw = execFileSync(CLI, ["index-build"], {
-          encoding: "utf8",
-          input: "{}\n",
-          maxBuffer: 256 * 1024,
-          timeout: 120_000,
-          windowsHide: true,
+        const raw = await new Promise<string>((resolve, reject) => {
+          const child = execFile(
+            CLI,
+            ["index-build"],
+            {
+              encoding: "utf8",
+              maxBuffer: 256 * 1024,
+              timeout: 120_000,
+              windowsHide: true,
+              signal,
+            },
+            (error, stdout) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve(stdout);
+              }
+            },
+          );
+          child.stdin?.end("{}\n");
         });
         const output = JSON.parse(raw) as Record<string, unknown>;
         if (output.schema_version !== "kwrag-product-cli-index-build-v1") {

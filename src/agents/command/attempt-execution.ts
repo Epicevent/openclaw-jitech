@@ -489,10 +489,11 @@ export function runAgentAttempt(params: {
   const retrievalEvidence =
     params.opts.retrievalEvidence ??
     (params.opts.retrievalRequest
-      ? prepareKwragProductEvidenceForExplicitQuery({
+      ? await prepareKwragProductEvidenceForExplicitQuery({
           retrieval: params.opts.retrievalRequest,
           runId: params.runId,
           sessionId: params.sessionId,
+          signal: params.opts.abortSignal,
         })
       : undefined);
   assertKwragP1EvidenceInput(retrievalEvidence);

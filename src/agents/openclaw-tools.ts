@@ -465,7 +465,7 @@ export function createOpenClawTools(
       activeModelProvider: options?.modelProvider,
       activeModelId: options?.modelId,
     }),
-    createKwragIndexTool(),
+    ...collectPresentOpenClawTools([createKwragIndexTool()]),
     ...collectPresentOpenClawTools([webSearchTool, webFetchTool, imageTool, pdfTool]),
   ];
   options?.recordToolPrepStage?.("openclaw-tools:core-tool-list");
