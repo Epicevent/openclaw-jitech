@@ -162,19 +162,21 @@ describe("runEmbeddedPiAgent KWRAG P0 handoff", () => {
       resultCount: 1,
     });
     mockedRunEmbeddedAttempt.mockResolvedValueOnce(makeAttemptResult());
+    const abortSignal = new AbortController().signal;
 
     await runEmbeddedPiAgent({
       ...overflowBaseRunParams,
       runId: "run-p0-1",
       transcriptPrompt: "hello",
       retrievalRequest: { corpus: "kakao", query: "find the launch decision" },
+      abortSignal,
     });
 
     expect(kwragProductMocks.prepare).toHaveBeenCalledWith({
       retrieval: { corpus: "kakao", query: "find the launch decision" },
       runId: "run-p0-1",
       sessionId: overflowBaseRunParams.sessionId,
-      signal: overflowBaseRunParams.abortSignal,
+      signal: abortSignal,
     });
     expect(mockedRunEmbeddedAttempt).toHaveBeenCalledOnce();
     expect(firstAttemptParams()).toMatchObject({
