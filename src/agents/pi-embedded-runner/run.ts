@@ -59,6 +59,7 @@ import {
   bindKwragP1Evidence,
   type KwragP1BoundEvidence,
 } from "../kwrag-p1-thin.js";
+import { prepareKwragProductEvidenceForExplicitQuery } from "../kwrag-product.js";
 import { LiveSessionModelSwitchError } from "../live-model-switch-error.js";
 import { shouldSwitchToLiveModel, clearLiveModelSwitchPending } from "../live-model-switch.js";
 import {
@@ -410,15 +411,6 @@ function buildHandledReplyPayloads(reply?: ReplyPayload) {
 export async function runEmbeddedPiAgent(
   params: RunEmbeddedPiAgentParams,
 ): Promise<EmbeddedPiRunResult> {
-  assertKwragP1EvidenceInput(params.retrievalEvidence);
-  if (params.retrievalEvidence !== undefined && params.retrievalHandoff === undefined) {
-    throw new KwragP0HandoffContractError("verified retrieval evidence requires its P0 handoff");
-  }
-  if (params.retrievalEvidence !== undefined && params.transcriptPrompt === undefined) {
-    throw new KwragP0HandoffContractError(
-      "verified retrieval evidence requires a visible transcript prompt",
-    );
-  }
   // Resolve sessionKey early so all downstream consumers (hooks, LCM, compaction)
   // receive a non-null key even when callers omit it. See #60552.
   const effectiveSessionKey = backfillSessionKey({
@@ -553,6 +545,36 @@ export async function runEmbeddedPiAgent(
       });
       startupStages.mark("runtime-plugins");
       notifyExecutionPhase("runtime_plugins");
+
+      if (params.retrievalRequest !== undefined && params.retrievalEvidence === undefined) {
+        if (params.retrievalHandoff !== undefined) {
+          throw new KwragP0HandoffContractError(
+            "caller-explicit retrieval request cannot be combined with a P0 handoff",
+          );
+        }
+        const retrievalEvidence = await prepareKwragProductEvidenceForExplicitQuery({
+          retrieval: params.retrievalRequest,
+          runId: params.runId,
+          sessionId: params.sessionId,
+          signal: params.abortSignal,
+        });
+        params = {
+          ...params,
+          retrievalHandoff: retrievalEvidence.handoff,
+          retrievalEvidence,
+        };
+      }
+      assertKwragP1EvidenceInput(params.retrievalEvidence);
+      if (params.retrievalEvidence !== undefined && params.retrievalHandoff === undefined) {
+        throw new KwragP0HandoffContractError(
+          "verified retrieval evidence requires its P0 handoff",
+        );
+      }
+      if (params.retrievalEvidence !== undefined && params.transcriptPrompt === undefined) {
+        throw new KwragP0HandoffContractError(
+          "verified retrieval evidence requires a visible transcript prompt",
+        );
+      }
 
       let kwragP1Evidence: KwragP1BoundEvidence | undefined;
       if (params.retrievalHandoff !== undefined) {
