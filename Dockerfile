@@ -185,8 +185,8 @@ LABEL com.epicevent.agent-runtime.selftest.name="openclaw-selftest-v1" \
 # Slot-local KWRAG capability. The mounted NAS is the live corpus authority;
 # Workspace indexes are disposable and refreshed by an explicit caller action.
 LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-kwrag-product-cli/v1" \
-  com.epicevent.agent-runtime.retrieval.source-commit="d0960595b4d2eb82a00005f1baebe390fac4cab0" \
-  com.epicevent.agent-runtime.retrieval.wheel-sha256="sha256:f74481268e289f40e0b24cc9727f293fccb83b6e5bdb09ff5c289a7e1d257073" \
+    com.epicevent.agent-runtime.retrieval.source-commit="96a05184b64513f6b51700d587102b184df90a8f" \
+    com.epicevent.agent-runtime.retrieval.wheel-sha256="sha256:3ed2916bff5c7aef0add17cb46b4f00f31979065d7c864f989de42dea748ae90" \
   com.epicevent.agent-runtime.retrieval.build-receipt-sha256="sha256:388cc9105919de2076acd6ca2b261234ebdc19696cd571b6b501ec7d57f696c7" \
   com.epicevent.agent-runtime.retrieval.transport="in_process" \
   com.epicevent.agent-runtime.retrieval.runtime-profile="openclaw" \
