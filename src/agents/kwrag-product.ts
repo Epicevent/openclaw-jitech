@@ -165,7 +165,11 @@ export function prepareKwragProductEvidenceForExplicitQuery(params: {
     },
   };
   const handoffDigest = p0.digestKwragP0Canonical(handoffBody);
-  const promptContext = PREFIX + stableStringify(response.results);
+  const results = response.results;
+  if (!Array.isArray(results) || results.length < 1) {
+    throw new Error("KWRAG retrieval violation: explicit search returned no usable hits");
+  }
+  const promptContext = PREFIX + stableStringify(results);
   return Object.freeze({
     runtimeMode: "live_corpus",
     handoff: {
@@ -186,7 +190,7 @@ export function prepareKwragProductEvidenceForExplicitQuery(params: {
     promptContext,
     contextDigest: digest(promptContext),
     resultDigest,
-    resultCount: response.results.length,
+    resultCount: results.length,
     p1IdentityDigest: runtimeDigest,
     pipelineFingerprint: sha(response.pipeline_fingerprint, "pipeline fingerprint"),
   } as KwragP1VerifiedEvidence & { runtimeMode: "live_corpus" });

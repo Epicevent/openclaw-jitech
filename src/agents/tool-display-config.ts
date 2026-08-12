@@ -347,6 +347,10 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "Memory Get",
       detailKeys: ["path", "from", "lines"],
     },
+    kwrag_index_build: {
+      title: "Kakao RAG Index",
+      detailKeys: ["status", "index_manifest", "source_state_sha256"],
+    },
     web_search: {
       emoji: "🔎",
       title: "Web Search",
