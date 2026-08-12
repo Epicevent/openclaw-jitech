@@ -134,7 +134,7 @@ export type AgentCommandOpts = {
   retrievalHandoff?: KwragP0CallerHandoff;
   retrievalEvidence?: KwragP1VerifiedEvidence;
   /** Caller-explicit live-corpus request; resolved immediately before provider dispatch. */
-  retrievalRequest?: { corpus: string; query: string };
+  retrievalRequest?: { corpus?: string; query: string };
 };
 
 export type AgentCommandIngressOpts = Omit<

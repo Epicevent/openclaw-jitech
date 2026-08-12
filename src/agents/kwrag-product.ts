@@ -10,6 +10,15 @@ const CLI = process.env.JITECH_KWRAG_PRODUCT_CLI ?? "/opt/jitech/kwrag/bin/kwrag
 
 type Json = Record<string, unknown>;
 export type KwragProductRetrievalRequest = { corpus?: string; query: string };
+type ProductSearchObservation = {
+  output: Json;
+  response: Json;
+  operation: Json;
+  runtime: Json;
+  runtimeDigest: p0.Sha256Digest;
+  indexManifest: p0.Sha256Digest;
+  sourceState: p0.Sha256Digest;
+};
 
 function digest(value: unknown): p0.Sha256Digest {
   return `sha256:${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
@@ -29,7 +38,9 @@ function sha(value: unknown, label: string): p0.Sha256Digest {
   return value as p0.Sha256Digest;
 }
 
-function runProductSearch(request: KwragProductRetrievalRequest & { runId: string }): Json {
+function runProductSearch(
+  request: KwragProductRetrievalRequest & { runId: string },
+): ProductSearchObservation {
   let raw: string;
   try {
     raw = execFileSync(CLI, ["search"], {
@@ -112,9 +123,10 @@ export function prepareKwragProductEvidenceForExplicitQuery(params: {
     query: params.retrieval.query,
     runId: params.runId,
   });
-  const response = observed.response;
+  const response = record(observed.response, "product response");
+  const operation = record(observed.operation, "operation receipt");
   const runtimeDigest = observed.runtimeDigest;
-  const operationDigest = sha(observed.operation.digest, "operation receipt digest");
+  const operationDigest = sha(operation.digest, "operation receipt digest");
   const resultDigest = sha(response.result_digest, "result digest");
   const resultId = `${params.runId}.result`;
   const consumptionBody = {

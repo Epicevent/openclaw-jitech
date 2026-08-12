@@ -1796,7 +1796,7 @@
     "markdown-it": "14.1.1",
     "node-edge-tts": "1.2.10",
     "openai": "6.38.0",
-    "pdfjs-dist": "5.7.284",
+    "pdfjs-dist": "6.2.108",
     "playwright-core": "1.60.0",
     "qrcode": "1.5.4",
     "quickjs-wasi": "2.2.0",
@@ -1847,6 +1847,7 @@
     "fast-uri": "3.1.5",
     "follow-redirects": "1.16.0",
     "ip-address": "10.3.1",
+    "nanoid@3": "3.3.17",
     "node-domexception": "npm:@nolyfill/domexception@1.0.28",
     "uuid": "14.0.0"
   },

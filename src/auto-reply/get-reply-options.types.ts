@@ -205,5 +205,5 @@ export type GetReplyOptions = {
   /** Caller-explicit, source-bound Kakao retrieval evidence for this turn. */
   retrievalEvidence?: KwragP1VerifiedEvidence;
   /** Caller-explicit live-corpus request; resolved in the actual agent attempt. */
-  retrievalRequest?: { corpus: string; query: string };
+  retrievalRequest?: { corpus?: string; query: string };
 };

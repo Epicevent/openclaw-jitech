@@ -94,7 +94,7 @@ describe("Dockerfile", () => {
     expect(`sha256:${createHash("sha256").update(wheel).digest("hex")}`).toBe(
       manifest.wheel.sha256,
     );
-    expect(manifest.source.commit).toBe("0d72c1834c7e5545930e90ad6921cd64f7fc0aaf");
+    expect(manifest.source.commit).toBe("a5621c4cb91ca28522be54685ee5abeb5a5360e4");
     expect(manifest.surface.argv).toEqual(["kwrag-product"]);
     expect(manifest.surface.host_ports).toBe(0);
     expect(manifest.surface.network).toBe(false);
