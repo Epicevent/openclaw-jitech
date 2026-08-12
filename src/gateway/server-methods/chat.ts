@@ -1999,7 +1999,13 @@ export const chatHandlers: GatewayRequestHandlers = {
         fileName?: string;
         content?: unknown;
       }>;
-      rag?: { enabled: boolean; scope?: string };
+      rag?: {
+        enabled: boolean;
+        scope?: {
+          sources?: string[];
+          rooms?: Array<{ source: string; roomId: string }>;
+        };
+      };
       timeoutMs?: number;
       systemInputProvenance?: InputProvenance;
       systemProvenanceReceipt?: string;
@@ -2643,7 +2649,7 @@ export const chatHandlers: GatewayRequestHandlers = {
               retrievalRequest:
                 p.rag?.enabled === true
                   ? {
-                      ...(p.rag.scope ? { corpus: p.rag.scope } : {}),
+                      ...(p.rag.scope ? { scope: p.rag.scope } : {}),
                       query: rawMessage,
                     }
                   : undefined,

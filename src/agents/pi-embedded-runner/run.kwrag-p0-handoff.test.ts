@@ -168,12 +168,18 @@ describe("runEmbeddedPiAgent KWRAG P0 handoff", () => {
       ...overflowBaseRunParams,
       runId: "run-p0-1",
       transcriptPrompt: "hello",
-      retrievalRequest: { corpus: "kakao", query: "find the launch decision" },
+      retrievalRequest: {
+        scope: { sources: ["kakao"] },
+        query: "find the launch decision",
+      },
       abortSignal,
     });
 
     expect(kwragProductMocks.prepare).toHaveBeenCalledWith({
-      retrieval: { corpus: "kakao", query: "find the launch decision" },
+      retrieval: {
+        scope: { sources: ["kakao"] },
+        query: "find the launch decision",
+      },
       runId: "run-p0-1",
       sessionId: overflowBaseRunParams.sessionId,
       signal: abortSignal,

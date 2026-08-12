@@ -2899,12 +2899,16 @@ export function renderApp(state: AppViewState) {
                   attachments: state.chatAttachments,
                   onAttachmentsChange: (next) => (state.chatAttachments = next),
                   ragEnabled: state.chatRagEnabled,
-                  ragCorpus: state.chatRagCorpus,
+                  ragSource: state.chatRagSource,
+                  ragRoom: state.chatRagRoom,
                   onToggleRag: () => {
                     state.chatRagEnabled = !state.chatRagEnabled;
                   },
-                  onRagCorpusChange: (corpus) => {
-                    state.chatRagCorpus = corpus;
+                  onRagSourceChange: (source) => {
+                    state.chatRagSource = source;
+                  },
+                  onRagRoomChange: (room) => {
+                    state.chatRagRoom = room;
                   },
                   onSend: () => state.handleSendChat(),
                   onCompact: () => state.handleSendChat("/compact", { restoreDraft: true }),

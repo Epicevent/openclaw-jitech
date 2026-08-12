@@ -52,20 +52,20 @@ describe("lazy protocol validators", () => {
     expect(
       validateChatSendParams({
         ...base,
-        rag: { enabled: true, scope: "kakao" },
+        rag: { enabled: true, scope: { sources: ["kakao"] } },
       }),
     ).toBe(true);
     expect(validateChatSendParams(base)).toBe(true);
     expect(
       validateChatSendParams({
         ...base,
-        rag: { enabled: true, scope: "" },
+        rag: { enabled: true, scope: { sources: [""] } },
       }),
     ).toBe(false);
     expect(
       validateChatSendParams({
         ...base,
-        rag: { enabled: true, scope: "c".repeat(129) },
+        rag: { enabled: true, scope: { rooms: [{ source: "kakao", roomId: "c".repeat(257) }] } },
       }),
     ).toBe(false);
   });

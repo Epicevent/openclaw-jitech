@@ -7,13 +7,28 @@ export type ChatAttachment = {
   sizeBytes?: number;
 };
 
+export type ChatRagRoomScope = {
+  source: string;
+  roomId: string;
+};
+
+export type ChatRagScope = {
+  sources?: string[];
+  rooms?: ChatRagRoomScope[];
+};
+
+export type ChatRagRequest = {
+  enabled: boolean;
+  scope?: ChatRagScope;
+};
+
 export type ChatQueueItem = {
   id: string;
   text: string;
   createdAt: number;
   kind?: "queued" | "steered";
   attachments?: ChatAttachment[];
-  rag?: { enabled: boolean; scope?: string };
+  rag?: ChatRagRequest;
   refreshSessions?: boolean;
   localCommandArgs?: string;
   localCommandName?: string;

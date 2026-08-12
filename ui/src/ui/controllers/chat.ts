@@ -12,7 +12,12 @@ import { reconcileChatRunLifecycle } from "../chat/run-lifecycle.ts";
 import { formatConnectError } from "../connect-error.ts";
 import { GatewayRequestError, type GatewayBrowserClient } from "../gateway.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
-import type { ChatAttachment } from "../ui-types.ts";
+import type {
+  ChatAttachment,
+  ChatRagRequest,
+  ChatRagRoomScope,
+  ChatRagScope,
+} from "../ui-types.ts";
 import { generateUUID } from "../uuid.ts";
 import {
   formatMissingOperatorReadScopeMessage,
@@ -28,10 +33,29 @@ const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
 const chatHistoryRequestVersions = new WeakMap<object, number>();
 
-export type ChatRagRequest = {
-  enabled: boolean;
-  scope?: string;
-};
+export type { ChatRagRequest, ChatRagRoomScope, ChatRagScope } from "../ui-types.ts";
+
+export function buildChatRagScope(sourceText: string, roomText: string): ChatRagScope | undefined {
+  const sources = sourceText
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const room = roomText.trim();
+  const roomSeparator = room.indexOf(":");
+  const roomSource = roomSeparator > 0 ? room.slice(0, roomSeparator).trim() : "";
+  const roomId = roomSeparator > 0 ? room.slice(roomSeparator + 1).trim() : room;
+  const resolvedRoomSource = roomSource || (sources.length === 1 ? sources[0] : "");
+  const rooms = resolvedRoomSource && roomId
+    ? [{ source: resolvedRoomSource, roomId }]
+    : undefined;
+  if (sources.length === 0 && rooms === undefined) {
+    return undefined;
+  }
+  return {
+    ...(sources.length > 0 ? { sources } : {}),
+    ...(rooms ? { rooms } : {}),
+  };
+}
 
 function beginChatHistoryRequest(state: ChatState): number {
   const key = state as object;
@@ -280,7 +304,8 @@ export type ChatState = {
   chatAttachments: ChatAttachment[];
   /** Visible, default-off per-turn RAG switch. */
   chatRagEnabled: boolean;
-  chatRagCorpus: string;
+  chatRagSource: string;
+  chatRagRoom: string;
   chatRunId: string | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
@@ -588,10 +613,10 @@ export async function sendChatMessage(
       rag:
         rag ??
         (state.chatRagEnabled
-          ? {
-              enabled: true,
-              ...(state.chatRagCorpus.trim() ? { scope: state.chatRagCorpus.trim() } : {}),
-            }
+          ? (() => {
+              const scope = buildChatRagScope(state.chatRagSource, state.chatRagRoom);
+              return { enabled: true, ...(scope ? { scope } : {}) };
+            })()
           : undefined),
       runId,
     });

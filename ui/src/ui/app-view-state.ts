@@ -93,7 +93,8 @@ export type AppViewState = {
   chatAttachments: ChatAttachment[];
   /** Visible, default-off per-turn RAG switch. */
   chatRagEnabled: boolean;
-  chatRagCorpus: string;
+  chatRagSource: string;
+  chatRagRoom: string;
   chatMessages: unknown[];
   chatToolMessages: unknown[];
   chatStreamSegments: Array<{ text: string; ts: number }>;

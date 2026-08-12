@@ -8,6 +8,7 @@ import type { InputProvenance } from "../../sessions/input-provenance.js";
 import type { ExecElevatedDefaults } from "../bash-tools.exec-types.js";
 import type { KwragP0CallerHandoff } from "../kwrag-p0-handoff.js";
 import type { KwragP1VerifiedEvidence } from "../kwrag-p1-thin.js";
+import type { KwragProductRetrievalRequest } from "../kwrag-product.js";
 import type { AgentStreamParams, ClientToolDefinition } from "./shared-types.js";
 
 /** Image content block for Claude API multimodal messages. */
@@ -134,7 +135,7 @@ export type AgentCommandOpts = {
   retrievalHandoff?: KwragP0CallerHandoff;
   retrievalEvidence?: KwragP1VerifiedEvidence;
   /** Caller-explicit live-corpus request; resolved immediately before provider dispatch. */
-  retrievalRequest?: { corpus?: string; query: string };
+  retrievalRequest?: KwragProductRetrievalRequest;
 };
 
 export type AgentCommandIngressOpts = Omit<
