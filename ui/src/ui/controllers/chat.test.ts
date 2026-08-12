@@ -22,6 +22,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     chatMessage: "",
     chatMessages: [],
     chatRunId: null,
+    chatRagEnabled: false,
+    chatRagCorpus: "",
     chatSending: false,
     chatStream: null,
     chatStreamStartedAt: null,
@@ -997,6 +999,26 @@ describe("sendChatMessage", () => {
     expect(sendParams.sessionKey).toBe("main");
     expect(sendParams.sessionId).toBe("session-before-reconnect");
     expect(sendParams.message).toBe("continue");
+  });
+
+  it("preserves the visible RAG scope in chat.send", async () => {
+    const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
+    const state = createState({
+      connected: true,
+      client: { request } as unknown as ChatState["client"],
+    });
+
+    await sendChatMessage(state, "find the retention policy", undefined, {
+      enabled: true,
+      scope: "kakao-user",
+    });
+
+    const [requestMethod, requestParams] = requireFirstRequestCall(request);
+    expect(requestMethod).toBe("chat.send");
+    expect(requireRecord(requestParams).rag).toEqual({
+      enabled: true,
+      scope: "kakao-user",
+    });
   });
 
   it("serializes non-image chat attachments as files", async () => {

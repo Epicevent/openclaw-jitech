@@ -45,6 +45,15 @@ export const ChatSendParamsSchema = Type.Object(
     originatingAccountId: Type.Optional(Type.String()),
     originatingThreadId: Type.Optional(Type.String()),
     attachments: Type.Optional(Type.Array(Type.Unknown())),
+    rag: Type.Optional(
+      Type.Object(
+        {
+          enabled: Type.Boolean(),
+          scope: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+        },
+        { additionalProperties: false },
+      ),
+    ),
     timeoutMs: Type.Optional(Type.Integer({ minimum: 0 })),
     systemInputProvenance: Type.Optional(InputProvenanceSchema),
     systemProvenanceReceipt: Type.Optional(Type.String()),

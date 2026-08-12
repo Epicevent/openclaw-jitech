@@ -318,6 +318,7 @@ function resolveActiveChatSendRunId(value: unknown): string | null {
 function buildActiveChatSendDedupeKey(params: {
   attachmentCount: number;
   explicitDeliverRoute: boolean;
+  hasExplicitRetrieval: boolean;
   message: string;
   originatingChannel: string;
   sessionKey: string;
@@ -328,6 +329,7 @@ function buildActiveChatSendDedupeKey(params: {
     message.startsWith("/") ||
     params.attachmentCount > 0 ||
     params.explicitDeliverRoute ||
+    params.hasExplicitRetrieval ||
     normalizeMessageChannel(params.originatingChannel) !== INTERNAL_MESSAGE_CHANNEL
   ) {
     return null;
@@ -1997,6 +1999,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         fileName?: string;
         content?: unknown;
       }>;
+      rag?: { enabled: boolean; scope?: string };
       timeoutMs?: number;
       systemInputProvenance?: InputProvenance;
       systemProvenanceReceipt?: string;
@@ -2174,6 +2177,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     const activeChatSendDedupeKey = buildActiveChatSendDedupeKey({
       attachmentCount: normalizedAttachments.length,
       explicitDeliverRoute: originatingRoute.explicitDeliverRoute,
+      hasExplicitRetrieval: p.rag?.enabled === true,
       message: rawMessage,
       originatingChannel: originatingRoute.originatingChannel,
       sessionKey,
@@ -2636,6 +2640,13 @@ export const chatHandlers: GatewayRequestHandlers = {
               imageOrder: imageOrder.length > 0 ? imageOrder : undefined,
               modelOverride,
               modelOverrideFallbacks,
+              retrievalRequest:
+                p.rag?.enabled === true
+                  ? {
+                      ...(p.rag.scope ? { corpus: p.rag.scope } : {}),
+                      query: rawMessage,
+                    }
+                  : undefined,
               thinkingLevelOverride: p.thinking,
               fastModeOverride: p.fastMode,
               onAgentRunStart: (runId) => {

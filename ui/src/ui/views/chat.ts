@@ -132,7 +132,11 @@ export type ChatProps = {
   assistantAttachmentAuthToken?: string | null;
   autoExpandToolCalls?: boolean;
   attachments?: ChatAttachment[];
+  ragEnabled?: boolean;
+  ragCorpus?: string;
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
+  onToggleRag?: () => void;
+  onRagCorpusChange?: (corpus: string) => void;
   showNewMessages?: boolean;
   onScrollToBottom?: () => void;
   onRefresh: () => void;
@@ -1531,6 +1535,40 @@ export function renderChat(props: ChatProps) {
                   >
                     ${icons.settings}
                   </button>
+                `
+              : nothing}
+            ${props.onToggleRag
+              ? html`
+                  <button
+                    class="agent-chat__input-btn ${props.ragEnabled
+                      ? "agent-chat__input-btn--active"
+                      : ""}"
+                    @click=${props.onToggleRag}
+                    title=${props.ragEnabled
+                      ? "Kakao RAG on: current question uses the mounted corpus"
+                      : "Kakao RAG off"}
+                    aria-label="Kakao RAG"
+                    ?disabled=${!props.connected}
+                  >
+                    <span class="agent-chat__control-label"
+                      >Kakao RAG${props.ragEnabled ? " ON" : " OFF"}</span
+                    >
+                  </button>
+                  ${props.ragEnabled
+                    ? html`
+                        <select
+                          class="agent-chat__input-btn"
+                          aria-label="Kakao RAG corpus"
+                          .value=${props.ragCorpus ?? ""}
+                          @change=${(event: Event) =>
+                            props.onRagCorpusChange?.(
+                              (event.currentTarget as HTMLSelectElement).value,
+                            )}
+                        >
+                          <option value="">All mounted Kakao</option>
+                        </select>
+                      `
+                    : nothing}
                 `
               : nothing}
             ${tokens ? html`<span class="agent-chat__token-count">${tokens}</span>` : nothing}

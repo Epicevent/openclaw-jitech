@@ -13,6 +13,7 @@ export type ChatQueueItem = {
   createdAt: number;
   kind?: "queued" | "steered";
   attachments?: ChatAttachment[];
+  rag?: { enabled: boolean; scope?: string };
   refreshSessions?: boolean;
   localCommandArgs?: string;
   localCommandName?: string;

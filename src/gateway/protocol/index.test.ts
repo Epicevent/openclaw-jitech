@@ -7,6 +7,7 @@ import {
   validateChatEvent,
   validateCommandsListParams,
   validateConnectParams,
+  validateChatSendParams,
   validateModelsListParams,
   validateNodeEventResult,
   validateNodePairRequestParams,
@@ -42,6 +43,33 @@ type CompileMethod = (schema: unknown, meta?: boolean) => unknown;
 type ProtocolValidator = (value: unknown) => boolean;
 
 describe("lazy protocol validators", () => {
+  it("accepts only bounded visible RAG controls", () => {
+    const base = {
+      sessionKey: "main",
+      message: "What changed?",
+      idempotencyKey: "chat-rag-1",
+    };
+    expect(
+      validateChatSendParams({
+        ...base,
+        rag: { enabled: true, scope: "kakao" },
+      }),
+    ).toBe(true);
+    expect(validateChatSendParams(base)).toBe(true);
+    expect(
+      validateChatSendParams({
+        ...base,
+        rag: { enabled: true, scope: "" },
+      }),
+    ).toBe(false);
+    expect(
+      validateChatSendParams({
+        ...base,
+        rag: { enabled: true, scope: "c".repeat(129) },
+      }),
+    ).toBe(false);
+  });
+
   it("compiles on first use and reuses the compiled validator", () => {
     const ajvPrototype = (AjvPkg as unknown as { prototype: { compile: CompileMethod } }).prototype;
     const originalCompile = ajvPrototype.compile;

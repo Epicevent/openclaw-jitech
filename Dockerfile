@@ -182,29 +182,17 @@ LABEL com.epicevent.agent-runtime.selftest.name="openclaw-selftest-v1" \
   com.epicevent.agent-runtime.selftest.command="node dist/index.js selftest --json" \
   com.epicevent.agent-runtime.selftest.timeout="120"
 
-# Exact slot-local KWRAG capability. Retrieval stays caller-explicit and default-off;
-# these labels bind the packaged component and its fixed content-free verifier.
-LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-embedded-retrieval/v1" \
-  com.epicevent.agent-runtime.retrieval.component-digest="sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0" \
-  com.epicevent.agent-runtime.retrieval.contract-digest="sha256:9b6d60d1d72ffa7097a93a53c841107f5f7e39dd27dfd4cbb7c07f0207a5f4d5" \
-  com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0" \
-  com.epicevent.agent-runtime.retrieval.source-archive-digest="sha256:ebe835d005f79860d44d111c15f103b1239d0668bc3e2aaa64435a31eb7325a0" \
-  com.epicevent.agent-runtime.retrieval.source-revision="320d19fdf44010364d6abd53377105404e54fa36" \
+# Slot-local KWRAG capability. The mounted NAS is the live corpus authority;
+# Workspace indexes are disposable and refreshed by an explicit caller action.
+LABEL com.epicevent.agent-runtime.retrieval.schema="jitech-kwrag-product-cli/v1" \
   com.epicevent.agent-runtime.retrieval.transport="in_process" \
+  com.epicevent.agent-runtime.retrieval.runtime-profile="openclaw" \
   com.epicevent.agent-runtime.retrieval.default-enabled="false" \
   com.epicevent.agent-runtime.retrieval.host-port-count="0" \
   com.epicevent.agent-runtime.retrieval.nas-read-only="true" \
-  com.epicevent.agent-runtime.retrieval.resource.json="{\"cpuReservationMillicores\":500,\"gpuAccess\":\"none\",\"memoryReservationBytes\":536870912,\"pidsReservation\":64,\"profileDigest\":\"sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed\"}" \
-  com.epicevent.agent-runtime.retrieval.verify-command.json="[\"openclaw\",\"kwrag-p0\",\"p1-attachment-status\",\"--json\"]" \
-  com.epicevent.openclaw.kwrag.p1.attachment-decision-digest="sha256:fd4d1068407d0b28d41e7813f8cef7b193a5fe43f39db166588911e6fde3bbb5" \
-  com.epicevent.openclaw.kwrag.p1.caller-explicit="true" \
-  com.epicevent.openclaw.kwrag.p1.component-manifest-digest="sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0c84f3264d0" \
-  com.epicevent.openclaw.kwrag.p1.component-wheel-digest="sha256:c66c0c1ded1ee5de64ea85cfe14fd401f44c990cb9750c8873b495c08982e1f8" \
-  com.epicevent.openclaw.kwrag.p1.python-runtime-digest="${OPENCLAW_PYTHON_BOOKWORM_SLIM_DIGEST}" \
-  com.epicevent.openclaw.kwrag.p1.python-version="3.12.13" \
-  com.epicevent.openclaw.kwrag.p1.default-enabled="false" \
-  com.epicevent.openclaw.kwrag.p1.status-schema="jitech-embedded-retrieval-attachment-status/v1" \
-  com.epicevent.openclaw.kwrag.p1.verify-command.json="[\"openclaw\",\"kwrag-p0\",\"p1-attachment-status\",\"--json\"]"
+  com.epicevent.agent-runtime.retrieval.index-build-command.json="[\"kwrag-product\",\"index-build\"]" \
+  com.epicevent.agent-runtime.retrieval.search-command.json="[\"kwrag-product\",\"search\"]" \
+  com.epicevent.agent-runtime.retrieval.index-admission="mounted-corpus-only"
 
 # Self-contained config contract: the image declares how to validate and migrate its own
 # on-disk config. agent-runtime-ops runs `config-validate.command` against the on-disk
@@ -233,13 +221,15 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
       libreadline8 libsqlite3-0 libtirpc3 lsof netbase openssl procps readline-common tini && \
     update-ca-certificates
 
-COPY runtime-components/kwrag/kwrag_product_service-0.2.0-py3-none-any.whl /tmp/kwrag.whl
+COPY runtime-components/kwrag/kwrag_product_service-0.5.0-py3-none-any.whl /tmp/kwrag.whl
 COPY runtime-components/kwrag/component-manifest.json /opt/jitech/kwrag/component-manifest.json
-COPY runtime-components/kwrag/kwrag-fixed-producer /opt/jitech/kwrag/bin/kwrag-fixed-producer
+COPY runtime-components/kwrag/kwrag-product /opt/jitech/kwrag/bin/kwrag-product
 RUN python3 -m zipfile -e /tmp/kwrag.whl /opt/jitech/kwrag/lib && \
     rm -f /tmp/kwrag.whl && \
     chmod -R a+rX /opt/jitech/kwrag/lib /opt/jitech/kwrag/component-manifest.json && \
-    chmod 0755 /opt/jitech/kwrag/bin/kwrag-fixed-producer
+    chmod 0755 /opt/jitech/kwrag/bin/kwrag-product
+
+ENV JITECH_KWRAG_RUNTIME_PROFILE=openclaw
 
 RUN chown node:node /app
 

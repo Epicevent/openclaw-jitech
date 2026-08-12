@@ -1,4 +1,5 @@
 import type { ImageContent } from "@earendil-works/pi-ai";
+import type { KwragP1VerifiedEvidence } from "../agents/kwrag-p1-thin.js";
 import type { PromptImageOrderEntry } from "../media/prompt-image-order.js";
 import type { ReplyPayload } from "./reply-payload.js";
 import type { TypingController } from "./reply/typing.js";
@@ -201,4 +202,8 @@ export type GetReplyOptions = {
   modelOverride?: string;
   /** Capability-checked runtime fallbacks for the one-turn image model override. */
   modelOverrideFallbacks?: string[];
+  /** Caller-explicit, source-bound Kakao retrieval evidence for this turn. */
+  retrievalEvidence?: KwragP1VerifiedEvidence;
+  /** Caller-explicit live-corpus request; resolved in the actual agent attempt. */
+  retrievalRequest?: { corpus?: string; query: string };
 };

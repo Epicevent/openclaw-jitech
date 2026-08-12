@@ -6280,6 +6280,7 @@ public struct ChatSendParams: Codable, Sendable {
     public let originatingaccountid: String?
     public let originatingthreadid: String?
     public let attachments: [AnyCodable]?
+    public let rag: [String: AnyCodable]?
     public let timeoutms: Int?
     public let systeminputprovenance: [String: AnyCodable]?
     public let systemprovenancereceipt: String?
@@ -6297,6 +6298,7 @@ public struct ChatSendParams: Codable, Sendable {
         originatingaccountid: String?,
         originatingthreadid: String?,
         attachments: [AnyCodable]?,
+        rag: [String: AnyCodable]?,
         timeoutms: Int?,
         systeminputprovenance: [String: AnyCodable]?,
         systemprovenancereceipt: String?,
@@ -6313,6 +6315,7 @@ public struct ChatSendParams: Codable, Sendable {
         self.originatingaccountid = originatingaccountid
         self.originatingthreadid = originatingthreadid
         self.attachments = attachments
+        self.rag = rag
         self.timeoutms = timeoutms
         self.systeminputprovenance = systeminputprovenance
         self.systemprovenancereceipt = systemprovenancereceipt
@@ -6331,6 +6334,7 @@ public struct ChatSendParams: Codable, Sendable {
         case originatingaccountid = "originatingAccountId"
         case originatingthreadid = "originatingThreadId"
         case attachments
+        case rag
         case timeoutms = "timeoutMs"
         case systeminputprovenance = "systemInputProvenance"
         case systemprovenancereceipt = "systemProvenanceReceipt"

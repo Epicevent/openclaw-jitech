@@ -1106,6 +1106,12 @@ export async function runAgentTurnWithFallback(params: {
   toolProgressDetail?: "explain" | "raw";
   replyMediaContext?: ReplyMediaContext;
 }): Promise<AgentRunLoopResult> {
+  if (
+    (params.opts?.retrievalEvidence !== undefined || params.opts?.retrievalRequest !== undefined) &&
+    !params.transcriptCommandBody
+  ) {
+    throw new Error("caller-explicit retrieval evidence requires a visible transcript prompt");
+  }
   const TRANSIENT_HTTP_RETRY_DELAY_MS = 2_500;
   let didLogHeartbeatStrip = false;
   let autoCompactionCount = 0;
@@ -1658,6 +1664,12 @@ export async function runAgentTurnWithFallback(params: {
                 provider);
 
           if (isCliProvider(cliExecutionProvider, runtimeConfig)) {
+            if (
+              params.opts?.retrievalEvidence !== undefined ||
+              params.opts?.retrievalRequest !== undefined
+            ) {
+              throw new Error("caller-explicit retrieval evidence requires the embedded PI runner");
+            }
             const isRoomEventCliRun = params.followupRun.currentInboundEventKind === "room_event";
             const cliSessionBinding = isRoomEventCliRun
               ? undefined
@@ -1821,6 +1833,9 @@ export async function runAgentTurnWithFallback(params: {
                 sandboxSessionKey: params.runtimePolicySessionKey,
                 prompt: params.commandBody,
                 transcriptPrompt: params.transcriptCommandBody,
+                retrievalHandoff: params.opts?.retrievalEvidence?.handoff,
+                retrievalEvidence: params.opts?.retrievalEvidence,
+                retrievalRequest: params.opts?.retrievalRequest,
                 currentInboundEventKind: params.followupRun.currentInboundEventKind,
                 currentInboundContext: params.followupRun.currentInboundContext,
                 extraSystemPrompt: params.followupRun.run.extraSystemPrompt,

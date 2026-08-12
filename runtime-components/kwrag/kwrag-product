@@ -1,0 +1,10 @@
+#!/usr/local/bin/python3
+import sys
+
+sys.path.insert(0, "/opt/jitech/kwrag/lib")
+
+from kwrag.product_cli import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

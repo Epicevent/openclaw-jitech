@@ -28,6 +28,7 @@ import {
   sendChatMessage,
   sendDetachedChatMessage,
   sendSteerChatMessage,
+  type ChatRagRequest,
   type ChatState,
 } from "./controllers/chat.ts";
 import { loadModels } from "./controllers/models.ts";
@@ -48,6 +49,9 @@ export type ChatHost = ChatInputHistoryState & {
   chatStream: string | null;
   connected: boolean;
   chatAttachments: ChatAttachment[];
+  /** Visible, default-off per-turn RAG switch. */
+  chatRagEnabled: boolean;
+  chatRagCorpus: string;
   chatQueue: ChatQueueItem[];
   chatRunId: string | null;
   chatSending: boolean;
@@ -79,6 +83,8 @@ export type ChatHost = ChatInputHistoryState & {
 export type ChatSendOptions = {
   confirmReset?: boolean;
   restoreDraft?: boolean;
+  /** Visible RAG control; omitted means no retrieval is attempted. */
+  rag?: ChatRagRequest;
 };
 
 export type ChatAbortOptions = {
@@ -186,6 +192,7 @@ function enqueueChatMessage(
   attachments?: ChatAttachment[],
   refreshSessions?: boolean,
   localCommand?: { args: string; name: string },
+  rag?: ChatRagRequest,
 ) {
   const trimmed = text.trim();
   const hasAttachments = Boolean(attachments && attachments.length > 0);
@@ -199,6 +206,7 @@ function enqueueChatMessage(
       text: trimmed,
       createdAt: Date.now(),
       attachments: hasAttachments ? cloneChatAttachmentsMetadata(attachments ?? []) : undefined,
+      rag,
       refreshSessions,
       localCommandArgs: localCommand?.args,
       localCommandName: localCommand?.name,
@@ -240,12 +248,18 @@ async function sendChatMessageNow(
     previousAttachments?: ChatAttachment[];
     restoreAttachments?: boolean;
     refreshSessions?: boolean;
+    rag?: ChatRagRequest;
   },
 ) {
   resetToolStream(host as unknown as Parameters<typeof resetToolStream>[0]);
   // Reset scroll state before sending to ensure auto-scroll works for the response
   resetChatScroll(host as unknown as Parameters<typeof resetChatScroll>[0]);
-  const runId = await sendChatMessage(host as unknown as ChatState, message, opts?.attachments);
+  const runId = await sendChatMessage(
+    host as unknown as ChatState,
+    message,
+    opts?.attachments,
+    opts?.rag,
+  );
   const ok = Boolean(runId);
   if (!ok && opts?.previousDraft != null) {
     host.chatMessage = opts.previousDraft;
@@ -450,6 +464,7 @@ export async function steerQueuedChatMessage(host: ChatHost, id: string) {
     host as unknown as ChatState,
     message,
     hasAttachments ? attachments : undefined,
+    item.rag,
   );
   if (!runId) {
     host.chatQueue = host.chatQueue.map((entry) => (entry.id === id ? item : entry));
@@ -481,6 +496,7 @@ async function flushChatQueue(host: ChatHost) {
     } else {
       ok = await sendChatMessageNow(host, next.text, {
         attachments: next.attachments,
+        rag: next.rag,
         refreshSessions: next.refreshSessions,
       });
     }
@@ -620,7 +636,14 @@ export async function handleSendChat(
       if (messageOverride == null) {
         recordNonTranscriptInputHistory(host, message);
       }
-      enqueueChatMessage(host, message, attachmentsToSend, refreshSessions);
+      enqueueChatMessage(
+        host,
+        message,
+        attachmentsToSend,
+        refreshSessions,
+        undefined,
+        opts?.rag,
+      );
       return;
     }
 
@@ -631,6 +654,7 @@ export async function handleSendChat(
       previousAttachments: cleared.previousAttachments,
       restoreAttachments: Boolean(messageOverride && opts?.restoreDraft),
       refreshSessions,
+      rag: opts?.rag,
     });
   });
 }
