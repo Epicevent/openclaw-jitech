@@ -133,7 +133,7 @@ export async function prepareKwragProductEvidenceForExplicitQuery(params: {
   ) {
     throw new Error("KWRAG retrieval violation: explicit retrieval request is invalid");
   }
-  const observed = runProductSearch({
+  const observed = await runProductSearch({
     ...(params.retrieval.corpus
       ? { corpus: params.retrieval.corpus.trim() }
       : {}),

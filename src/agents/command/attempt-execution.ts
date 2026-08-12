@@ -367,7 +367,7 @@ export async function persistCliTurnTranscript(params: {
   });
 }
 
-export function runAgentAttempt(params: {
+export async function runAgentAttempt(params: {
   providerOverride: string;
   modelOverride: string;
   originalProvider: string;

@@ -23,7 +23,7 @@ describe("product-native live-corpus retrieval", () => {
       pipeline_fingerprint: "sha256:" + "2".repeat(64),
       source_state_sha256: "sha256:" + "3".repeat(64),
     };
-    const response = {
+    const response: Record<string, unknown> = {
       index_manifest: runtime.index_manifest,
       pipeline_fingerprint: runtime.pipeline_fingerprint,
       result_status: "hits",

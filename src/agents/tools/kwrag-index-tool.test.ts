@@ -39,6 +39,9 @@ describe("kwrag_index_build", () => {
 
   it("uses the fixed shell-free refresh command with no caller path", async () => {
     const tool = createKwragIndexTool();
+    if (!tool) {
+      throw new Error("expected product tool");
+    }
     const result = await tool.execute("call-1", {});
     expect(execFileMock).toHaveBeenCalledOnce();
     expect(execFileMock.mock.calls[0]?.[1]).toEqual(["index-build"]);
