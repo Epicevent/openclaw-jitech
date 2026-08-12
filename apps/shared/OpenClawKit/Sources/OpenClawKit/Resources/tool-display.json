@@ -500,7 +500,7 @@
       ]
     },
     "kwrag_index_build": {
-      "title": "Kakao RAG Index",
+      "title": "RAG Index",
       "detailKeys": [
         "status",
         "index_manifest",

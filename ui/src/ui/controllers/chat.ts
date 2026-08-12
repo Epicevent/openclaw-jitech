@@ -15,7 +15,6 @@ import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type {
   ChatAttachment,
   ChatRagRequest,
-  ChatRagRoomScope,
   ChatRagScope,
 } from "../ui-types.ts";
 import { generateUUID } from "../uuid.ts";
@@ -33,7 +32,7 @@ const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
 const chatHistoryRequestVersions = new WeakMap<object, number>();
 
-export type { ChatRagRequest, ChatRagRoomScope, ChatRagScope } from "../ui-types.ts";
+export type { ChatRagRequest, ChatRagScope } from "../ui-types.ts";
 
 export function buildChatRagScope(sourceText: string, roomText: string): ChatRagScope | undefined {
   const sources = sourceText
