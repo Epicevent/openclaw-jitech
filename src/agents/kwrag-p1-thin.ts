@@ -278,7 +278,7 @@ function observe() {
     instanceId: value.instanceId,
     bindingDigest: digest(value),
     p1IdentityDigest: digest(identity),
-    pipelineFingerprint: identity.pipelineFingerprint as p0.Sha256Digest,
+    pipelineFingerprint: identity.pipelineFingerprint,
     serverHandoff,
     data: data as Record<string, string> | null,
     corpora: corpusBindings,
