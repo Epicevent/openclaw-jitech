@@ -1345,7 +1345,14 @@ describe("handleSendChat", () => {
       client: { request } as unknown as ChatHost["client"],
       chatRunId: "run-1",
       chatStream: "Working...",
-      chatQueue: [{ id: "queued-1", text: "tighten the plan", createdAt: 1 }],
+      chatQueue: [
+        {
+          id: "queued-1",
+          text: "tighten the plan",
+          createdAt: 1,
+          rag: { enabled: true, scope: "kakao" },
+        },
+      ],
       sessionKey: "agent:main:main",
     });
 
@@ -1365,6 +1372,7 @@ describe("handleSendChat", () => {
       deliver: false,
       idempotencyKey,
       attachments: undefined,
+      rag: { enabled: true, scope: "kakao" },
     });
     expect(host.chatRunId).toBe("run-1");
     expect(host.chatStream).toBe("Working...");

@@ -464,6 +464,7 @@ export async function steerQueuedChatMessage(host: ChatHost, id: string) {
     host as unknown as ChatState,
     message,
     hasAttachments ? attachments : undefined,
+    item.rag,
   );
   if (!runId) {
     host.chatQueue = host.chatQueue.map((entry) => (entry.id === id ? item : entry));
