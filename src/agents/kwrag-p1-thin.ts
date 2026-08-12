@@ -18,6 +18,9 @@ const COMPONENT = "sha256:048013bd4066099b0cb0d9aaa1684461c0cd6bb003193cbe7ef8f0
 const CONTRACT = "sha256:9b6d60d1d72ffa7097a93a53c841107f5f7e39dd27dfd4cbb7c07f0207a5f4d5";
 const RESOURCE = "sha256:2d4ff46a2d76e712421a9758ecb0ae1d262e2d42ea00cee888c103477e6709ed";
 const SHA = /^sha256:[0-9a-f]{64}$/u;
+function isSha(value: unknown): value is p0.Sha256Digest {
+  return typeof value === "string" && SHA.test(value);
+}
 const BINDING_KEYS =
   "attachmentData,componentDigest,containerNasRoot,contractDigest,enabled,expected_source_generation,family,hostPortCount,instanceId,mountReadOnly,p1Identity,proofMode,resourceProfileDigest,runtimeProfileDigest,schema,transport";
 const FIXED_BINDING_KEYS =
@@ -201,16 +204,16 @@ function observe() {
     value.resourceProfileDigest !== RESOURCE ||
     !SHA.test(String(value.expected_source_generation)) ||
     !SHA.test(String(value.runtimeProfileDigest)) ||
-    !SHA.test(String(identity.pipelineFingerprint)) ||
+    !isSha(identity.pipelineFingerprint) ||
     (identity.embeddingFingerprint !== undefined &&
-      !SHA.test(String(identity.embeddingFingerprint))) ||
+      !isSha(identity.embeddingFingerprint)) ||
     (identity.status !== undefined && (typeof identity.status !== "string" || !identity.status)) ||
     (identity.backendId !== undefined &&
       (typeof identity.backendId !== "string" || !identity.backendId)) ||
     (identity.pipelineFactoryDigest !== undefined &&
-      !SHA.test(String(identity.pipelineFactoryDigest))) ||
+      !isSha(identity.pipelineFactoryDigest)) ||
     (identity.researchDecisionDigest !== undefined &&
-      !SHA.test(String(identity.researchDecisionDigest))) ||
+      !isSha(identity.researchDecisionDigest)) ||
     (enabled && (!data || Object.values(data).some((item) => !SHA.test(String(item))))) ||
     (!enabled && value.attachmentData !== null) ||
     !readFileSync("/proc/self/mountinfo", "utf8")

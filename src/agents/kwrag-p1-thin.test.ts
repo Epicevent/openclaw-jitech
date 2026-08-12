@@ -74,7 +74,7 @@ const AUTHORITY = `sha256:${createHash("sha256")
 
 function fixedBinding(
   enabled: boolean,
-  selectedEngine: Record<string, unknown> | undefined = undefined,
+  selectedEngine?: Record<string, unknown>,
   sourceGeneration = SOURCE,
   sourceSnapshot = SOURCE,
 ) {
