@@ -27,9 +27,9 @@ describe("product-native live-corpus retrieval", () => {
       index_manifest: runtime.index_manifest,
       pipeline_fingerprint: runtime.pipeline_fingerprint,
       result_status: "hits",
-      result_digest: "sha256:" + "4".repeat(64),
       results: [{ source_id: "source-1", score: 0.9 }],
     };
+    response.result_digest = sha(response.results);
     execFileMock.mockImplementation(
       (
         _path: string,
