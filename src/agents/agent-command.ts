@@ -1146,7 +1146,8 @@ async function agentCommandInternal(
               workspaceDir,
             });
           },
-          fallbacksOverride: opts.retrievalEvidence ? [] : effectiveFallbacksOverride,
+          fallbacksOverride:
+            opts.retrievalEvidence || opts.retrievalRequest ? [] : effectiveFallbacksOverride,
           onFallbackStep: (step) => {
             fallbackTrajectoryRecorder?.recordEvent("model.fallback_step", step);
           },
@@ -1182,7 +1183,8 @@ async function agentCommandInternal(
             return attemptExecutionRuntime.runAgentAttempt({
               providerOverride,
               modelOverride,
-              modelFallbacksOverride: opts.retrievalEvidence ? [] : effectiveFallbacksOverride,
+              modelFallbacksOverride:
+                opts.retrievalEvidence || opts.retrievalRequest ? [] : effectiveFallbacksOverride,
               originalProvider: provider,
               cfg,
               sessionEntry: attemptSessionEntry,

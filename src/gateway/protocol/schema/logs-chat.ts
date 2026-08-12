@@ -45,11 +45,11 @@ export const ChatSendParamsSchema = Type.Object(
     originatingAccountId: Type.Optional(Type.String()),
     originatingThreadId: Type.Optional(Type.String()),
     attachments: Type.Optional(Type.Array(Type.Unknown())),
-    retrieval: Type.Optional(
+    rag: Type.Optional(
       Type.Object(
         {
-          corpus: Type.String({ minLength: 1, maxLength: 128 }),
-          query: Type.String({ minLength: 1, maxLength: 4_000 }),
+          enabled: Type.Boolean(),
+          scope: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
         },
         { additionalProperties: false },
       ),

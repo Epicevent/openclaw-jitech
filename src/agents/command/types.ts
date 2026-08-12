@@ -133,6 +133,8 @@ export type AgentCommandOpts = {
   /** Trusted internal P0 handoff. It carries content-free receipt identities only. */
   retrievalHandoff?: KwragP0CallerHandoff;
   retrievalEvidence?: KwragP1VerifiedEvidence;
+  /** Caller-explicit live-corpus request; resolved immediately before provider dispatch. */
+  retrievalRequest?: { corpus: string; query: string };
 };
 
 export type AgentCommandIngressOpts = Omit<

@@ -28,7 +28,7 @@ import {
   sendChatMessage,
   sendDetachedChatMessage,
   sendSteerChatMessage,
-  type ChatRetrievalRequest,
+  type ChatRagRequest,
   type ChatState,
 } from "./controllers/chat.ts";
 import { loadModels } from "./controllers/models.ts";
@@ -49,6 +49,9 @@ export type ChatHost = ChatInputHistoryState & {
   chatStream: string | null;
   connected: boolean;
   chatAttachments: ChatAttachment[];
+  /** Visible, default-off per-turn RAG switch. */
+  chatRagEnabled: boolean;
+  chatRagCorpus: string;
   chatQueue: ChatQueueItem[];
   chatRunId: string | null;
   chatSending: boolean;
@@ -80,8 +83,8 @@ export type ChatHost = ChatInputHistoryState & {
 export type ChatSendOptions = {
   confirmReset?: boolean;
   restoreDraft?: boolean;
-  /** Explicit retrieval request; omitted means no retrieval is attempted. */
-  retrieval?: ChatRetrievalRequest;
+  /** Visible RAG control; omitted means no retrieval is attempted. */
+  rag?: ChatRagRequest;
 };
 
 export type ChatAbortOptions = {
@@ -189,7 +192,7 @@ function enqueueChatMessage(
   attachments?: ChatAttachment[],
   refreshSessions?: boolean,
   localCommand?: { args: string; name: string },
-  retrieval?: ChatRetrievalRequest,
+  rag?: ChatRagRequest,
 ) {
   const trimmed = text.trim();
   const hasAttachments = Boolean(attachments && attachments.length > 0);
@@ -203,7 +206,7 @@ function enqueueChatMessage(
       text: trimmed,
       createdAt: Date.now(),
       attachments: hasAttachments ? cloneChatAttachmentsMetadata(attachments ?? []) : undefined,
-      retrieval,
+      rag,
       refreshSessions,
       localCommandArgs: localCommand?.args,
       localCommandName: localCommand?.name,
@@ -245,7 +248,7 @@ async function sendChatMessageNow(
     previousAttachments?: ChatAttachment[];
     restoreAttachments?: boolean;
     refreshSessions?: boolean;
-    retrieval?: ChatRetrievalRequest;
+    rag?: ChatRagRequest;
   },
 ) {
   resetToolStream(host as unknown as Parameters<typeof resetToolStream>[0]);
@@ -255,7 +258,7 @@ async function sendChatMessageNow(
     host as unknown as ChatState,
     message,
     opts?.attachments,
-    opts?.retrieval,
+    opts?.rag,
   );
   const ok = Boolean(runId);
   if (!ok && opts?.previousDraft != null) {
@@ -492,7 +495,7 @@ async function flushChatQueue(host: ChatHost) {
     } else {
       ok = await sendChatMessageNow(host, next.text, {
         attachments: next.attachments,
-        retrieval: next.retrieval,
+        rag: next.rag,
         refreshSessions: next.refreshSessions,
       });
     }
@@ -638,7 +641,7 @@ export async function handleSendChat(
         attachmentsToSend,
         refreshSessions,
         undefined,
-        opts?.retrieval,
+        opts?.rag,
       );
       return;
     }
@@ -650,7 +653,7 @@ export async function handleSendChat(
       previousAttachments: cleared.previousAttachments,
       restoreAttachments: Boolean(messageOverride && opts?.restoreDraft),
       refreshSessions,
-      retrieval: opts?.retrieval,
+      rag: opts?.rag,
     });
   });
 }

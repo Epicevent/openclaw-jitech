@@ -2898,6 +2898,14 @@ export function renderApp(state: AppViewState) {
                   onHistoryKeydown: (input) => state.handleChatInputHistoryKey(input),
                   attachments: state.chatAttachments,
                   onAttachmentsChange: (next) => (state.chatAttachments = next),
+                  ragEnabled: state.chatRagEnabled,
+                  ragCorpus: state.chatRagCorpus,
+                  onToggleRag: () => {
+                    state.chatRagEnabled = !state.chatRagEnabled;
+                  },
+                  onRagCorpusChange: (corpus) => {
+                    state.chatRagCorpus = corpus;
+                  },
                   onSend: () => state.handleSendChat(),
                   onCompact: () => state.handleSendChat("/compact", { restoreDraft: true }),
                   onOpenSessionCheckpoints: () => {

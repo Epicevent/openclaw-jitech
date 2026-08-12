@@ -22,6 +22,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     chatMessage: "",
     chatMessages: [],
     chatRunId: null,
+    chatRagEnabled: false,
+    chatRagCorpus: "",
     chatSending: false,
     chatStream: null,
     chatStreamStartedAt: null,
@@ -999,7 +1001,7 @@ describe("sendChatMessage", () => {
     expect(sendParams.message).toBe("continue");
   });
 
-  it("preserves an explicit retrieval request in chat.send", async () => {
+  it("preserves the visible RAG scope in chat.send", async () => {
     const request = vi.fn().mockResolvedValue({ runId: "run-1", status: "started" });
     const state = createState({
       connected: true,
@@ -1007,15 +1009,15 @@ describe("sendChatMessage", () => {
     });
 
     await sendChatMessage(state, "find the retention policy", undefined, {
-      corpus: "kakao-user",
-      query: "retention policy",
+      enabled: true,
+      scope: "kakao-user",
     });
 
     const [requestMethod, requestParams] = requireFirstRequestCall(request);
     expect(requestMethod).toBe("chat.send");
-    expect(requireRecord(requestParams).retrieval).toEqual({
-      corpus: "kakao-user",
-      query: "retention policy",
+    expect(requireRecord(requestParams).rag).toEqual({
+      enabled: true,
+      scope: "kakao-user",
     });
   });
 

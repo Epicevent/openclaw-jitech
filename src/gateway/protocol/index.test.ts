@@ -43,29 +43,29 @@ type CompileMethod = (schema: unknown, meta?: boolean) => unknown;
 type ProtocolValidator = (value: unknown) => boolean;
 
 describe("lazy protocol validators", () => {
-  it("accepts only bounded caller-explicit retrieval requests", () => {
+  it("accepts only bounded visible RAG controls", () => {
     const base = {
       sessionKey: "main",
       message: "What changed?",
-      idempotencyKey: "chat-retrieval-1",
+      idempotencyKey: "chat-rag-1",
     };
     expect(
       validateChatSendParams({
         ...base,
-        retrieval: { corpus: "kakao", query: "What changed?" },
+        rag: { enabled: true, scope: "kakao" },
       }),
     ).toBe(true);
     expect(validateChatSendParams(base)).toBe(true);
     expect(
       validateChatSendParams({
         ...base,
-        retrieval: { corpus: "kakao", query: "" },
+        rag: { enabled: true, scope: "" },
       }),
     ).toBe(false);
     expect(
       validateChatSendParams({
         ...base,
-        retrieval: { corpus: "c".repeat(129), query: "What changed?" },
+        rag: { enabled: true, scope: "c".repeat(129) },
       }),
     ).toBe(false);
   });

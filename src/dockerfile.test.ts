@@ -70,36 +70,38 @@ describe("Dockerfile", () => {
     expect(dockerfile).toContain('ENTRYPOINT ["tini", "-s", "--"]');
   });
 
-  it("packages the exact default-off slot-local KWRAG component", async () => {
+  it("packages the default-off live-corpus KWRAG component", async () => {
     const componentRoot = join(repoRoot, "runtime-components/kwrag");
     const wheel = await readFile(
-      join(componentRoot, "kwrag_product_service-0.2.0-py3-none-any.whl"),
+      join(componentRoot, "kwrag_product_service-0.5.0-py3-none-any.whl"),
     );
     const manifestBytes = await readFile(join(componentRoot, "component-manifest.json"));
     const manifest = JSON.parse(manifestBytes.toString("utf8")) as {
       source: { commit: string };
-      surface: { argv: string[]; host_ports: number; network: boolean };
+      surface: {
+        argv: string[];
+        host_ports: number;
+        network: boolean;
+        default_enabled: boolean;
+        mount_read_only: boolean;
+        corpus_authority: string;
+      };
       wheel: { sha256: string };
     };
-    const launcher = await readFile(join(componentRoot, "kwrag-fixed-producer"), "utf8");
+    const launcher = await readFile(join(componentRoot, "kwrag-product"), "utf8");
     const dockerfile = await readFile(dockerfilePath, "utf8");
 
     expect(`sha256:${createHash("sha256").update(wheel).digest("hex")}`).toBe(
       manifest.wheel.sha256,
     );
-    expect(manifest.source.commit).toBe("320d19fdf44010364d6abd53377105404e54fa36");
-    expect(manifest.surface.argv).toEqual(["kwrag-fixed-producer"]);
+    expect(manifest.source.commit).toBe("0d72c1834c7e5545930e90ad6921cd64f7fc0aaf");
+    expect(manifest.surface.argv).toEqual(["kwrag-product"]);
     expect(manifest.surface.host_ports).toBe(0);
     expect(manifest.surface.network).toBe(false);
-    expect(launcher).toBe(`#!/usr/local/bin/python3
-import sys
-
-sys.path.insert(0, "/opt/jitech/kwrag/lib")
-
-from kwrag.fixed_producer import main
-
-raise SystemExit(main())
-`);
+    expect(manifest.surface.default_enabled).toBe(false);
+    expect(manifest.surface.mount_read_only).toBe(true);
+    expect(manifest.surface.corpus_authority).toBe("mounted_nas");
+    expect(launcher).toContain('from kwrag.product_cli import main');
     expect(launcher).not.toContain("/bin/sh");
     expect(launcher).not.toContain("env -S");
     expect(dockerfile).toContain(
@@ -109,14 +111,21 @@ raise SystemExit(main())
       "FROM ${OPENCLAW_PYTHON_BOOKWORM_SLIM_IMAGE} AS kwrag-python-runtime",
     );
     expect(dockerfile).toContain("COPY --from=kwrag-python-runtime /usr/local /usr/local");
-    expect(dockerfile).toContain('com.epicevent.openclaw.kwrag.p1.python-version="3.12.13"');
     expect(dockerfile).toContain(
-      `com.epicevent.agent-runtime.retrieval.component-manifest-digest="sha256:${createHash("sha256").update(manifestBytes).digest("hex")}"`,
+      'com.epicevent.agent-runtime.retrieval.schema="jitech-kwrag-product-cli/v1"',
     );
     expect(dockerfile).toContain(
-      'com.epicevent.agent-runtime.retrieval.verify-command.json="[\\"openclaw\\",\\"kwrag-p0\\",\\"p1-attachment-status\\",\\"--json\\"]"',
+      'com.epicevent.agent-runtime.retrieval.index-admission="mounted-corpus-only"',
     );
+    expect(dockerfile).toContain(
+      `COPY runtime-components/kwrag/kwrag_product_service-0.5.0-py3-none-any.whl /tmp/kwrag.whl`,
+    );
+    expect(dockerfile).toContain(
+      `COPY runtime-components/kwrag/kwrag-product /opt/jitech/kwrag/bin/kwrag-product`,
+    );
+    expect(dockerfile).not.toContain("kwrag-fixed-producer");
     expect(dockerfile).toContain("python3 -m zipfile -e /tmp/kwrag.whl /opt/jitech/kwrag/lib");
+    expect(manifestBytes.toString("utf8")).not.toContain("expected_source_generation");
   });
 
   it("installs optional browser dependencies after pnpm install", async () => {

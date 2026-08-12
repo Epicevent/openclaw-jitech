@@ -10,10 +10,6 @@ import {
   resolveSendableOutboundReplyParts,
 } from "openclaw/plugin-sdk/reply-payload";
 import { resolveAgentWorkspaceDir, resolveSessionAgentId } from "../../agents/agent-scope.js";
-import {
-  prepareKwragP1EvidenceForExplicitQuery,
-  type KwragP1VerifiedEvidence,
-} from "../../agents/kwrag-p1-thin.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { rewriteTranscriptEntriesInSessionFile } from "../../agents/pi-embedded-runner/transcript-rewrite.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
@@ -2003,7 +1999,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         fileName?: string;
         content?: unknown;
       }>;
-      retrieval?: { corpus: string; query: string };
+      rag?: { enabled: boolean; scope?: string };
       timeoutMs?: number;
       systemInputProvenance?: InputProvenance;
       systemProvenanceReceipt?: string;
@@ -2181,7 +2177,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     const activeChatSendDedupeKey = buildActiveChatSendDedupeKey({
       attachmentCount: normalizedAttachments.length,
       explicitDeliverRoute: originatingRoute.explicitDeliverRoute,
-      hasExplicitRetrieval: p.retrieval !== undefined,
+      hasExplicitRetrieval: p.rag?.enabled === true,
       message: rawMessage,
       originatingChannel: originatingRoute.originatingChannel,
       sessionKey,
@@ -2297,24 +2293,6 @@ export const chatHandlers: GatewayRequestHandlers = {
             err instanceof MediaOffloadError ? ErrorCodes.UNAVAILABLE : ErrorCodes.INVALID_REQUEST,
             String(err),
           ),
-        );
-        return;
-      }
-    }
-
-    let retrievalEvidence: KwragP1VerifiedEvidence | undefined;
-    if (p.retrieval !== undefined) {
-      try {
-        retrievalEvidence = prepareKwragP1EvidenceForExplicitQuery({
-          retrieval: p.retrieval,
-          runId: clientRunId,
-        });
-      } catch (err) {
-        context.logGateway.warn(`chat.send explicit KWRAG retrieval failed: ${formatForLog(err)}`);
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, "explicit KWRAG retrieval unavailable"),
         );
         return;
       }
@@ -2662,7 +2640,13 @@ export const chatHandlers: GatewayRequestHandlers = {
               imageOrder: imageOrder.length > 0 ? imageOrder : undefined,
               modelOverride,
               modelOverrideFallbacks,
-              retrievalEvidence,
+              retrievalRequest:
+                p.rag?.enabled === true
+                  ? {
+                      ...(p.rag.scope ? { corpus: p.rag.scope } : {}),
+                      query: rawMessage,
+                    }
+                  : undefined,
               thinkingLevelOverride: p.thinking,
               fastModeOverride: p.fastMode,
               onAgentRunStart: (runId) => {

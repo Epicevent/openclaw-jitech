@@ -28,9 +28,9 @@ const STARTUP_CHAT_HISTORY_DEFAULT_RETRY_MS = 500;
 const STARTUP_CHAT_HISTORY_MAX_RETRY_MS = 5_000;
 const chatHistoryRequestVersions = new WeakMap<object, number>();
 
-export type ChatRetrievalRequest = {
-  corpus: string;
-  query: string;
+export type ChatRagRequest = {
+  enabled: boolean;
+  scope?: string;
 };
 
 function beginChatHistoryRequest(state: ChatState): number {
@@ -278,6 +278,9 @@ export type ChatState = {
   chatSending: boolean;
   chatMessage: string;
   chatAttachments: ChatAttachment[];
+  /** Visible, default-off per-turn RAG switch. */
+  chatRagEnabled: boolean;
+  chatRagCorpus: string;
   chatRunId: string | null;
   chatStream: string | null;
   chatStreamStartedAt: number | null;
@@ -424,7 +427,7 @@ async function requestChatSend(
   params: {
     message: string;
     attachments?: ChatAttachment[];
-    retrieval?: ChatRetrievalRequest;
+    rag?: ChatRagRequest;
     runId: string;
   },
 ) {
@@ -439,7 +442,7 @@ async function requestChatSend(
     deliver: false,
     idempotencyKey: params.runId,
     attachments: buildApiAttachments(params.attachments),
-    ...(params.retrieval ? { retrieval: params.retrieval } : {}),
+    ...(params.rag ? { rag: params.rag } : {}),
   });
 }
 
@@ -496,7 +499,7 @@ export async function sendChatMessage(
   state: ChatState,
   message: string,
   attachments?: ChatAttachment[],
-  retrieval?: ChatRetrievalRequest,
+  rag?: ChatRagRequest,
 ): Promise<string | null> {
   if (!state.client || !state.connected) {
     return null;
@@ -579,7 +582,19 @@ export async function sendChatMessage(
   state.chatStreamStartedAt = now;
 
   try {
-    await requestChatSend(state, { message: msg, attachments, retrieval, runId });
+    await requestChatSend(state, {
+      message: msg,
+      attachments,
+      rag:
+        rag ??
+        (state.chatRagEnabled
+          ? {
+              enabled: true,
+              ...(state.chatRagCorpus.trim() ? { scope: state.chatRagCorpus.trim() } : {}),
+            }
+          : undefined),
+      runId,
+    });
     return runId;
   } catch (err) {
     const error = formatConnectError(err);
@@ -610,7 +625,7 @@ export async function sendDetachedChatMessage(
   state: ChatState,
   message: string,
   attachments?: ChatAttachment[],
-  retrieval?: ChatRetrievalRequest,
+  rag?: ChatRagRequest,
 ): Promise<string | null> {
   if (!state.client || !state.connected) {
     return null;
@@ -623,7 +638,7 @@ export async function sendDetachedChatMessage(
   state.lastError = null;
   const runId = generateUUID();
   try {
-    await requestChatSend(state, { message: msg, attachments, retrieval, runId });
+    await requestChatSend(state, { message: msg, attachments, rag, runId });
     return runId;
   } catch (err) {
     state.lastError = formatConnectError(err);
@@ -635,7 +650,7 @@ export async function sendSteerChatMessage(
   state: ChatState,
   message: string,
   attachments?: ChatAttachment[],
-  retrieval?: ChatRetrievalRequest,
+  rag?: ChatRagRequest,
 ): Promise<string | null> {
   if (!state.client || !state.connected) {
     return null;
@@ -648,7 +663,7 @@ export async function sendSteerChatMessage(
   state.lastError = null;
   const runId = generateUUID();
   try {
-    await requestChatSend(state, { message: msg, attachments, retrieval, runId });
+    await requestChatSend(state, { message: msg, attachments, rag, runId });
     return runId;
   } catch (err) {
     state.lastError = formatConnectError(err);

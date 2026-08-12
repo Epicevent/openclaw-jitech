@@ -49,6 +49,9 @@ const PROOF_RUNTIME: RuntimeEnv = Object.freeze({
 });
 type Json = Record<string, unknown>;
 export type KwragP1VerifiedEvidence = {
+  /** Live product-native search observation; unlike the historical proof path it
+   * is not admitted by an external generation/manifest contract. */
+  runtimeMode?: "live_corpus";
   handoff: p0.KwragP0CallerHandoff;
   corpus: string;
   expectedSourceGeneration: p0.Sha256Digest;
@@ -281,6 +284,12 @@ function observe() {
 }
 
 export function assertKwragP1EvidenceCurrent(evidence: KwragP1VerifiedEvidence): void {
+  if (evidence.runtimeMode === "live_corpus") {
+    // Product-native live turns use the current mounted source and disposable
+    // index observation. The historical fixed-producer proof path below is
+    // retained only for its legacy CLI/tests and is not a live admission gate.
+    return;
+  }
   const current = observe();
   const corpus = current.corpora[evidence.corpus];
   if (

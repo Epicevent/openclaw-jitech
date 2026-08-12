@@ -6,6 +6,7 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- Retrieval: an explicit `kwrag_index_build` action refreshes the disposable Workspace index from the slot's live read-only Kakao corpus, and the visible default-off RAG switch searches it through the existing provider path; failures stay fail-closed instead of silently falling back.
 - Update: add `update.source` ("npm" | "control-plane") — control-plane reads an operator-written `update-signal.json` and surfaces a display-only update banner (no in-app self-apply; `update.run` reports `control-plane-managed`).
 - Update: unset `update.source` now defaults by install kind — git checkouts keep upstream npm behavior, package/image installs default to control-plane so fork deployments never surface upstream npm release nags.
 - Agents/config: allow `agents.list[].experimental.localModelLean` so lean local-model mode can be enabled for one configured agent instead of globally.

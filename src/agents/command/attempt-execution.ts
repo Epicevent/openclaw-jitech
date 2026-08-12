@@ -26,6 +26,7 @@ import { getCliSessionBinding, setCliSessionBinding } from "../cli-session.js";
 import { FailoverError } from "../failover-error.js";
 import { resolveAvailableAgentHarnessPolicy } from "../harness/selection.js";
 import { KwragP0HandoffContractError } from "../kwrag-p0-handoff.js";
+import { prepareKwragProductEvidenceForExplicitQuery } from "../kwrag-product.js";
 import { assertKwragP1EvidenceInput } from "../kwrag-p1-thin.js";
 import { resolveCliRuntimeExecutionProvider } from "../model-runtime-aliases.js";
 import { isCliProvider } from "../model-selection.js";
@@ -485,11 +486,20 @@ export function runAgentAttempt(params: {
     (agentHarnessPolicy.runtime === "pi" && embeddedPiProvider !== params.providerOverride
       ? "pi"
       : undefined);
-  assertKwragP1EvidenceInput(params.opts.retrievalEvidence);
-  if (params.opts.retrievalEvidence !== undefined && params.opts.retrievalHandoff !== undefined) {
+  const retrievalEvidence =
+    params.opts.retrievalEvidence ??
+    (params.opts.retrievalRequest
+      ? prepareKwragProductEvidenceForExplicitQuery({
+          retrieval: params.opts.retrievalRequest,
+          runId: params.runId,
+          sessionId: params.sessionId,
+        })
+      : undefined);
+  assertKwragP1EvidenceInput(retrievalEvidence);
+  if (retrievalEvidence !== undefined && params.opts.retrievalHandoff !== undefined) {
     throw new KwragP0HandoffContractError("P0 and consumed retrieval inputs cannot be combined");
   }
-  const retrievalHandoff = params.opts.retrievalEvidence?.handoff ?? params.opts.retrievalHandoff;
+  const retrievalHandoff = retrievalEvidence?.handoff ?? params.opts.retrievalHandoff;
   if (retrievalHandoff !== undefined && isRawModelRun) {
     throw new KwragP0HandoffContractError(
       "caller-explicit retrieval handoff is unavailable for raw model runs",
@@ -671,7 +681,7 @@ export function runAgentAttempt(params: {
     skillsSnapshot: params.skillsSnapshot,
     prompt: effectivePrompt,
     transcriptPrompt:
-      params.opts.retrievalEvidence !== undefined
+      retrievalEvidence !== undefined
         ? (params.opts.transcriptMessage ?? params.opts.message)
         : undefined,
     images: params.isFallbackRetry ? undefined : params.opts.images,
@@ -689,7 +699,7 @@ export function runAgentAttempt(params: {
     timeoutMs: params.timeoutMs,
     runId: params.runId,
     retrievalHandoff,
-    retrievalEvidence: params.opts.retrievalEvidence,
+    retrievalEvidence,
     lane: params.opts.lane,
     abortSignal: params.opts.abortSignal,
     extraSystemPrompt: params.opts.extraSystemPrompt,
