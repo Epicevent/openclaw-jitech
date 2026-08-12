@@ -14,11 +14,11 @@ export function createKwragIndexTool(): AnyAgentTool | null {
     return null;
   }
   return {
-    label: "Kakao RAG index",
+    label: "RAG index",
     name: "kwrag_index_build",
-    displaySummary: "Refresh the disposable index from the mounted Kakao corpus.",
+    displaySummary: "Refresh the disposable index from the mounted sources.",
     description:
-      "Call only when the user explicitly asks to index or refresh the mounted Kakao corpus. " +
+      "Call only when the user explicitly asks to index or refresh the mounted sources. " +
       "Do not call for an ordinary question or to invent a query. The source is the slot's " +
       "read-only mount; the index is rebuilt in Workspace.",
     parameters: Type.Object({}, { additionalProperties: false }),
@@ -27,7 +27,7 @@ export function createKwragIndexTool(): AnyAgentTool | null {
         const raw = await new Promise<string>((resolve, reject) => {
           const child = execFile(
             CLI,
-            ["index-build"],
+            [],
             {
               encoding: "utf8",
               maxBuffer: 256 * 1024,
@@ -43,13 +43,19 @@ export function createKwragIndexTool(): AnyAgentTool | null {
               }
             },
           );
-          child.stdin?.end("{}\n");
+          child.stdin?.end(
+            JSON.stringify({
+              schema_version: "kwrag-product-cli-request-v1",
+              operation: "build_index",
+              rebuild: true,
+            }),
+          );
         });
         const output = JSON.parse(raw) as Record<string, unknown>;
-        if (output.schema_version !== "kwrag-product-cli-index-build-v1") {
+        if (output.schema_version !== "kwrag-product-index-build-observation-v1") {
           throw new Error("index_build_output_invalid");
         }
-        if (output.status !== "activated" && output.status !== "unchanged") {
+        if (output.status !== "activated" && output.status !== "unchanged" && output.status !== "already_built") {
           throw new Error("index_build_not_ready");
         }
         return jsonResult({
@@ -61,7 +67,7 @@ export function createKwragIndexTool(): AnyAgentTool | null {
           raw_content_present: false,
         });
       } catch {
-        throw new ToolInputError("Kakao RAG index refresh unavailable; no provider call was made.");
+        throw new ToolInputError("RAG index refresh unavailable; no provider call was made.");
       }
     },
   };

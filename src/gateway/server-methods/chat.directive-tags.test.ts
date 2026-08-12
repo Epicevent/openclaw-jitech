@@ -56,6 +56,7 @@ const mockState = vi.hoisted(() => ({
   lastDispatchCtx: undefined as MsgContext | undefined,
   lastDispatchImages: undefined as Array<{ mimeType: string; data: string }> | undefined,
   lastDispatchImageOrder: undefined as string[] | undefined,
+  lastRetrievalRequest: undefined as unknown,
   modelCatalog: null as ModelCatalogEntry[] | null,
   emittedTranscriptUpdates: [] as Array<{
     sessionFile: string;
@@ -181,11 +182,13 @@ vi.mock("../../auto-reply/dispatch.js", () => ({
         onAgentRunStart?: (runId: string) => void;
         images?: Array<{ mimeType: string; data: string }>;
         imageOrder?: string[];
+        retrievalRequest?: unknown;
       };
     }) => {
       mockState.lastDispatchCtx = params.ctx;
       mockState.lastDispatchImages = params.replyOptions?.images;
       mockState.lastDispatchImageOrder = params.replyOptions?.imageOrder;
+      mockState.lastRetrievalRequest = params.replyOptions?.retrievalRequest;
       if (mockState.dispatchError) {
         throw mockState.dispatchError;
       }
@@ -641,6 +644,7 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     mockState.lastDispatchCtx = undefined;
     mockState.lastDispatchImages = undefined;
     mockState.lastDispatchImageOrder = undefined;
+    mockState.lastRetrievalRequest = undefined;
     mockState.modelCatalog = null;
     mockState.emittedTranscriptUpdates = [];
     mockState.savedMediaResults = [];
@@ -658,6 +662,30 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     mockState.deleteMediaBufferCalls = [];
     mockState.hasBeforeAgentRunHooks = false;
     mockState.dispatchBlockedByBeforeAgentRun = false;
+  });
+
+  it("passes caller-explicit RAG scope only for an enabled dashboard turn", async () => {
+    createTranscriptFixture("openclaw-chat-send-rag-scope-");
+    const context = createChatContext();
+    const respond = vi.fn();
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "rag-enabled",
+      message: "find the retention policy",
+      requestParams: {
+        rag: {
+          enabled: true,
+          scope: { sources: ["kakao"], rooms: [{ source: "kakao", roomId: "room-a" }] },
+        },
+      },
+    });
+
+    expect(mockState.lastRetrievalRequest).toEqual({
+      query: "find the retention policy",
+      scope: { sources: ["kakao"], rooms: [{ source: "kakao", roomId: "room-a" }] },
+    });
   });
 
   it("registers tool-event recipients for clients advertising tool-events capability", async () => {

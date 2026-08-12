@@ -51,7 +51,8 @@ export type ChatHost = ChatInputHistoryState & {
   chatAttachments: ChatAttachment[];
   /** Visible, default-off per-turn RAG switch. */
   chatRagEnabled: boolean;
-  chatRagCorpus: string;
+  chatRagSource: string;
+  chatRagRoom: string;
   chatQueue: ChatQueueItem[];
   chatRunId: string | null;
   chatSending: boolean;

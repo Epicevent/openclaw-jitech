@@ -6,6 +6,7 @@ import {
 import { GatewayRequestError } from "../gateway.ts";
 import {
   abortChatRun,
+  buildChatRagScope,
   handleChatEvent,
   loadChatHistory,
   sendChatMessage,
@@ -23,7 +24,8 @@ function createState(overrides: Partial<ChatState> = {}): ChatState {
     chatMessages: [],
     chatRunId: null,
     chatRagEnabled: false,
-    chatRagCorpus: "",
+    chatRagSource: "",
+    chatRagRoom: "",
     chatSending: false,
     chatStream: null,
     chatStreamStartedAt: null,
@@ -821,6 +823,26 @@ describe("handleChatEvent", () => {
   });
 });
 
+describe("buildChatRagScope", () => {
+  it("leaves scope absent when the generic fields are blank", () => {
+    expect(buildChatRagScope("", "")).toBeUndefined();
+  });
+
+  it("keeps multiple source names and an explicitly qualified room", () => {
+    expect(buildChatRagScope("kakao, groupware", "groupware:mail-room")).toEqual({
+      sources: ["kakao", "groupware"],
+      rooms: [{ source: "groupware", roomId: "mail-room" }],
+    });
+  });
+
+  it("uses the only selected source for an unqualified room", () => {
+    expect(buildChatRagScope("whatsapp", "support-room")).toEqual({
+      sources: ["whatsapp"],
+      rooms: [{ source: "whatsapp", roomId: "support-room" }],
+    });
+  });
+});
+
 describe("loadChatHistory filtering", () => {
   it("filters legacy silent assistant messages from history", async () => {
     const messages = [
@@ -1010,14 +1032,20 @@ describe("sendChatMessage", () => {
 
     await sendChatMessage(state, "find the retention policy", undefined, {
       enabled: true,
-      scope: "kakao-user",
+      scope: {
+        sources: ["kakao"],
+        rooms: [{ source: "kakao", roomId: "kakao-user" }],
+      },
     });
 
     const [requestMethod, requestParams] = requireFirstRequestCall(request);
     expect(requestMethod).toBe("chat.send");
     expect(requireRecord(requestParams).rag).toEqual({
       enabled: true,
-      scope: "kakao-user",
+      scope: {
+        sources: ["kakao"],
+        rooms: [{ source: "kakao", roomId: "kakao-user" }],
+      },
     });
   });
 

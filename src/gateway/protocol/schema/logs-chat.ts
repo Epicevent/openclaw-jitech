@@ -49,7 +49,30 @@ export const ChatSendParamsSchema = Type.Object(
       Type.Object(
         {
           enabled: Type.Boolean(),
-          scope: Type.Optional(Type.String({ minLength: 1, maxLength: 128 })),
+          scope: Type.Optional(
+            Type.Object(
+              {
+                sources: Type.Optional(
+                  Type.Array(Type.String({ minLength: 1, maxLength: 64 }), {
+                    maxItems: 64,
+                  }),
+                ),
+                rooms: Type.Optional(
+                  Type.Array(
+                    Type.Object(
+                      {
+                        source: Type.String({ minLength: 1, maxLength: 64 }),
+                        roomId: Type.String({ minLength: 1, maxLength: 256 }),
+                      },
+                      { additionalProperties: false },
+                    ),
+                    { maxItems: 64 },
+                  ),
+                ),
+              },
+              { additionalProperties: false },
+            ),
+          ),
         },
         { additionalProperties: false },
       ),

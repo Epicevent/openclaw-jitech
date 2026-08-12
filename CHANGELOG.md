@@ -6,7 +6,7 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
-- Retrieval: an explicit `kwrag_index_build` action refreshes the disposable Workspace index from the slot's live read-only Kakao corpus, and the visible default-off RAG switch searches it through the existing provider path; failures stay fail-closed instead of silently falling back.
+- Retrieval: an explicit `kwrag_index_build` action refreshes the disposable Workspace index from the slot's live read-only mounted sources, and the visible default-off RAG switch searches them through the existing provider path; failures stay fail-closed instead of silently falling back.
 - Update: add `update.source` ("npm" | "control-plane") — control-plane reads an operator-written `update-signal.json` and surfaces a display-only update banner (no in-app self-apply; `update.run` reports `control-plane-managed`).
 - Update: unset `update.source` now defaults by install kind — git checkouts keep upstream npm behavior, package/image installs default to control-plane so fork deployments never surface upstream npm release nags.
 - Agents/config: allow `agents.list[].experimental.localModelLean` so lean local-model mode can be enabled for one configured agent instead of globally.
@@ -14,7 +14,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
-- Retrieval: route explicit Kakao RAG requests through direct embedded turns before provider dispatch so dashboard questions use the mounted corpus.
+- Retrieval: route explicit RAG requests through direct embedded turns before provider dispatch so dashboard questions can use mounted sources.
 - Agents/messages: stop message-tool-only turns after a successful source-channel `message` send while keeping transcript mirrors under the session write lock. (#84289)
 - Agents: filter silent heartbeat response-tool transcript artifacts out of embedded context snapshots so later user turns are not polluted by heartbeat no-op messages. (#83477) Thanks @fuller-stack-dev.
 - Agents/OpenAI: log repeated strict tool-schema downgrade diagnostics once per provider/model/tool signature, reducing duplicate debug noise while preserving `strict=false` fallback behavior. Fixes #82930. (#82933) Thanks @galiniliev.

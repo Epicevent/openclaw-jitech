@@ -133,10 +133,12 @@ export type ChatProps = {
   autoExpandToolCalls?: boolean;
   attachments?: ChatAttachment[];
   ragEnabled?: boolean;
-  ragCorpus?: string;
+  ragSource?: string;
+  ragRoom?: string;
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
   onToggleRag?: () => void;
-  onRagCorpusChange?: (corpus: string) => void;
+  onRagSourceChange?: (source: string) => void;
+  onRagRoomChange?: (room: string) => void;
   showNewMessages?: boolean;
   onScrollToBottom?: () => void;
   onRefresh: () => void;
@@ -1545,28 +1547,37 @@ export function renderChat(props: ChatProps) {
                       : ""}"
                     @click=${props.onToggleRag}
                     title=${props.ragEnabled
-                      ? "Kakao RAG on: current question uses the mounted corpus"
-                      : "Kakao RAG off"}
-                    aria-label="Kakao RAG"
+                      ? "RAG on: current question uses the mounted sources"
+                      : "RAG off"}
+                    aria-label="RAG"
                     ?disabled=${!props.connected}
                   >
                     <span class="agent-chat__control-label"
-                      >Kakao RAG${props.ragEnabled ? " ON" : " OFF"}</span
+                      >RAG${props.ragEnabled ? " ON" : " OFF"}</span
                     >
                   </button>
                   ${props.ragEnabled
                     ? html`
-                        <select
+                        <input
                           class="agent-chat__input-btn"
-                          aria-label="Kakao RAG corpus"
-                          .value=${props.ragCorpus ?? ""}
-                          @change=${(event: Event) =>
-                            props.onRagCorpusChange?.(
-                              (event.currentTarget as HTMLSelectElement).value,
+                          aria-label="RAG source scope"
+                          placeholder="sources (comma-separated)"
+                          .value=${props.ragSource ?? ""}
+                          @input=${(event: Event) =>
+                            props.onRagSourceChange?.(
+                              (event.currentTarget as HTMLInputElement).value,
                             )}
-                        >
-                          <option value="">All mounted Kakao</option>
-                        </select>
+                        />
+                        <input
+                          class="agent-chat__input-btn"
+                          aria-label="RAG room scope"
+                          placeholder="room (source:room-id)"
+                          .value=${props.ragRoom ?? ""}
+                          @input=${(event: Event) =>
+                            props.onRagRoomChange?.(
+                              (event.currentTarget as HTMLInputElement).value,
+                            )}
+                        />
                       `
                     : nothing}
                 `

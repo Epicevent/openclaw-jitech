@@ -17,6 +17,7 @@ import type { AgentStreamParams, ClientToolDefinition } from "../../command/shar
 import type { AgentInternalEvent } from "../../internal-events.js";
 import type { KwragP0CallerHandoff } from "../../kwrag-p0-handoff.js";
 import type { KwragP1VerifiedEvidence } from "../../kwrag-p1-thin.js";
+import type { KwragProductRetrievalRequest } from "../../kwrag-product.js";
 import type { BlockReplyPayload } from "../../pi-embedded-payloads.js";
 import type {
   BlockReplyChunking,
@@ -173,7 +174,7 @@ export type RunEmbeddedPiAgentParams = {
   retrievalHandoff?: KwragP0CallerHandoff;
   retrievalEvidence?: KwragP1VerifiedEvidence;
   /** Caller-explicit live-corpus request; resolved immediately before provider dispatch. */
-  retrievalRequest?: { corpus?: string; query: string };
+  retrievalRequest?: KwragProductRetrievalRequest;
   abortSignal?: AbortSignal;
   onExecutionStarted?: () => void;
   onExecutionPhase?: (info: {
