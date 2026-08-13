@@ -80,6 +80,8 @@ describe("Dockerfile", () => {
       source: { commit: string };
       surface: {
         argv: string[];
+        stdin_schema: string;
+        stdout_schemas: string[];
         host_ports: number;
         network: boolean;
         default_enabled: boolean;
@@ -94,8 +96,12 @@ describe("Dockerfile", () => {
     expect(`sha256:${createHash("sha256").update(wheel).digest("hex")}`).toBe(
       manifest.wheel.sha256,
     );
-    expect(manifest.source.commit).toBe("a5621c4cb91ca28522be54685ee5abeb5a5360e4");
+    expect(manifest.source.commit).toBe("96a05184b64513f6b51700d587102b184df90a8f");
     expect(manifest.surface.argv).toEqual(["kwrag-product"]);
+    expect(manifest.surface.stdin_schema).toBe("kwrag-product-cli-request-v1");
+    expect(manifest.surface.stdout_schemas).toContain(
+      "kwrag-product-cli-search-exchange-v1",
+    );
     expect(manifest.surface.host_ports).toBe(0);
     expect(manifest.surface.network).toBe(false);
     expect(manifest.surface.default_enabled).toBe(false);
@@ -113,6 +119,21 @@ describe("Dockerfile", () => {
     expect(dockerfile).toContain("COPY --from=kwrag-python-runtime /usr/local /usr/local");
     expect(dockerfile).toContain(
       'com.epicevent.agent-runtime.retrieval.schema="jitech-kwrag-product-cli/v1"',
+    );
+    expect(dockerfile).toContain(
+      'com.epicevent.agent-runtime.retrieval.source-commit="96a05184b64513f6b51700d587102b184df90a8f"',
+    );
+    expect(dockerfile).toContain(
+      'com.epicevent.agent-runtime.retrieval.wheel-sha256="sha256:3ed2916bff5c7aef0add17cb46b4f00f31979065d7c864f989de42dea748ae90"',
+    );
+    expect(dockerfile).toContain(
+      'com.epicevent.agent-runtime.retrieval.command.json="[\\"kwrag-product\\"]"',
+    );
+    expect(dockerfile).toContain(
+      'com.epicevent.agent-runtime.retrieval.stdin-schema="kwrag-product-cli-request-v1"',
+    );
+    expect(dockerfile).not.toContain(
+      'com.epicevent.agent-runtime.retrieval.search-command.json="[\\"kwrag-product\\",\\"search\\"]"',
     );
     expect(dockerfile).toContain(
       'com.epicevent.agent-runtime.retrieval.index-admission="mounted-corpus-only"',
