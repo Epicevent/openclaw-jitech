@@ -147,7 +147,7 @@ async function runProductSearch(
     raw = await new Promise<string>((resolve, reject) => {
       const child = execFile(
         CLI,
-        [],
+        ["search"],
         {
           encoding: "utf8",
           maxBuffer: 512 * 1024,
