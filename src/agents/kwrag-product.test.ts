@@ -64,7 +64,7 @@ describe("product-native live-corpus retrieval", () => {
     );
   });
 
-  it("uses the fixed search command and maps a verified exchange", async () => {
+  it("uses the fixed zero-argv search executable and maps a verified exchange", async () => {
     const evidence = await prepareKwragProductEvidenceForExplicitQuery({
       retrieval: {
         scope: { sources: ["kakao"], rooms: [{ source: "kakao", roomId: "kakao-user" }] },
@@ -75,7 +75,7 @@ describe("product-native live-corpus retrieval", () => {
     });
 
     expect(execFileMock).toHaveBeenCalledOnce();
-    expect(execFileMock.mock.calls[0]?.[1]).toEqual(["search"]);
+    expect(execFileMock.mock.calls[0]?.[1]).toEqual([]);
     expect(JSON.parse(stdinEndMock.mock.calls[0]?.[0])).toMatchObject({
       schema_version: "kwrag-product-cli-request-v1",
       operation: "search",
