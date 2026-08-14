@@ -611,6 +611,7 @@ function slotRequest(
 export function prepareKwragP1EvidenceForExplicitQuery(params: {
   retrieval: KwragExplicitRetrievalRequest;
   runId: string;
+  observed?: ReturnType<typeof observe>;
 }): KwragP1VerifiedEvidence {
   if (
     typeof params.retrieval.corpus !== "string" ||
@@ -625,7 +626,7 @@ export function prepareKwragP1EvidenceForExplicitQuery(params: {
   if (typeof params.runId !== "string" || !params.runId.trim()) {
     return fail("caller run id is invalid");
   }
-  const current = observe();
+  const current = params.observed ?? observe();
   if (!current.enabled) {
     return fail("current KWRAG binding is disabled");
   }
@@ -638,6 +639,52 @@ export function prepareKwragP1EvidenceForExplicitQuery(params: {
     current,
   );
   return prepare(runProducer(request), current, request);
+}
+
+/**
+ * Adapt the product's source-neutral caller scope to the one installed Kakao
+ * adapter without inventing a corpus name or bypassing its binding checks.
+ */
+export function prepareKwragP1EvidenceForExplicitScope(params: {
+  retrieval: {
+    query: string;
+    scope?: {
+      sources?: string[];
+      rooms?: Array<{ source: string; roomId: string }>;
+    };
+  };
+  runId: string;
+}): KwragP1VerifiedEvidence {
+  const current = observe();
+  const scope = params.retrieval.scope;
+  const sources = scope?.sources;
+  if (sources?.some((source) => source !== "kakao")) {
+    return fail("requested source is unsupported by the installed adapter");
+  }
+  const rooms = scope?.rooms;
+  if (rooms?.some((room) => room.source !== "kakao")) {
+    return fail("requested room source is unsupported by the installed adapter");
+  }
+  const corpusNames = Object.keys(current.corpora);
+  const selectedRoom = rooms?.length === 1 ? rooms[0] : undefined;
+  if (rooms !== undefined && (rooms.length !== 1 || !selectedRoom)) {
+    return fail("room scope is ambiguous for the installed adapter");
+  }
+  const corpus = selectedRoom
+    ? corpusNames.includes(selectedRoom.roomId)
+      ? selectedRoom.roomId
+      : undefined
+    : corpusNames.length === 1
+      ? corpusNames[0]
+      : undefined;
+  if (!corpus) {
+    return fail("current Kakao corpus scope is ambiguous or unavailable");
+  }
+  return prepareKwragP1EvidenceForExplicitQuery({
+    retrieval: { corpus, query: params.retrieval.query },
+    runId: params.runId,
+    observed: current,
+  });
 }
 
 export async function runKwragP1UserTurnProof() {

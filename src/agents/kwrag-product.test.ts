@@ -1,142 +1,79 @@
-import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const execFileMock = vi.hoisted(() => vi.fn());
-const stdinEndMock = vi.hoisted(() => vi.fn());
-vi.mock("node:child_process", () => ({ execFile: execFileMock }));
+const p1EvidenceMock = vi.hoisted(() => vi.fn());
+vi.mock("./kwrag-p1-thin.js", () => ({
+  prepareKwragP1EvidenceForExplicitScope: p1EvidenceMock,
+}));
 
 import { prepareKwragProductEvidenceForExplicitQuery } from "./kwrag-product.js";
-import { stableStringify } from "./stable-stringify.js";
 
-function sha(value: unknown): string {
-  return `sha256:${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
-}
+const fakeEvidence = {
+  handoff: { handoff: { handoffDigest: "sha256:" + "1".repeat(64) } },
+  corpus: "kakao-user",
+  expectedSourceGeneration: "sha256:" + "2".repeat(64),
+  sourceSnapshotDigest: "sha256:" + "3".repeat(64),
+  expectedIndexManifest: "sha256:" + "4".repeat(64),
+  promptContext: "KWRAG verified turn evidence.",
+  contextDigest: "sha256:" + "5".repeat(64),
+  resultDigest: "sha256:" + "6".repeat(64),
+  resultCount: 1,
+  p1IdentityDigest: "sha256:" + "7".repeat(64),
+  pipelineFingerprint: "sha256:" + "8".repeat(64),
+};
 
-function validExchange() {
-  const identity = {
-    slot_namespace: "openclaw",
-    index_manifest: "sha256:" + "1".repeat(64),
-    pipeline_fingerprint: "sha256:" + "2".repeat(64),
-  };
-  const response: Record<string, unknown> = {
-    index_manifest: identity.index_manifest,
-    pipeline_fingerprint: identity.pipeline_fingerprint,
-    result_status: "hits",
-    results: [{ source_id: "source-1", score: 0.9 }],
-  };
-  response.result_digest = sha(response.results);
-  const operation = {
-    authorization_basis: "slot_mounted_storage",
-    index_manifest: identity.index_manifest,
-    pipeline_fingerprint: identity.pipeline_fingerprint,
-    result_digest: response.result_digest,
-    pipeline_evidence: {
-      stages: [
-        { stage_id: "query_embedding" },
-        { stage_id: "dense_index_search" },
-        { stage_id: "candidate_rerank" },
-      ],
-    },
-  };
-  response.operation_receipt = { status: "written", digest: sha(operation) };
-  return {
-    schema_version: "kwrag-product-cli-search-exchange-v1",
-    identity,
-    response,
-    operation_receipt: operation,
-  };
-}
-
-describe("product-native live-corpus retrieval", () => {
+describe("product-native retrieval caller adapter", () => {
   beforeEach(() => {
-    execFileMock.mockReset();
-    stdinEndMock.mockReset();
-    execFileMock.mockImplementation(
-      (
-        _path: string,
-        _args: string[],
-        _options: Record<string, unknown>,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        callback(null, JSON.stringify(validExchange()), "");
-        return { stdin: { end: stdinEndMock } };
-      },
-    );
+    p1EvidenceMock.mockReset();
+    p1EvidenceMock.mockReturnValue(fakeEvidence);
   });
 
-  it("uses the fixed zero-argv search executable and maps a verified exchange", async () => {
+  it("passes the source-neutral scope to the fixed-producer seam", async () => {
     const evidence = await prepareKwragProductEvidenceForExplicitQuery({
       retrieval: {
-        scope: { sources: ["kakao"], rooms: [{ source: "kakao", roomId: "kakao-user" }] },
-        query: "지난 회의",
+        scope: {
+          sources: ["kakao"],
+          rooms: [{ source: "kakao", roomId: "kakao-user" }],
+        },
+        query: "납품 일정",
       },
       runId: "run-1",
       sessionId: "session-1",
     });
 
-    expect(execFileMock).toHaveBeenCalledOnce();
-    expect(execFileMock.mock.calls[0]?.[1]).toEqual([]);
-    expect(JSON.parse(stdinEndMock.mock.calls[0]?.[0])).toMatchObject({
-      schema_version: "kwrag-product-cli-request-v1",
-      operation: "search",
-      scope: {
-        sources: ["kakao"],
-        rooms: [{ source: "kakao", room_id: "kakao-user" }],
+    expect(evidence).toBe(fakeEvidence);
+    expect(p1EvidenceMock).toHaveBeenCalledOnce();
+    expect(p1EvidenceMock).toHaveBeenCalledWith({
+      retrieval: {
+        query: "납품 일정",
+        scope: {
+          sources: ["kakao"],
+          rooms: [{ source: "kakao", roomId: "kakao-user" }],
+        },
       },
-      query: "지난 회의",
+      runId: "run-1",
     });
-    expect(JSON.parse(stdinEndMock.mock.calls[0]?.[0])).not.toHaveProperty("corpus");
-    expect(evidence.runtimeMode).toBe("live_corpus");
-    expect(evidence.expectedIndexManifest).toBe("sha256:" + "1".repeat(64));
-    expect(evidence.resultCount).toBe(1);
-    expect(evidence.handoff.handoff).toMatchObject({ consumption: { status: "not_consumed" } });
   });
 
-  it("fails closed when the exchange identity and operation receipt do not agree", async () => {
-    const exchange = validExchange();
-    exchange.response.operation_receipt = { status: "written", digest: "sha256:" + "9".repeat(64) };
-    execFileMock.mockImplementationOnce(
-      (
-        _path: string,
-        _args: string[],
-        _options: Record<string, unknown>,
-        callback: (error: Error | null, stdout: string, stderr: string) => void,
-      ) => {
-        callback(null, JSON.stringify(exchange), "");
-        return { stdin: { end: stdinEndMock } };
-      },
-    );
-
+  it("rejects malformed scope before invoking the producer seam", async () => {
     await expect(
       prepareKwragProductEvidenceForExplicitQuery({
-        retrieval: { scope: { sources: ["kakao"] }, query: "질문" },
+        retrieval: { scope: { sources: ["Kakao"] }, query: "query" },
         runId: "run-2",
         sessionId: "session-2",
       }),
-    ).rejects.toThrow("product search exchange is invalid");
+    ).rejects.toThrow("scope source is invalid");
+    expect(p1EvidenceMock).not.toHaveBeenCalled();
   });
 
-  it("keeps generic source scope on the wire without the legacy corpus field", async () => {
+  it("does not add the retired corpus field or caller-supplied identities", async () => {
     await prepareKwragProductEvidenceForExplicitQuery({
-      retrieval: {
-        scope: {
-          sources: ["groupware", "whatsapp"],
-          rooms: [{ source: "groupware", roomId: "mail-room" }],
-        },
-        query: "보안 정책",
-      },
-      runId: "run-generic-1",
-      sessionId: "session-generic-1",
+      retrieval: { scope: { sources: ["kakao"] }, query: "quality" },
+      runId: "run-3",
+      sessionId: "session-3",
     });
-
-    expect(JSON.parse(stdinEndMock.mock.calls[0]?.[0])).toMatchObject({
-      schema_version: "kwrag-product-cli-request-v1",
-      operation: "search",
-      scope: {
-        sources: ["groupware", "whatsapp"],
-        rooms: [{ source: "groupware", room_id: "mail-room" }],
-      },
-    });
-    expect(JSON.parse(stdinEndMock.mock.calls[0]?.[0])).not.toHaveProperty("corpus");
+    const request = p1EvidenceMock.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(request.retrieval).not.toHaveProperty("corpus");
+    expect(request.retrieval).not.toHaveProperty("expected_source_generation");
+    expect(request.retrieval).not.toHaveProperty("expected_index_manifest");
   });
 });
