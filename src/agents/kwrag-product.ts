@@ -108,12 +108,12 @@ export async function prepareKwragProductEvidenceForExplicitQuery(params: {
     throw new Error("KWRAG retrieval violation: explicit retrieval request is invalid");
   }
   void params.slotInstanceId;
-  void params.signal;
   return prepareKwragP1EvidenceForExplicitScope({
     retrieval: {
       query: params.retrieval.query,
       ...(scope ? { scope } : {}),
     },
     runId: params.runId,
+    signal: params.signal,
   });
 }

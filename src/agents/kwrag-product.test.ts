@@ -28,6 +28,7 @@ describe("product-native retrieval caller adapter", () => {
   });
 
   it("passes the source-neutral scope to the fixed-producer seam", async () => {
+    const signal = new AbortController().signal;
     const evidence = await prepareKwragProductEvidenceForExplicitQuery({
       retrieval: {
         scope: {
@@ -38,6 +39,7 @@ describe("product-native retrieval caller adapter", () => {
       },
       runId: "run-1",
       sessionId: "session-1",
+      signal,
     });
 
     expect(evidence).toBe(fakeEvidence);
@@ -51,6 +53,7 @@ describe("product-native retrieval caller adapter", () => {
         },
       },
       runId: "run-1",
+      signal,
     });
   });
 

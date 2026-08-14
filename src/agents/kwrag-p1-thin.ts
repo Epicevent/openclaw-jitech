@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, readFileSync } from "node:fs";
 import { openRootFileSync } from "../infra/boundary-file-read.js";
@@ -329,6 +329,39 @@ function runProducer(request: Json): string {
     return fail("fixed producer execution failed");
   }
 }
+async function runProducerAsync(request: Json, signal?: AbortSignal): Promise<string> {
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      const child = execFile(
+        PRODUCER,
+        [],
+        {
+          encoding: "utf8",
+          maxBuffer: 256 * 1024,
+          timeout: 30_000,
+          windowsHide: true,
+          ...(signal ? { signal } : {}),
+        },
+        (error, stdout) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve(stdout);
+        },
+      );
+      if (!child.stdin) {
+        child.kill();
+        reject(new Error("fixed producer stdin is unavailable"));
+        return;
+      }
+      child.stdin.once("error", reject);
+      child.stdin.end(stableStringify(request));
+    });
+  } catch {
+    return fail("fixed producer execution failed");
+  }
+}
 function verifyProducer(
   raw: string,
   current: ReturnType<typeof observe>,
@@ -654,7 +687,8 @@ export function prepareKwragP1EvidenceForExplicitScope(params: {
     };
   };
   runId: string;
-}): KwragP1VerifiedEvidence {
+  signal?: AbortSignal;
+}): Promise<KwragP1VerifiedEvidence> {
   const current = observe();
   const scope = params.retrieval.scope;
   const sources = scope?.sources;
@@ -680,11 +714,21 @@ export function prepareKwragP1EvidenceForExplicitScope(params: {
   if (!corpus) {
     return fail("current Kakao corpus scope is ambiguous or unavailable");
   }
-  return prepareKwragP1EvidenceForExplicitQuery({
-    retrieval: { corpus, query: params.retrieval.query },
-    runId: params.runId,
-    observed: current,
-  });
+  const retrieval = { corpus, query: params.retrieval.query };
+  if (
+    typeof retrieval.query !== "string" ||
+    !retrieval.query.trim() ||
+    retrieval.query.length > 4_000 ||
+    typeof params.runId !== "string" ||
+    !params.runId.trim()
+  ) {
+    return fail("caller query is invalid");
+  }
+  if (!current.enabled) {
+    return fail("current KWRAG binding is disabled");
+  }
+  const request = slotRequest(retrieval, params.runId, current);
+  return runProducerAsync(request, params.signal).then((raw) => prepare(raw, current, request));
 }
 
 export async function runKwragP1UserTurnProof() {
