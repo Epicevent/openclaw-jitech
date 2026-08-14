@@ -4,7 +4,6 @@ import { buildKwragP0TestHandoff } from "./kwrag-p0-handoff.fixture.js";
 import { stableStringify } from "./stable-stringify.js";
 
 const execFileSyncMock = vi.hoisted(() => vi.fn());
-const execFileMock = vi.hoisted(() => vi.fn());
 const readFileSyncMock = vi.hoisted(() => vi.fn());
 const closeSyncMock = vi.hoisted(() => vi.fn());
 const openRootFileSyncMock = vi.hoisted(() => vi.fn());
@@ -12,10 +11,7 @@ const agentCommandMock = vi.hoisted(() => vi.fn());
 const ledgerMock = vi.hoisted(() => vi.fn());
 const closeLedgerMock = vi.hoisted(() => vi.fn());
 
-vi.mock("node:child_process", () => ({
-  execFile: execFileMock,
-  execFileSync: execFileSyncMock,
-}));
+vi.mock("node:child_process", () => ({ execFileSync: execFileSyncMock }));
 vi.mock("node:fs", () => ({ closeSync: closeSyncMock, readFileSync: readFileSyncMock }));
 vi.mock("../infra/boundary-file-read.js", () => ({ openRootFileSync: openRootFileSyncMock }));
 vi.mock("node:crypto", async (importOriginal) => ({
@@ -35,7 +31,6 @@ import {
   bindKwragP1Evidence,
   mapKwragServerRuntimeHandoff,
   prepareKwragP1EvidenceForExplicitQuery,
-  prepareKwragP1EvidenceForExplicitScope,
   readKwragP1AttachmentStatus,
   runKwragP1UserTurnProof,
   type KwragP1VerifiedEvidence,
@@ -323,7 +318,6 @@ function fixedPythonFloatOutput(request: Record<string, unknown>) {
 }
 describe("KWRAG P1 fixed-producer thin adapter", () => {
   beforeEach(() => {
-    execFileMock.mockReset();
     execFileSyncMock.mockReset();
     readFileSyncMock.mockReset();
     closeSyncMock.mockReset();
@@ -575,71 +569,6 @@ describe("KWRAG P1 fixed-producer thin adapter", () => {
       expected_source_generation: SOURCE,
       expected_index_manifest: MANIFEST,
     });
-  });
-
-  it("runs product scope through the abortable zero-argv producer", async () => {
-    installBindings(true);
-    const signal = new AbortController().signal;
-    const stdinOnce = vi.fn();
-    const stdinEnd = vi.fn((input: string) => {
-      const callback = execFileMock.mock.calls[0]?.[3] as (
-        error: Error | null,
-        stdout: string,
-      ) => void;
-      callback(null, fixedOutput(JSON.parse(input)));
-    });
-    execFileMock.mockReturnValue({
-      kill: vi.fn(),
-      stdin: { end: stdinEnd, once: stdinOnce },
-    });
-
-    await expect(
-      prepareKwragP1EvidenceForExplicitScope({
-        retrieval: { query: QUERY, scope: { sources: ["kakao"] } },
-        runId: "chat-run-scope",
-        signal,
-      }),
-    ).resolves.toMatchObject({
-      expectedSourceGeneration: SOURCE,
-      expectedIndexManifest: MANIFEST,
-      resultCount: 1,
-    });
-    expect(execFileSyncMock).not.toHaveBeenCalled();
-    expect(execFileMock).toHaveBeenCalledOnce();
-    expect(execFileMock.mock.calls[0]?.[0]).toBe("/opt/jitech/kwrag/bin/kwrag-fixed-producer");
-    expect(execFileMock.mock.calls[0]?.[1]).toEqual([]);
-    expect(execFileMock.mock.calls[0]?.[2]).toMatchObject({ signal });
-    expect(JSON.parse(stdinEnd.mock.calls[0]?.[0] as string)).toMatchObject({
-      query: QUERY,
-      expected_source_generation: SOURCE,
-      expected_index_manifest: MANIFEST,
-    });
-  });
-
-  it("fails closed when the product-scope producer is aborted", async () => {
-    installBindings(true);
-    const controller = new AbortController();
-    const stdinEnd = vi.fn(() => {
-      const callback = execFileMock.mock.calls[0]?.[3] as (
-        error: Error | null,
-        stdout: string,
-      ) => void;
-      callback(Object.assign(new Error("aborted"), { name: "AbortError" }), "");
-    });
-    execFileMock.mockReturnValue({
-      kill: vi.fn(),
-      stdin: { end: stdinEnd, once: vi.fn() },
-    });
-    controller.abort();
-
-    await expect(
-      prepareKwragP1EvidenceForExplicitScope({
-        retrieval: { query: QUERY, scope: { sources: ["kakao"] } },
-        runId: "chat-run-aborted",
-        signal: controller.signal,
-      }),
-    ).rejects.toThrow("fixed producer execution failed");
-    expect(execFileSyncMock).not.toHaveBeenCalled();
   });
 
   it("rejects an enabled binding without a server handoff before producer dispatch", () => {
