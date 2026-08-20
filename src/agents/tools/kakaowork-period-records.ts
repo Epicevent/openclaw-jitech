@@ -163,7 +163,7 @@ function canonicalJson(value: unknown): string {
   }
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
+      .toSorted(([left], [right]) => left.localeCompare(right))
       .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`);
     return `{${entries.join(",")}}`;
   }
@@ -193,7 +193,7 @@ function utf8ByteCount(value: string | null): number {
 }
 
 function unicodeCharacterCount(value: string | null): number {
-  return value ? [...value].length : 0;
+  return value ? Array.from(value).length : 0;
 }
 
 function stableEvidenceId(conversationId: string, messageId: string): string {
@@ -282,7 +282,7 @@ function requireTableContract(
   const columns = new Set(rows.map((row) => String(row.name)));
   const actualPrimaryKey = rows
     .filter((row) => Number(row.pk) > 0)
-    .sort((left, right) => Number(left.pk) - Number(right.pk))
+    .toSorted((left, right) => Number(left.pk) - Number(right.pk))
     .map((row) => String(row.name));
   if (
     columns.size === 0 ||
@@ -294,7 +294,13 @@ function requireTableContract(
 }
 
 function asNullableString(value: unknown): string | null {
-  return typeof value === "string" ? value : value === null ? null : String(value);
+  if (typeof value === "string" || value === null) {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return String(value);
+  }
+  return JSON.stringify(value) ?? null;
 }
 
 function isSafeAttachmentReference(value: string): boolean {
@@ -345,7 +351,7 @@ function loadDatabase(
       "block_index",
     ]);
 
-    const authorizedRooms = [...allowedRooms].sort();
+    const authorizedRooms = Array.from(allowedRooms).toSorted();
     const allRows: Record<string, unknown>[] = [];
     for (const roomChunk of chunks(authorizedRooms, 900)) {
       const placeholders = roomChunk.map(() => "?").join(",");
@@ -589,7 +595,7 @@ function encodeSigned(payload: unknown, secret: Uint8Array): string {
   return `${body}.${signature}`;
 }
 
-function decodeSigned<T>(token: string, secret: Uint8Array, code: string): T {
+function decodeSigned(token: string, secret: Uint8Array, code: string): unknown {
   const [body, signature, extra] = token.split(".");
   if (!body || !signature || extra !== undefined) {
     throw new PackageContractError(code, code);
@@ -605,7 +611,7 @@ function decodeSigned<T>(token: string, secret: Uint8Array, code: string): T {
     throw new PackageContractError(code, code);
   }
   try {
-    return JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as T;
+    return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
   } catch {
     throw new PackageContractError(code, code);
   }
@@ -792,7 +798,7 @@ export class KakaoworkPeriodRecords {
     data: PackageData;
     batches: Batch[];
   } {
-    const payload = decodeSigned<SnapshotPayload>(token, this.#secret, "invalid_token");
+    const payload = decodeSigned(token, this.#secret, "invalid_token") as SnapshotPayload;
     if (
       payload.version !== 1 ||
       !KAKAOWORK_PERIODS.includes(payload.period?.kind) ||
@@ -831,7 +837,7 @@ export class KakaoworkPeriodRecords {
     }
     let offset = 0;
     if (cursor !== undefined) {
-      const cursorPayload = decodeSigned<CursorPayload>(cursor, this.#secret, "invalid_cursor");
+      const cursorPayload = decodeSigned(cursor, this.#secret, "invalid_cursor") as CursorPayload;
       if (
         cursorPayload.version !== 1 ||
         cursorPayload.snapshotDigest !== snapshotDigest(snapshot.payload) ||
@@ -888,16 +894,19 @@ export class KakaoworkPeriodRecords {
         text_kind: message.textKind,
         plain_text: message.plainText,
         decrypt_status: message.decryptStatus,
-        attachments: (attachmentsByMessage.get(message.evidenceId) ?? []).map((attachment) => ({
-          block_index: attachment.blockIndex,
-          block_type: attachment.blockType,
-          file_name: attachment.fileName,
-          mime_type: attachment.mimeType,
-          reference_status: attachment.referenceSafe ? "available" : "invalid",
-          ...(attachment.referenceSafe && attachment.reference !== null
-            ? { nas_reference: attachment.reference }
-            : {}),
-        })),
+        attachments: (attachmentsByMessage.get(message.evidenceId) ?? []).map((attachment) => {
+          const record: Record<string, unknown> = {
+            block_index: attachment.blockIndex,
+            block_type: attachment.blockType,
+            file_name: attachment.fileName,
+            mime_type: attachment.mimeType,
+            reference_status: attachment.referenceSafe ? "available" : "invalid",
+          };
+          if (attachment.referenceSafe && attachment.reference !== null) {
+            record.nas_reference = attachment.reference;
+          }
+          return record;
+        }),
       })),
     };
     if (nextCursor === null) {
@@ -916,18 +925,22 @@ export class KakaoworkPeriodRecords {
     const duplicateBatchIds = [...counts]
       .filter(([, count]) => count > 1)
       .map(([batchId]) => batchId)
-      .sort();
-    const unknownBatchIds = [...counts.keys()].filter((batchId) => !expected.has(batchId)).sort();
+      .toSorted();
+    const unknownBatchIds = [...counts.keys()]
+      .filter((batchId) => !expected.has(batchId))
+      .toSorted();
     const supplied = new Map(
       coverage
         .filter((item) => expected.has(item.batchId))
         .map((item) => [item.batchId, item.coverageDigest]),
     );
-    const missingBatchIds = [...expected.keys()].filter((batchId) => !supplied.has(batchId)).sort();
+    const missingBatchIds = [...expected.keys()]
+      .filter((batchId) => !supplied.has(batchId))
+      .toSorted();
     const digestMismatchBatchIds = [...supplied]
       .filter(([batchId, digest]) => expected.get(batchId)?.coverageDigest !== digest)
       .map(([batchId]) => batchId)
-      .sort();
+      .toSorted();
     const validBatchIds = new Set(
       [...supplied]
         .filter(

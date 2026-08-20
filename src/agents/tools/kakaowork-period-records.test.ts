@@ -396,7 +396,7 @@ describe("KakaoworkPeriodRecords", () => {
     const incomplete = records.execute({
       operation: "reconcile",
       snapshotToken,
-      coverage: [coverage[0]!, coverage[0]!],
+      coverage: [coverage[0], coverage[0]],
     });
     expect(incomplete).toMatchObject({
       status: "incomplete",
@@ -405,7 +405,7 @@ describe("KakaoworkPeriodRecords", () => {
       covered_messages: 0,
       processed_messages: 0,
       uncovered_messages: 205,
-      duplicate_batch_ids: [coverage[0]!.batchId],
+      duplicate_batch_ids: [coverage[0].batchId],
       missing_batch_ids: [requiredString(array(manifest.batches)[1]?.batch_id)],
     });
   });
@@ -415,8 +415,8 @@ describe("KakaoworkPeriodRecords", () => {
     const records = createRecords(packageDir);
     const manifest = records.execute({ operation: "manifest", period: "rolling_7d" });
     const { snapshotToken, coverage } = readAll(records, manifest);
-    const firstBatchId = coverage[0]!.batchId;
-    const secondBatchId = coverage[1]!.batchId;
+    const firstBatchId = coverage[0].batchId;
+    const secondBatchId = coverage[1].batchId;
 
     const incomplete = records.execute({
       operation: "reconcile",
@@ -424,7 +424,7 @@ describe("KakaoworkPeriodRecords", () => {
       coverage: [
         { batchId: firstBatchId, coverageDigest: "sha256:wrong" },
         { batchId: "batch-unknown", coverageDigest: "sha256:unknown" },
-        coverage[1]!,
+        coverage[1],
       ],
     });
     expect(incomplete).toMatchObject({
