@@ -10,7 +10,26 @@ import { createKakaoworkPeriodRecordsTool } from "./kakaowork-period-records-too
 import { KakaoworkPeriodRecords, resolveKakaoworkPeriod } from "./kakaowork-period-records.js";
 
 const NOW_MS = Date.parse("2026-08-20T12:00:00.000Z");
+const PARITY_NOW_MS = Date.parse("2026-08-20T03:00:00.000Z");
 const PACKAGE_UPDATED_AT = "2026-08-20T11:55:00+00:00";
+const PARITY_BATCH_IDS = [
+  "batch-0001-cfa9dd7d41697ad2",
+  "batch-0002-17475dfc0a4d9a62",
+  "batch-0003-4ce32e9fb856128a",
+  "batch-0004-3cb2dc222b83dc1a",
+  "batch-0005-911d23943c2fefec",
+  "batch-0006-aae62f8e5ae119ba",
+];
+const PARITY_COVERAGE_DIGESTS = [
+  "sha256:85f8deccbea3013193ea0429cbb0b04d177bb6e788009dece2a8cf1c24f6956d",
+  "sha256:8d2472f588961ba8b988c630f6255205537a509e716844df936f995d0f756d09",
+  "sha256:c0299b81ee97956d2b2f5d49af7a6f0a367764dc5f004c86b5bd92af533e7f00",
+  "sha256:8edc19cb79670da5e7495e26ab86b06405fede6195309347081019e53443e7bb",
+  "sha256:d9ea92ddf65c9c964ca042925a3af362b860d3530b406c0a99da70f9ef06d53f",
+  "sha256:2491084d35cfab52af6f2357ebb142c4afb9d1e3a2e931d8cd583e89bf2ab8d1",
+];
+const PARITY_FIRST_STABLE_ID =
+  "sha256:5d5e8cd6cc6224b143fa03ae5c8aaa332e022e32486f181569c41cd8ef223598";
 const MESSAGE_DDL = `
 CREATE TABLE messages (
   conversation_id TEXT NOT NULL,
@@ -131,6 +150,59 @@ function createRecords(packageDir: string) {
   });
 }
 
+function parityFixture() {
+  const root = mkdtempSync(join(tmpdir(), "openclaw-kakao-parity-"));
+  temporaryRoots.push(root);
+  const packageDir = join(root, "package");
+  mkdirSync(packageDir);
+  writeFileSync(
+    join(packageDir, "membership.json"),
+    JSON.stringify({
+      schema: "kw-user-membership/1",
+      user_id: "7519030",
+      conversation_ids: ["room-a"],
+    }),
+  );
+  const databasePath = join(packageDir, "messages.sqlite");
+  const db = new DatabaseSync(databasePath);
+  db.exec(MESSAGE_DDL);
+  const insert = db.prepare(
+    "INSERT INTO messages (conversation_id, message_id, room_name, request_id, user_id, " +
+      "user_name, sent_time, text_kind, plain_text, decrypt_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const end = Math.floor(PARITY_NOW_MS / 1000);
+  for (let index = 0; index < 1_001; index += 1) {
+    insert.run(
+      "room-a",
+      `message-${String(index).padStart(4, "0")}`,
+      "대용량방",
+      `request-${index}`,
+      "sender-1",
+      "발신자",
+      end - 10_000 + index,
+      "text",
+      "가",
+      "ok",
+    );
+  }
+  db.prepare(
+    "INSERT INTO attachments (conversation_id, message_id, block_index, block_type, " +
+      "file_name, mime_type, nas_path) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    "room-a",
+    "message-0000",
+    0,
+    "file",
+    "evidence.pdf",
+    "application/pdf",
+    "attachments/room-a/message-0000/evidence.pdf",
+  );
+  db.close();
+  const fresh = new Date(PARITY_NOW_MS - 60_000);
+  utimesSync(databasePath, fresh, fresh);
+  return packageDir;
+}
+
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("expected object");
@@ -199,6 +271,36 @@ afterEach(() => {
 });
 
 describe("KakaoworkPeriodRecords", () => {
+  it("matches the cross-product 1001-record parity vector", () => {
+    const packageDir = parityFixture();
+    const records = new KakaoworkPeriodRecords({
+      packageDir,
+      nowMs: () => PARITY_NOW_MS,
+      snapshotSecret: Buffer.alloc(32, 7),
+    });
+    const manifest = records.execute({ operation: "manifest", period: "rolling_7d" });
+    expect(manifest.totals).toEqual({
+      rooms: 1,
+      messages: 1_001,
+      attachments: 1,
+      text_characters: 1_001,
+      text_utf8_bytes: 3_003,
+      decrypt_failures: 0,
+      unsafe_attachment_references: 0,
+    });
+    expect(array(manifest.batches).map((batch) => batch.batch_id)).toEqual(PARITY_BATCH_IDS);
+    const { snapshotToken, coverage, returnedRecords } = readAll(records, manifest);
+    expect(returnedRecords[0]?.stable_message_id).toBe(PARITY_FIRST_STABLE_ID);
+    expect(coverage.map((item) => item.coverageDigest)).toEqual(PARITY_COVERAGE_DIGESTS);
+    expect(records.execute({ operation: "reconcile", snapshotToken, coverage })).toMatchObject({
+      complete: true,
+      source_total_messages: 1_001,
+      processed_messages: 1_001,
+      failed_messages: 0,
+      uncovered_messages: 0,
+    });
+  });
+
   it("resolves rolling and previous calendar week in Asia/Seoul", () => {
     expect(resolveKakaoworkPeriod("rolling_7d", NOW_MS)).toMatchObject({
       start_iso: "2026-08-13T21:00:00.000+09:00",
