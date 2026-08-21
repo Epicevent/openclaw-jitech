@@ -351,6 +351,10 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
       title: "RAG Index",
       detailKeys: ["status", "index_manifest", "source_state_sha256"],
     },
+    jitech_kakaowork_period_records: {
+      title: "KakaoWork Period Records",
+      detailKeys: ["operation", "period", "batch_id"],
+    },
     web_search: {
       emoji: "🔎",
       title: "Web Search",
