@@ -143,7 +143,6 @@ function createRecords(packageDir: string) {
   return new KakaoworkPeriodRecords({
     packageDir,
     nowMs: () => NOW_MS,
-    snapshotSecret: Buffer.alloc(32, 7),
     batchMessageLimit: 200,
     batchByteLimit: 32_768,
     pageMessageLimit: 50,
@@ -276,7 +275,6 @@ describe("KakaoworkPeriodRecords", () => {
     const records = new KakaoworkPeriodRecords({
       packageDir,
       nowMs: () => PARITY_NOW_MS,
-      snapshotSecret: Buffer.alloc(32, 7),
     });
     const manifest = records.execute({ operation: "manifest", period: "rolling_7d" });
     expect(manifest.totals).toEqual({
@@ -641,7 +639,6 @@ describe("KakaoworkPeriodRecords", () => {
     const tool = createKakaoworkPeriodRecordsTool({
       packageDir,
       nowMs: () => NOW_MS,
-      snapshotSecret: Buffer.alloc(32, 7),
     });
     if (!tool) {
       throw new Error("expected product tool");
@@ -657,6 +654,40 @@ describe("KakaoworkPeriodRecords", () => {
       period: "rolling_7d",
     });
     expect(result.details).toMatchObject({ operation: "manifest", status: "ready" });
+  });
+
+  it("accepts a manifest token after the model loop rebuilds the tool object", async () => {
+    const { packageDir } = fixture({ messageCount: 1 });
+    process.env.JITECH_KWRAG_RUNTIME_PROFILE = "openclaw";
+    const manifestTool = createKakaoworkPeriodRecordsTool({
+      packageDir,
+      nowMs: () => NOW_MS,
+    });
+    const pageTool = createKakaoworkPeriodRecordsTool({
+      packageDir,
+      nowMs: () => NOW_MS,
+    });
+    if (!manifestTool || !pageTool) {
+      throw new Error("expected product tools");
+    }
+
+    const manifestResult = await manifestTool.execute("manifest-call", {
+      operation: "manifest",
+      period: "rolling_7d",
+    });
+    const manifest = record(manifestResult.details);
+    const firstBatch = record(array(manifest.batches)[0]);
+    const pageResult = await pageTool.execute("page-call", {
+      operation: "read_batch",
+      snapshot_token: requiredString(manifest.snapshot_token),
+      batch_id: requiredString(firstBatch.batch_id),
+    });
+
+    expect(pageResult.details).toMatchObject({
+      operation: "read_batch",
+      status: "ready",
+      complete: true,
+    });
   });
 
   it("discovers the shipped weekly KakaoWork skill through the product loader", () => {
