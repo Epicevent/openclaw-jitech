@@ -19,6 +19,8 @@ const GEMINI_3_5_FLASH_LITE_PREFIX = "gemini-3.5-flash-lite";
 const GEMINI_3_5_FLASH_PREFIX = "gemini-3.5-flash";
 const GEMINI_3_6_FLASH_LITE_PREFIX = "gemini-3.6-flash-lite";
 const GEMINI_3_6_FLASH_PREFIX = "gemini-3.6-flash";
+const GEMINI_3_7_FLASH_LITE_PREFIX = "gemini-3.7-flash-lite";
+const GEMINI_3_7_FLASH_PREFIX = "gemini-3.7-flash";
 const GEMINI_PRO_LATEST_ID = "gemini-pro-latest";
 const GEMINI_FLASH_LATEST_ID = "gemini-flash-latest";
 const GEMINI_FLASH_LITE_LATEST_ID = "gemini-flash-lite-latest";
@@ -32,12 +34,30 @@ const GEMINI_3_1_FLASH_TEMPLATE_IDS = ["gemini-3-flash-preview", "gemini-2.5-fla
 // gemini-3.5-flash has no dedicated catalog template yet; resolve it through the current Flash
 // lineage and fall back to 2.5-flash so the id is still sent to the provider API (which serves
 // gemini-3.5-flash) even before a dedicated 3.5 template row exists in the runtime catalog.
-const GEMINI_3_5_FLASH_TEMPLATE_IDS = ["gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash"] as const;
+const GEMINI_3_5_FLASH_TEMPLATE_IDS = [
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+] as const;
 // gemini-3.6-flash has no dedicated catalog template yet; resolve it through the current Flash
 // lineage (3.6 -> 3.5 -> 3-flash-preview -> 2.5-flash) so it inherits the newest real flash row's
 // capabilities from the runtime catalog and the id is still sent to the provider API (which serves
 // gemini-3.6-flash) even before a dedicated 3.6 template row exists.
-const GEMINI_3_6_FLASH_TEMPLATE_IDS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash"] as const;
+const GEMINI_3_6_FLASH_TEMPLATE_IDS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+] as const;
+// Resolve gemini-3.7-flash through the newest available Flash catalog row while preserving the
+// requested id for the provider API. A dedicated 3.7 row takes precedence when catalogs add it.
+const GEMINI_3_7_FLASH_TEMPLATE_IDS = [
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-2.5-flash",
+] as const;
 const GEMINI_3_PRO_ANTIGRAVITY_TEMPLATE_IDS = ["gemini-3-pro-low", "gemini-3-pro-high"] as const;
 const GEMINI_3_FLASH_ANTIGRAVITY_TEMPLATE_IDS = ["gemini-3-flash"] as const;
 // Gemma uses the Gemini flash template as a forward-compat approximation
@@ -192,6 +212,15 @@ export function resolveGoogleGeminiForwardCompatModel(params: {
     family = {
       googleTemplateIds: GEMINI_3_1_FLASH_LITE_TEMPLATE_IDS,
       cliTemplateIds: GEMINI_3_1_FLASH_LITE_TEMPLATE_IDS,
+      antigravityTemplateIds: GEMINI_3_FLASH_ANTIGRAVITY_TEMPLATE_IDS,
+    };
+  } else if (
+    lower.startsWith(GEMINI_3_7_FLASH_PREFIX) &&
+    !lower.startsWith(GEMINI_3_7_FLASH_LITE_PREFIX)
+  ) {
+    family = {
+      googleTemplateIds: GEMINI_3_7_FLASH_TEMPLATE_IDS,
+      cliTemplateIds: GEMINI_3_7_FLASH_TEMPLATE_IDS,
       antigravityTemplateIds: GEMINI_3_FLASH_ANTIGRAVITY_TEMPLATE_IDS,
     };
   } else if (

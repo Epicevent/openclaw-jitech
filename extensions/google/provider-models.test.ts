@@ -335,6 +335,64 @@ describe("resolveGoogleGeminiForwardCompatModel", () => {
     expect(model).toBeUndefined();
   });
 
+  it("resolves gemini-3.7-flash from the newest available Flash template", () => {
+    const model = resolveGoogleGeminiForwardCompatModel({
+      providerId: "google",
+      ctx: createContext({
+        provider: "google",
+        modelId: "gemini-3.7-flash",
+        models: [
+          createTemplateModel("google", "gemini-2.5-flash", { contextWindow: 200_000 }),
+          createTemplateModel("google", "gemini-3.6-flash", {
+            contextWindow: 1_048_576,
+          }),
+        ],
+      }),
+    });
+
+    expectModelFields(model, {
+      provider: "google",
+      id: "gemini-3.7-flash",
+      api: "google-generative-ai",
+      input: ["text", "image"],
+      contextWindow: 1_048_576,
+    });
+  });
+
+  it("does not resolve gemini-3.7-flash-lite through a full Flash template", () => {
+    const model = resolveGoogleGeminiForwardCompatModel({
+      providerId: "google",
+      ctx: createContext({
+        provider: "google",
+        modelId: "gemini-3.7-flash-lite",
+        models: [createTemplateModel("google", "gemini-3.6-flash")],
+      }),
+    });
+
+    expect(model).toBeUndefined();
+  });
+
+  it.each([
+    ["google-gemini-cli", "google-gemini-cli", "google-gemini-cli"],
+    ["google-antigravity", "google-antigravity", "openai-completions"],
+  ])("resolves gemini-3.7-flash for %s", (providerId, templateProviderId, api) => {
+    const templateId = providerId === "google-antigravity" ? "gemini-3-flash" : "gemini-3.5-flash";
+    const model = resolveGoogleGeminiForwardCompatModel({
+      providerId,
+      ctx: createContext({
+        provider: providerId,
+        modelId: "gemini-3.7-flash",
+        models: [createTemplateModel(templateProviderId, templateId, { api })],
+      }),
+    });
+
+    expectModelFields(model, {
+      provider: providerId,
+      id: "gemini-3.7-flash",
+      api,
+    });
+  });
+
   it("resolves canonical Gemini CLI 3 flash from Google flash templates when the CLI row is missing", () => {
     const model = resolveGoogleGeminiForwardCompatModel({
       providerId: "google-gemini-cli",
