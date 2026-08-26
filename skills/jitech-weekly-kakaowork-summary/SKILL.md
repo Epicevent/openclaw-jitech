@@ -35,11 +35,19 @@ metadata: { "openclaw": { "emoji": "📋" } }
 }
 ```
 
-대표 데이터는 현재 턴의 증거예산 안이므로 batch를 순차 처리한다. manifest가 실제
-남은 증거예산을 넘는 경우에만 기존 `sessions_spawn`을 고려한다. 이때 자식에게 외부
-통신·파일변경 도구를 주지 말고 지정 batch만 맡긴다. 자식의 최종 batch coverage가 부모의
-reconcile에서 유효하다는 것이 확인되지 않으면 병렬 결과를 완료로 합치지 말고
-불완전으로 종료한다. 새 runner나 저장소를 만들지 않는다.
+manifest의 `totals.text_utf8_bytes <= 131072`, `totals.messages <= 1000`,
+전체 `page_count` 합계가 64 이하이면 **반드시 현재 세션에서** 모든 batch와 page를
+순차 처리한다. 이 범위에서는 `sessions_spawn`을 호출하지 않는다. OC1 대표 주간량
+(56,734 bytes, 458 messages, 43 pages)은 이 직접 처리 경로다.
+
+조회 중에는 `jitech_kakaowork_period_records`만 사용한다. `exec`, `read`, `write`,
+`process`, `gateway`, 파일 탐색, 임시 스크립트 작성 또는 DB 직접 접근으로 우회하지
+않는다. 모든 `read_batch` 호출에는 같은 manifest의 `snapshot_token`, 현재
+`batch_id`, 직전 응답의 `next_cursor`를 그대로 전달한다.
+
+위 세 상한 중 하나라도 넘더라도 제한된 batch 전용 agent가 실제로 구성되어 있다는
+증거가 없으면 `sessions_spawn`을 시도하지 않는다. 확인된 manifest 수치와 미처리 범위를
+밝혀 불완전으로 종료한다. 새 runner, 저장소, 스크립트 또는 상태 파일을 만들지 않는다.
 
 ## batch 결과 형식
 

@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { closeSync, lstatSync, openSync, readFileSync, readSync, statSync } from "node:fs";
 import type { DatabaseSync } from "node:sqlite";
 import { requireNodeSqlite } from "../../infra/node-sqlite.js";
@@ -114,7 +114,6 @@ type PackageData = {
 export type KakaoworkPeriodRecordsOptions = {
   packageDir: string;
   nowMs?: () => number;
-  snapshotSecret?: Uint8Array;
   batchMessageLimit?: number;
   batchByteLimit?: number;
   pageMessageLimit?: number;
@@ -589,29 +588,16 @@ function countBatchPages(batch: Batch, messageLimit: number): number {
   return Math.ceil(batch.messages.length / messageLimit);
 }
 
-function encodeSigned(payload: unknown, secret: Uint8Array): string {
-  const body = Buffer.from(canonicalJson(payload), "utf8").toString("base64url");
-  const signature = createHmac("sha256", secret).update(body).digest("base64url");
-  return `${body}.${signature}`;
+function encodeState(payload: unknown): string {
+  return Buffer.from(canonicalJson(payload), "utf8").toString("base64url");
 }
 
-function decodeSigned(token: string, secret: Uint8Array, code: string): unknown {
-  const [body, signature, extra] = token.split(".");
-  if (!body || !signature || extra !== undefined) {
-    throw new PackageContractError(code, code);
-  }
-  const expected = createHmac("sha256", secret).update(body).digest();
-  let actual: Buffer;
-  try {
-    actual = Buffer.from(signature, "base64url");
-  } catch {
-    throw new PackageContractError(code, code);
-  }
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+function decodeState(token: string, code: string): unknown {
+  if (!token) {
     throw new PackageContractError(code, code);
   }
   try {
-    return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+    return JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
   } catch {
     throw new PackageContractError(code, code);
   }
@@ -684,7 +670,6 @@ function unavailable(operation: string, error: unknown) {
 export class KakaoworkPeriodRecords {
   readonly #packageDir: string;
   readonly #nowMs: () => number;
-  readonly #secret: Uint8Array;
   readonly #batchMessageLimit: number;
   readonly #batchByteLimit: number;
   readonly #pageMessageLimit: number;
@@ -692,7 +677,6 @@ export class KakaoworkPeriodRecords {
   constructor(options: KakaoworkPeriodRecordsOptions) {
     this.#packageDir = options.packageDir;
     this.#nowMs = options.nowMs ?? Date.now;
-    this.#secret = options.snapshotSecret ?? randomBytes(32);
     this.#batchMessageLimit = options.batchMessageLimit ?? 200;
     this.#batchByteLimit = options.batchByteLimit ?? 32_768;
     this.#pageMessageLimit = options.pageMessageLimit ?? 50;
@@ -741,7 +725,7 @@ export class KakaoworkPeriodRecords {
       batchByteLimit: this.#batchByteLimit,
       pageMessageLimit: this.#pageMessageLimit,
     };
-    const snapshotToken = encodeSigned(payload, this.#secret);
+    const snapshotToken = encodeState(payload);
     const decryptFailureCount = data.messages.filter(decryptFailed).length;
     const textCharacters = data.messages.reduce(
       (total, message) => total + unicodeCharacterCount(message.plainText),
@@ -798,7 +782,7 @@ export class KakaoworkPeriodRecords {
     data: PackageData;
     batches: Batch[];
   } {
-    const payload = decodeSigned(token, this.#secret, "invalid_token") as SnapshotPayload;
+    const payload = decodeState(token, "invalid_token") as SnapshotPayload;
     if (
       payload.version !== 1 ||
       !KAKAOWORK_PERIODS.includes(payload.period?.kind) ||
@@ -837,7 +821,7 @@ export class KakaoworkPeriodRecords {
     }
     let offset = 0;
     if (cursor !== undefined) {
-      const cursorPayload = decodeSigned(cursor, this.#secret, "invalid_cursor") as CursorPayload;
+      const cursorPayload = decodeState(cursor, "invalid_cursor") as CursorPayload;
       if (
         cursorPayload.version !== 1 ||
         cursorPayload.snapshotDigest !== snapshotDigest(snapshot.payload) ||
@@ -856,14 +840,13 @@ export class KakaoworkPeriodRecords {
     const nextOffset = offset + page.length;
     const nextCursor =
       nextOffset < batch.messages.length
-        ? encodeSigned(
+        ? encodeState(
             {
               version: 1,
               snapshotDigest: snapshotDigest(snapshot.payload),
               batchId,
               offset: nextOffset,
             } satisfies CursorPayload,
-            this.#secret,
           )
         : null;
     const attachmentsByMessage = new Map<string, SourceAttachment[]>();
