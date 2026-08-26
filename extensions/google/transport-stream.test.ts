@@ -559,6 +559,30 @@ describe("google transport stream", () => {
     });
   });
 
+  it("uses LOW for Gemini 3.7 Flash first-response retries", () => {
+    const retryPayload = buildGoogleGemini3FirstResponseRetryParams({
+      model: buildGeminiModel({
+        id: "gemini-3.7-flash",
+        name: "Gemini 3.7 Flash",
+      }),
+      request: {
+        contents: [{ role: "user", parts: [{ text: "hello" }] }],
+        generationConfig: {
+          thinkingConfig: {
+            includeThoughts: true,
+            thinkingLevel: "HIGH",
+          },
+        },
+      },
+    });
+
+    expect(retryPayload?.generationConfig).toEqual({
+      thinkingConfig: {
+        thinkingLevel: "LOW",
+      },
+    });
+  });
+
   it("wraps malformed Gemini SSE JSON", async () => {
     guardedFetchMock.mockResolvedValueOnce(buildRawSseResponse("data: {not json\n\n"));
 
