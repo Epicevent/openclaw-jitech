@@ -58,7 +58,11 @@ import {
 import { resolveUserPath } from "../../../utils.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
-import { resolveAgentDir, resolveSessionAgentIds } from "../../agent-scope.js";
+import {
+  resolveAgentContextLimits,
+  resolveAgentDir,
+  resolveSessionAgentIds,
+} from "../../agent-scope.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import { listActiveProcessSessionReferences } from "../../bash-process-references.js";
 import {
@@ -267,6 +271,7 @@ import {
   installToolResultContextGuard,
 } from "../tool-result-context-guard.js";
 import {
+  calculateMaxToolResultCharsWithCap,
   resolveLiveToolResultMaxChars,
   truncateOversizedToolResultsInSessionManager,
 } from "../tool-result-truncation.js";
@@ -2114,6 +2119,26 @@ export async function runEmbeddedAttempt(
             ? "aborted"
             : undefined,
         allowedToolNames: replayAllowedToolNames,
+        toolResultMaxCharsByName: new Map(
+          tools.flatMap((tool) => {
+            const declared = (tool as { resultMaxChars?: unknown }).resultMaxChars;
+            const configured = resolveAgentContextLimits(
+              params.config,
+              sessionAgentId,
+            )?.toolResultMaxChars;
+            return typeof declared === "number" && Number.isFinite(declared) && declared >= 1
+              ? [
+                  [
+                    tool.name,
+                    calculateMaxToolResultCharsWithCap(
+                      params.contextTokenBudget ?? DEFAULT_CONTEXT_TOKENS,
+                      configured ?? declared,
+                    ),
+                  ] as const,
+                ]
+              : [];
+          }),
+        ),
         suppressNextUserMessagePersistence: params.suppressNextUserMessagePersistence,
         suppressTranscriptOnlyAssistantPersistence:
           params.suppressTranscriptOnlyAssistantPersistence,

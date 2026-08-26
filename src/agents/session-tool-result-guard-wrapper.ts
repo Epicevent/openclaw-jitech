@@ -32,6 +32,7 @@ export function guardSessionManager(
     allowSyntheticToolResults?: boolean;
     missingToolResultText?: string;
     allowedToolNames?: Iterable<string>;
+    toolResultMaxCharsByName?: ReadonlyMap<string, number>;
     suppressNextUserMessagePersistence?: boolean;
     suppressTranscriptOnlyAssistantPersistence?: boolean;
     suppressAssistantErrorPersistence?: boolean;
@@ -115,6 +116,7 @@ export function guardSessionManager(
             agentId: opts.agentId,
           })
         : undefined,
+    toolResultMaxCharsByName: opts?.toolResultMaxCharsByName,
     suppressNextUserMessagePersistence: opts?.suppressNextUserMessagePersistence,
     suppressTranscriptOnlyAssistantPersistence: opts?.suppressTranscriptOnlyAssistantPersistence,
     suppressAssistantErrorPersistence: opts?.suppressAssistantErrorPersistence,

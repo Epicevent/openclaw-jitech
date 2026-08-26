@@ -16,6 +16,8 @@ export type AgentToolWithMeta<TParameters extends TSchema, TResult> = AgentTool<
 > & {
   ownerOnly?: boolean;
   displaySummary?: string;
+  /** Optional model-visible result cap for tools that intentionally return a bounded corpus. */
+  resultMaxChars?: number;
 };
 
 type ErasedAgentToolExecute = {
@@ -32,6 +34,8 @@ export type AnyAgentTool = Omit<AgentTool<TSchema, unknown>, "execute"> &
   ErasedAgentToolExecute & {
     ownerOnly?: boolean;
     displaySummary?: string;
+    /** Optional model-visible result cap for tools that intentionally return a bounded corpus. */
+    resultMaxChars?: number;
   };
 
 export function asToolParamsRecord(params: unknown): Record<string, unknown> {
