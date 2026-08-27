@@ -12,46 +12,26 @@ metadata: { "openclaw": { "emoji": "📋" } }
 
 ## 실행 계약
 
-1. `jitech_kakaowork_period_records`의 `manifest`를 먼저 호출한다.
-2. `status=unavailable|error`이면 검색 도구로 우회하지 말고
-   `connection.diagnostic`과 확인하지 못한 범위를 답한다.
-3. `totals.messages=0`이면 연결 여부, 절대 시작·종료시각, 0건을 함께 답한다.
-   freshness가 stale이면 `해당 기간 0건`을 `전건 확인 완료`로 표현하지 않는다.
-4. manifest의 모든 batch를 각 batch의 `next_cursor=null`까지 읽는다. 각 호출의
-   `next_cursor`는 수정하지 않고 다음 호출에 넘긴다. 마지막 page에만 반환되는
-   `batch_coverage_digest`를 batch ID와 함께 보존한다. 중간 page digest를 만들거나
-   추측하지 않는다. 임의 방, 사용자, 경로, SQL 또는 날짜를 도구에 넘기지 않는다.
-5. snapshot mismatch가 나면 이전 결과를 버리고 manifest부터 한 번만 다시 시작한다.
-   두 번째 mismatch는 불완전으로 종료한다.
-6. 모든 batch의 최종 digest를 `coverage:[{batch_id,coverage_digest}]`로 만들어
-   `reconcile`을 호출한다. `complete=true`일 때만
-   `전건 요약 완료`, `누락 없음`, `전체`라고 쓸 수 있다.
+`jitech_kakaowork_period_records`를 다음 형식으로 정확히 한 번 호출한다.
 
 ```json
-{
-  "operation": "reconcile",
-  "snapshot_token": "<manifest token>",
-  "coverage": [{ "batch_id": "<id>", "coverage_digest": "<final page digest>" }]
-}
+{ "operation": "read_period", "period": "rolling_7d" }
 ```
 
-manifest의 `totals.text_utf8_bytes <= 131072`, `totals.messages <= 1000`,
-전체 `page_count` 합계가 64 이하이면 **반드시 현재 세션에서** 모든 batch와 page를
-순차 처리한다. 이 범위에서는 `sessions_spawn`을 호출하지 않는다. OC1 대표 주간량
-(56,734 bytes, 458 messages, 43 pages)은 이 직접 처리 경로다.
+`지난주` 요청에서만 `period`를 `previous_calendar_week`로 바꾼다. 모델이 manifest,
+batch, page, cursor 또는 coverage digest를 관리하지 않는다. 임의 방, 사용자, 경로,
+SQL 또는 날짜를 도구에 넘기지 않으며 다른 검색·파일·실행 도구로 우회하지 않는다.
 
-조회 중에는 `jitech_kakaowork_period_records`만 사용한다. `exec`, `read`, `write`,
-`process`, `gateway`, 파일 탐색, 임시 스크립트 작성 또는 DB 직접 접근으로 우회하지
-않는다. 모든 `read_batch` 호출에는 같은 manifest의 `snapshot_token`, 현재
-`batch_id`, 직전 응답의 `next_cursor`를 그대로 전달한다.
+- `status=unavailable|error`이면 `connection.diagnostic`과 확인하지 못한 범위를 답한다.
+- `status=oversize`이면 일부 원문을 전체처럼 요약하지 않는다. 원본 건수, 반환 0건,
+  필요한 결과 크기와 한도를 밝히고 `불완전`으로 종료한다.
+- `source_total_messages=0`이면 연결 여부, 절대 시작·종료시각, 0건을 함께 답한다.
+  freshness가 stale이면 `전건 확인 완료`라고 표현하지 않는다.
+- `records`는 해당 기간의 승인된 원문 전건이다. 별도 pagination이나 재호출을 만들지 않는다.
 
-위 세 상한 중 하나라도 넘더라도 제한된 batch 전용 agent가 실제로 구성되어 있다는
-증거가 없으면 `sessions_spawn`을 시도하지 않는다. 확인된 manifest 수치와 미처리 범위를
-밝혀 불완전으로 종료한다. 새 runner, 저장소, 스크립트 또는 상태 파일을 만들지 않는다.
+## 요약 규칙
 
-## batch 결과 형식
-
-각 batch에서 다음 항목만 추출하고 모든 주장에 하나 이상의 `stable_message_id`를 붙인다.
+모든 핵심 주장에 하나 이상의 `stable_message_id`를 붙이고 다음 범주로 정리한다.
 
 - 의사결정
 - 요청과 담당자
@@ -67,13 +47,11 @@ manifest의 `totals.text_utf8_bytes <= 131072`, `totals.messages <= 1000`,
 
 ## 최종 답변
 
-먼저 절대 기간, 원본 메시지 수, 처리 수, 누락·중복·복호화 실패·안전하지 않은 첨부
-수를 밝힌다. 그 뒤 핵심 요약을 위 범주로 정리하고, 부록에 방·batch별 coverage와
-실패 내역을 둔다. 근거 표기는 최소한
-`[카카오워크 | 방 | local_time | stable_message_id]`를
-포함한다.
+먼저 절대 기간, 원본 메시지 수, 반환·처리·실패·미반환·중복 건수와 freshness를 밝힌다.
+그 뒤 고객이 바로 판단하고 행동할 수 있도록 핵심 요약을 위 범주로 정리한다. 근거 표기는
+최소한 `[카카오워크 | 방 | local_time | stable_message_id]`를 포함한다.
 
-`reconcile.complete=false`이면 제목과 결론에 `불완전`을 명시하고, 확인된 내용과
-확인하지 못한 범위를 분리한다. `missing_batch_ids`, `duplicate_batch_ids`,
-`unknown_batch_ids`, `digest_mismatch_batch_ids`, `failed_messages`,
-`uncovered_messages`, freshness를 생략하지 않는다.
+도구의 `complete=true`일 때만 `전건 요약 완료`, `누락 없음`, `전체`라고 쓸 수 있다.
+`complete=false`이면 제목과 결론에 `불완전`을 명시하고, 확인된 내용과 확인하지 못한
+범위를 분리한다. `failed_messages`, `uncovered_messages`, `duplicate_messages`,
+`unsafe_attachment_references`, freshness를 생략하지 않는다.

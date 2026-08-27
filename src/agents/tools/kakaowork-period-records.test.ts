@@ -385,6 +385,73 @@ describe("KakaoworkPeriodRecords", () => {
     });
   });
 
+  it("returns every period record and server-computed completeness in one call", () => {
+    const { packageDir } = fixture({ messageCount: 448 });
+    const records = createRecords(packageDir);
+    const result = records.execute({ operation: "read_period", period: "rolling_7d" });
+
+    expect(result).toMatchObject({
+      schema_version: "jitech-kakaowork-period-records-v2",
+      operation: "read_period",
+      status: "complete",
+      complete: true,
+      source_total_messages: 448,
+      returned_messages: 448,
+      processed_messages: 448,
+      failed_messages: 0,
+      uncovered_messages: 0,
+      duplicate_messages: 0,
+    });
+    expect(array(result.records)).toHaveLength(448);
+    expect(array(result.records)[0]).toMatchObject({
+      stable_message_id: evidenceId("room-a", "m-0000"),
+      conversation_id: "room-a",
+      sender: { user_id: "u-0", user_name: "사용자 0" },
+    });
+    expect(record(result.coverage)).toMatchObject({ batch_count: 3 });
+    expect(result.result_chars).toBe(JSON.stringify(result).length);
+  });
+
+  it("returns an explicit incomplete oversize result instead of partial records", () => {
+    const { packageDir } = fixture({ messageCount: 10 });
+    const result = new KakaoworkPeriodRecords({
+      packageDir,
+      nowMs: () => NOW_MS,
+      periodResultMaxChars: 1_000,
+    }).execute({ operation: "read_period", period: "rolling_7d" });
+
+    expect(result).toMatchObject({
+      status: "oversize",
+      complete: false,
+      source_total_messages: 10,
+      returned_messages: 0,
+      processed_messages: 0,
+      uncovered_messages: 10,
+      result_limit_chars: 1_000,
+      error: { code: "period_result_too_large" },
+    });
+    expect(result).not.toHaveProperty("records");
+  });
+
+  it("returns all records but never marks decrypt failures complete", () => {
+    const { packageDir } = fixture({ messageCount: 3, decryptFailureAt: 1 });
+    const result = createRecords(packageDir).execute({
+      operation: "read_period",
+      period: "rolling_7d",
+    });
+
+    expect(result).toMatchObject({
+      status: "incomplete",
+      complete: false,
+      source_total_messages: 3,
+      returned_messages: 3,
+      processed_messages: 2,
+      failed_messages: 1,
+      uncovered_messages: 0,
+    });
+    expect(array(result.records)).toHaveLength(3);
+  });
+
   it("reports exact missing and duplicate coverage", () => {
     const { packageDir } = fixture({ messageCount: 205 });
     const records = createRecords(packageDir);
@@ -632,7 +699,7 @@ describe("KakaoworkPeriodRecords", () => {
     ).toMatchObject({ status: "unavailable", error: { code: "schema_invalid" } });
   });
 
-  it("registers one product-only model tool and executes the fixed manifest surface", async () => {
+  it("registers one product-only model tool and executes the one-call period surface", async () => {
     const { packageDir } = fixture({ messageCount: 1 });
     expect(createKakaoworkPeriodRecordsTool({ packageDir })).toBeNull();
     process.env.JITECH_KWRAG_RUNTIME_PROFILE = "openclaw";
@@ -644,16 +711,24 @@ describe("KakaoworkPeriodRecords", () => {
       throw new Error("expected product tool");
     }
     expect(tool.name).toBe("jitech_kakaowork_period_records");
+    expect(tool.resultMaxChars).toBe(240_000);
     const schema = tool.parameters as unknown as Record<string, unknown>;
     const properties = record(schema.properties);
     expect(record(properties.cursor)).toMatchObject({ type: "string" });
     expect(properties).toHaveProperty("coverage");
     expect(properties).not.toHaveProperty("coverage_tokens");
     const result = await tool.execute("call-1", {
-      operation: "manifest",
+      operation: "read_period",
       period: "rolling_7d",
     });
-    expect(result.details).toMatchObject({ operation: "manifest", status: "ready" });
+    expect(result.details).toMatchObject({
+      operation: "read_period",
+      status: "complete",
+      source_total_messages: 1,
+      returned_messages: 1,
+    });
+    expect(result.content[0]).toMatchObject({ type: "text" });
+    expect((result.content[0] as { text: string }).text).toBe(JSON.stringify(result.details));
   });
 
   it("accepts a manifest token after the model loop rebuilds the tool object", async () => {

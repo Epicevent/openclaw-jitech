@@ -117,6 +117,12 @@ export type KakaoworkPeriodRecordsOptions = {
   batchMessageLimit?: number;
   batchByteLimit?: number;
   pageMessageLimit?: number;
+  periodResultMaxChars?: number;
+};
+
+export type ReadPeriodRequest = {
+  operation: "read_period";
+  period: KakaoworkPeriod;
 };
 
 export type ManifestRequest = {
@@ -137,7 +143,11 @@ export type ReconcileRequest = {
   coverage: BatchCoverage[];
 };
 
-export type KakaoworkPeriodRecordsRequest = ManifestRequest | ReadBatchRequest | ReconcileRequest;
+export type KakaoworkPeriodRecordsRequest =
+  | ReadPeriodRequest
+  | ManifestRequest
+  | ReadBatchRequest
+  | ReconcileRequest;
 
 class PackageContractError extends Error {
   constructor(
@@ -640,6 +650,42 @@ function periodResult(period: PeriodWindow) {
   };
 }
 
+function recordsResult(data: PackageData, messages: SourceMessage[]) {
+  const attachmentsByMessage = new Map<string, SourceAttachment[]>();
+  for (const attachment of data.attachments) {
+    const key = stableEvidenceId(attachment.conversationId, attachment.messageId);
+    const current = attachmentsByMessage.get(key) ?? [];
+    current.push(attachment);
+    attachmentsByMessage.set(key, current);
+  }
+  return messages.map((message) => ({
+    conversation_id: message.conversationId,
+    message_id: message.messageId,
+    stable_message_id: message.evidenceId,
+    room_name: message.roomName,
+    request_id: message.requestId,
+    sender: { user_id: message.userId, user_name: message.userName },
+    sent_time: message.sentTime,
+    local_time: toSeoulIso(message.sentTime),
+    text_kind: message.textKind,
+    plain_text: message.plainText,
+    decrypt_status: message.decryptStatus,
+    attachments: (attachmentsByMessage.get(message.evidenceId) ?? []).map((attachment) => {
+      const record: Record<string, unknown> = {
+        block_index: attachment.blockIndex,
+        block_type: attachment.blockType,
+        file_name: attachment.fileName,
+        mime_type: attachment.mimeType,
+        reference_status: attachment.referenceSafe ? "available" : "invalid",
+      };
+      if (attachment.referenceSafe && attachment.reference !== null) {
+        record.nas_reference = attachment.reference;
+      }
+      return record;
+    }),
+  }));
+}
+
 function unavailable(operation: string, error: unknown) {
   const code = error instanceof PackageContractError ? error.code : "package_unavailable";
   return {
@@ -673,6 +719,7 @@ export class KakaoworkPeriodRecords {
   readonly #batchMessageLimit: number;
   readonly #batchByteLimit: number;
   readonly #pageMessageLimit: number;
+  readonly #periodResultMaxChars: number;
 
   constructor(options: KakaoworkPeriodRecordsOptions) {
     this.#packageDir = options.packageDir;
@@ -680,12 +727,16 @@ export class KakaoworkPeriodRecords {
     this.#batchMessageLimit = options.batchMessageLimit ?? 200;
     this.#batchByteLimit = options.batchByteLimit ?? 32_768;
     this.#pageMessageLimit = options.pageMessageLimit ?? 50;
+    this.#periodResultMaxChars = options.periodResultMaxChars ?? 240_000;
   }
 
   execute(request: KakaoworkPeriodRecordsRequest): Record<string, unknown> {
     try {
       if (request.operation === "manifest") {
         return this.#manifest(request.period);
+      }
+      if (request.operation === "read_period") {
+        return this.#readPeriod(request.period);
       }
       if (request.operation === "read_batch") {
         return this.#readBatch(request.snapshotToken, request.batchId, request.cursor);
@@ -696,7 +747,7 @@ export class KakaoworkPeriodRecords {
     }
   }
 
-  #manifest(kind: KakaoworkPeriod): Record<string, unknown> {
+  #loadPeriod(kind: KakaoworkPeriod): { period: PeriodWindow; data: PackageData } {
     const period = resolveKakaoworkPeriod(kind, this.#nowMs());
     let data: PackageData | undefined;
     let lastError: unknown;
@@ -714,6 +765,96 @@ export class KakaoworkPeriodRecords {
     if (!data) {
       throw lastError;
     }
+    return { period, data };
+  }
+
+  #readPeriod(kind: KakaoworkPeriod): Record<string, unknown> {
+    const { period, data } = this.#loadPeriod(kind);
+    const batches = createBatches(data, this.#batchMessageLimit, this.#batchByteLimit);
+    const snapshotFreshness = freshness(data, period);
+    const decryptFailures = data.messages.filter(decryptFailed).length;
+    const unsafeAttachmentReferences = data.attachments.filter(
+      (attachment) => !attachment.referenceSafe,
+    ).length;
+    const complete =
+      decryptFailures === 0 && unsafeAttachmentReferences === 0 && !snapshotFreshness.stale;
+    const result: Record<string, unknown> = {
+      schema_version: "jitech-kakaowork-period-records-v2",
+      operation: "read_period",
+      status: complete ? "complete" : "incomplete",
+      complete,
+      period: periodResult(period),
+      connection: {
+        status: "connected",
+        read_only: true,
+        membership_room_count: data.membershipRoomCount,
+        database_digest: data.databaseDigest,
+        membership_digest: data.membershipDigest,
+      },
+      freshness: snapshotFreshness,
+      source_total_messages: data.messages.length,
+      returned_messages: data.messages.length,
+      processed_messages: data.messages.length - decryptFailures,
+      failed_messages: decryptFailures,
+      uncovered_messages: 0,
+      duplicate_messages: 0,
+      source_total_attachments: data.attachments.length,
+      unsafe_attachment_references: unsafeAttachmentReferences,
+      coverage: {
+        batch_count: batches.length,
+        records_digest: prefixedSha256(
+          canonicalJson(data.messages.map((message) => message.evidenceId)),
+        ),
+        batches: batches.map((batch) => ({
+          batch_id: batch.batchId,
+          conversation_id: batch.roomId,
+          room_name: batch.roomName,
+          local_date: batch.localDate,
+          message_count: batch.messages.length,
+          coverage_digest: batch.coverageDigest,
+        })),
+      },
+      records: recordsResult(data, data.messages),
+    };
+    const sizedResult: Record<string, unknown> = {
+      ...result,
+      result_chars: 0,
+      result_limit_chars: this.#periodResultMaxChars,
+    };
+    let resultChars = JSON.stringify(sizedResult).length;
+    sizedResult.result_chars = resultChars;
+    const finalResultChars = JSON.stringify(sizedResult).length;
+    if (finalResultChars !== resultChars) {
+      resultChars = finalResultChars;
+      sizedResult.result_chars = resultChars;
+    }
+    if (resultChars <= this.#periodResultMaxChars) {
+      return sizedResult;
+    }
+    return {
+      schema_version: "jitech-kakaowork-period-records-v2",
+      operation: "read_period",
+      status: "oversize",
+      complete: false,
+      period: periodResult(period),
+      connection: result.connection,
+      freshness: snapshotFreshness,
+      source_total_messages: data.messages.length,
+      returned_messages: 0,
+      processed_messages: 0,
+      failed_messages: decryptFailures,
+      uncovered_messages: data.messages.length,
+      duplicate_messages: 0,
+      source_total_attachments: data.attachments.length,
+      unsafe_attachment_references: unsafeAttachmentReferences,
+      required_result_chars: resultChars,
+      result_limit_chars: this.#periodResultMaxChars,
+      error: { code: "period_result_too_large", message: "period_result_too_large" },
+    };
+  }
+
+  #manifest(kind: KakaoworkPeriod): Record<string, unknown> {
+    const { period, data } = this.#loadPeriod(kind);
     const batches = createBatches(data, this.#batchMessageLimit, this.#batchByteLimit);
     const payload: SnapshotPayload = {
       version: 1,
@@ -840,22 +981,13 @@ export class KakaoworkPeriodRecords {
     const nextOffset = offset + page.length;
     const nextCursor =
       nextOffset < batch.messages.length
-        ? encodeState(
-            {
-              version: 1,
-              snapshotDigest: snapshotDigest(snapshot.payload),
-              batchId,
-              offset: nextOffset,
-            } satisfies CursorPayload,
-          )
+        ? encodeState({
+            version: 1,
+            snapshotDigest: snapshotDigest(snapshot.payload),
+            batchId,
+            offset: nextOffset,
+          } satisfies CursorPayload)
         : null;
-    const attachmentsByMessage = new Map<string, SourceAttachment[]>();
-    for (const attachment of snapshot.data.attachments) {
-      const key = stableEvidenceId(attachment.conversationId, attachment.messageId);
-      const current = attachmentsByMessage.get(key) ?? [];
-      current.push(attachment);
-      attachmentsByMessage.set(key, current);
-    }
     const result: Record<string, unknown> = {
       schema_version: "jitech-kakaowork-period-records-v1",
       operation: "read_batch",
@@ -865,32 +997,7 @@ export class KakaoworkPeriodRecords {
       next_cursor: nextCursor,
       returned_count: page.length,
       batch_total_count: batch.messages.length,
-      records: page.map((message) => ({
-        conversation_id: message.conversationId,
-        message_id: message.messageId,
-        stable_message_id: message.evidenceId,
-        room_name: message.roomName,
-        request_id: message.requestId,
-        sender: { user_id: message.userId, user_name: message.userName },
-        sent_time: message.sentTime,
-        local_time: toSeoulIso(message.sentTime),
-        text_kind: message.textKind,
-        plain_text: message.plainText,
-        decrypt_status: message.decryptStatus,
-        attachments: (attachmentsByMessage.get(message.evidenceId) ?? []).map((attachment) => {
-          const record: Record<string, unknown> = {
-            block_index: attachment.blockIndex,
-            block_type: attachment.blockType,
-            file_name: attachment.fileName,
-            mime_type: attachment.mimeType,
-            reference_status: attachment.referenceSafe ? "available" : "invalid",
-          };
-          if (attachment.referenceSafe && attachment.reference !== null) {
-            record.nas_reference = attachment.reference;
-          }
-          return record;
-        }),
-      })),
+      records: recordsResult(snapshot.data, page),
     };
     if (nextCursor === null) {
       result.batch_coverage_digest = batch.coverageDigest;

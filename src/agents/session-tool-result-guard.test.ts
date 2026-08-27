@@ -197,6 +197,26 @@ describe("installSessionToolResultGuard", () => {
     expect(text).toContain("truncated");
   });
 
+  it("honors a larger cap only for the tool that declares a bounded corpus result", () => {
+    const sm = SessionManager.inMemory();
+    installSessionToolResultGuard(sm, {
+      maxToolResultChars: 120,
+      toolResultMaxCharsByName: new Map([["period_records", 1_000]]),
+    });
+    appendAssistantToolCall(sm, { id: "period-call", name: "period_records" });
+    sm.appendMessage(
+      asAppendMessage({
+        role: "toolResult",
+        toolCallId: "period-call",
+        toolName: "period_records",
+        content: [{ type: "text", text: "x".repeat(800) }],
+        isError: false,
+      }),
+    );
+
+    expect(getToolResultText(getPersistedMessages(sm))).toHaveLength(800);
+  });
+
   it("backfills blank toolResult names from pending tool calls", () => {
     const sm = SessionManager.inMemory();
     installSessionToolResultGuard(sm);

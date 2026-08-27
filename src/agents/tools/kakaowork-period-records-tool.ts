@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { stringEnum } from "../schema/typebox.js";
 import type { AnyAgentTool } from "./common.js";
-import { asToolParamsRecord, jsonResult, ToolInputError } from "./common.js";
+import { asToolParamsRecord, jsonResult, textResult, ToolInputError } from "./common.js";
 import {
   defaultKakaoworkPackageDir,
   KAKAOWORK_PERIODS,
@@ -11,16 +11,19 @@ import {
   type KakaoworkPeriodRecordsRequest,
 } from "./kakaowork-period-records.js";
 
-const OPERATIONS = ["manifest", "read_batch", "reconcile"] as const;
+const OPERATIONS = ["read_period", "manifest", "read_batch", "reconcile"] as const;
+export const KAKAOWORK_PERIOD_RESULT_MAX_CHARS = 240_000;
 
 const parameters = Type.Object(
   {
     operation: stringEnum(OPERATIONS, {
-      description: "manifest, read_batch, or reconcile.",
+      description:
+        "Use read_period for a complete period in one call. Legacy operations remain compatible.",
     }),
     period: Type.Optional(
       stringEnum(KAKAOWORK_PERIODS, {
-        description: "Required only for manifest. Arbitrary date ranges are not accepted.",
+        description:
+          "Required for read_period and manifest. Arbitrary date ranges are not accepted.",
       }),
     ),
     snapshot_token: Type.Optional(
@@ -64,9 +67,9 @@ function parseRequest(value: unknown): KakaoworkPeriodRecordsRequest {
     throw new ToolInputError("operation invalid");
   }
   const operation = rawOperation as (typeof OPERATIONS)[number];
-  if (operation === "manifest") {
+  if (operation === "manifest" || operation === "read_period") {
     if (Object.keys(params).some((key) => !["operation", "period"].includes(key))) {
-      throw new ToolInputError("manifest arguments invalid");
+      throw new ToolInputError(`${operation} arguments invalid`);
     }
     const period = params.period;
     if (!KAKAOWORK_PERIODS.includes(period as KakaoworkPeriod)) {
@@ -135,11 +138,18 @@ export function createKakaoworkPeriodRecordsTool(
     name: "jitech_kakaowork_period_records",
     displaySummary: "Enumerate the authorized KakaoWork package with exact coverage.",
     description:
-      "Enumerates every authorized KakaoWork message for rolling_7d or " +
-      "previous_calendar_week. Call manifest first, read every returned batch page, then " +
-      "reconcile with every final batch coverage digest. The tool does not accept a user, room, path, " +
-      "SQL statement, or arbitrary date range.",
+      "Returns every authorized KakaoWork message and server-computed completeness for rolling_7d " +
+      "or previous_calendar_week in one read_period call. The tool does not accept a user, room, " +
+      "path, SQL statement, or arbitrary date range. Legacy manifest/read_batch/reconcile operations " +
+      "remain available for compatibility.",
     parameters,
-    execute: async (_toolCallId, params) => jsonResult(records.execute(parseRequest(params))),
+    resultMaxChars: KAKAOWORK_PERIOD_RESULT_MAX_CHARS,
+    execute: async (_toolCallId, params) => {
+      const request = parseRequest(params);
+      const result = records.execute(request);
+      return request.operation === "read_period"
+        ? textResult(JSON.stringify(result), result)
+        : jsonResult(result);
+    },
   };
 }

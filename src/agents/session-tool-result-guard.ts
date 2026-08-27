@@ -49,6 +49,15 @@ function resolveMaxToolResultChars(opts?: { maxToolResultChars?: number }): numb
   return Math.max(1, opts?.maxToolResultChars ?? DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS);
 }
 
+function resolveToolResultChars(
+  defaultMaxChars: number,
+  toolName: string | undefined,
+  overrides: ReadonlyMap<string, number> | undefined,
+): number {
+  const override = toolName ? overrides?.get(toolName) : undefined;
+  return override === undefined ? defaultMaxChars : Math.max(defaultMaxChars, override);
+}
+
 type UserAgentMessage = Extract<AgentMessage, { role: "user" }>;
 
 function isUserAgentMessage(message: AgentMessage): message is UserAgentMessage {
@@ -551,6 +560,7 @@ export function installSessionToolResultGuard(
     ) => PluginHookBeforeMessageWriteResult | undefined;
     redactLoggingConfig?: ToolResultDetailRedactionConfig;
     maxToolResultChars?: number;
+    toolResultMaxCharsByName?: ReadonlyMap<string, number>;
     suppressNextUserMessagePersistence?: boolean;
     suppressTranscriptOnlyAssistantPersistence?: boolean;
     suppressAssistantErrorPersistence?: boolean;
@@ -688,11 +698,16 @@ export function installSessionToolResultGuard(
         pendingState.delete(id);
       }
       const normalizedToolResult = normalizePersistedToolResultName(nextMessage, toolName);
+      const resultMaxChars = resolveToolResultChars(
+        maxToolResultChars,
+        toolName,
+        opts?.toolResultMaxCharsByName,
+      );
       // Apply hard size cap before persistence to prevent oversized tool results
       // from consuming the entire context window on subsequent LLM calls.
       const capped = capToolResultForPersistence(
         persistMessage(normalizedToolResult),
-        maxToolResultChars,
+        resultMaxChars,
         redactionConfig,
       );
       const persisted = applyBeforeWriteHook(
@@ -706,7 +721,7 @@ export function installSessionToolResultGuard(
         return undefined;
       }
       return appendMessageAndCacheTranscriptSeq(
-        capToolResultForPersistence(persisted, maxToolResultChars, redactionConfig),
+        capToolResultForPersistence(persisted, resultMaxChars, redactionConfig),
       ).entryId;
     }
 
