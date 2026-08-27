@@ -20,7 +20,7 @@ export const SESSION_TITLE_SYSTEM_PROMPT =
 // tokens on reasoning first, so a small cap (e.g. 24) leaves no room for the
 // visible title and yields an empty suggestion. Gemini 3.7 Flash requires LOW
 // thinking at minimum, so retain enough headroom for its reasoning and title.
-export const SESSION_TITLE_MAX_TOKENS = 8192;
+export const SESSION_TITLE_MAX_TOKENS = 512;
 export const SESSION_TITLE_TIMEOUT_MS = 10_000;
 
 const MAX_TITLE_CHARS = 60;
@@ -109,17 +109,28 @@ export async function generateSessionTitle(params: {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SESSION_TITLE_TIMEOUT_MS);
   try {
-    const response = await completeWithPreparedSimpleCompletionModel({
-      model: prepared.model,
-      auth: prepared.auth,
-      cfg: params.cfg,
-      context: {
-        systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt, timestamp: Date.now() }],
-      },
-      options: { maxTokens: SESSION_TITLE_MAX_TOKENS, signal: controller.signal },
-    });
-    return sanitizeSuggestedSessionTitle(extractAssistantText(response));
+    const completeTitle = async (prompt: string): Promise<string> => {
+      const response = await completeWithPreparedSimpleCompletionModel({
+        model: prepared.model,
+        auth: prepared.auth,
+        cfg: params.cfg,
+        context: {
+          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
+          messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+        },
+        options: { maxTokens: SESSION_TITLE_MAX_TOKENS, signal: controller.signal },
+      });
+      return sanitizeSuggestedSessionTitle(extractAssistantText(response));
+    };
+    const title = await completeTitle(userPrompt);
+    if (title) {
+      return title;
+    }
+    return completeTitle(
+      userPrompt +
+        "\n\nThe previous attempt returned no visible title. " +
+        "Reply now with one non-empty title only, using at most 6 words.",
+    );
   } finally {
     clearTimeout(timer);
   }
