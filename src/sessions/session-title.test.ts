@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { buildSessionTitleUserPrompt, sanitizeSuggestedSessionTitle } from "./session-title.js";
+import {
+  buildSessionTitleUserPrompt,
+  sanitizeSuggestedSessionTitle,
+  SESSION_TITLE_MAX_TOKENS,
+} from "./session-title.js";
+
+test("keeps enough completion headroom for minimum-thinking title models", () => {
+  expect(SESSION_TITLE_MAX_TOKENS).toBeGreaterThanOrEqual(2048);
+});
 
 describe("sanitizeSuggestedSessionTitle", () => {
   test("trims and returns a plain title", () => {

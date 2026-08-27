@@ -18,8 +18,9 @@ export const SESSION_TITLE_SYSTEM_PROMPT =
 // Headroom, not a target: it caps the completion. Non-thinking models emit the
 // short title and stop early; thinking models (e.g. gemini-2.5-flash) spend
 // tokens on reasoning first, so a small cap (e.g. 24) leaves no room for the
-// visible title and yields an empty suggestion. 512 covers both.
-export const SESSION_TITLE_MAX_TOKENS = 512;
+// visible title and yields an empty suggestion. Gemini 3.7 Flash requires LOW
+// thinking at minimum, so retain enough headroom for its reasoning and title.
+export const SESSION_TITLE_MAX_TOKENS = 2048;
 export const SESSION_TITLE_TIMEOUT_MS = 10_000;
 
 const MAX_TITLE_CHARS = 60;
