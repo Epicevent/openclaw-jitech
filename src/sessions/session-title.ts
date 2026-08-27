@@ -20,7 +20,7 @@ export const SESSION_TITLE_SYSTEM_PROMPT =
 // tokens on reasoning first, so a small cap (e.g. 24) leaves no room for the
 // visible title and yields an empty suggestion. Gemini 3.7 Flash requires LOW
 // thinking at minimum, so retain enough headroom for its reasoning and title.
-export const SESSION_TITLE_MAX_TOKENS = 2048;
+export const SESSION_TITLE_MAX_TOKENS = 8192;
 export const SESSION_TITLE_TIMEOUT_MS = 10_000;
 
 const MAX_TITLE_CHARS = 60;

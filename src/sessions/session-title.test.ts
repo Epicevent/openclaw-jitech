@@ -6,7 +6,7 @@ import {
 } from "./session-title.js";
 
 test("keeps enough completion headroom for minimum-thinking title models", () => {
-  expect(SESSION_TITLE_MAX_TOKENS).toBeGreaterThanOrEqual(2048);
+  expect(SESSION_TITLE_MAX_TOKENS).toBeGreaterThanOrEqual(8192);
 });
 
 describe("sanitizeSuggestedSessionTitle", () => {
