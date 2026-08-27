@@ -106,9 +106,11 @@ export async function generateSessionTitle(params: {
   if ("error" in prepared) {
     throw new Error(prepared.error);
   }
+  const isGemini37Flash = /(?:^|\/)gemini-3\.7-flash(?:-|$)/.test(
+    prepared.selection.modelId.toLowerCase(),
+  );
   const maxTokens =
-    /(?:^|\/)gemini-3\.7-flash(?:-|$)/.test(prepared.selection.modelId.toLowerCase()) &&
-    typeof prepared.model.maxTokens === "number"
+    isGemini37Flash && typeof prepared.model.maxTokens === "number"
       ? prepared.model.maxTokens
       : SESSION_TITLE_MAX_TOKENS;
   const controller = new AbortController();
@@ -120,8 +122,14 @@ export async function generateSessionTitle(params: {
         auth: prepared.auth,
         cfg: params.cfg,
         context: {
-          systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
+          ...(!isGemini37Flash ? { systemPrompt: SESSION_TITLE_SYSTEM_PROMPT } : {}),
+          messages: [
+            {
+              role: "user",
+              content: isGemini37Flash ? SESSION_TITLE_SYSTEM_PROMPT + "\n\n" + prompt : prompt,
+              timestamp: Date.now(),
+            },
+          ],
         },
         options: { maxTokens, signal: controller.signal },
       });
