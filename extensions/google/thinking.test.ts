@@ -67,6 +67,27 @@ describe("google thinking policy", () => {
     ).toBe(expected);
   });
 
+  it.each([
+    ["off", "LOW"],
+    ["minimal", "LOW"],
+  ] as const)("uses LOW as Gemini 3.7 Flash minimum for %s", (thinkingLevel, expected) => {
+    expect(
+      resolveGoogleGemini3ThinkingLevel({
+        modelId: "google/gemini-3.7-flash",
+        thinkingLevel,
+      }),
+    ).toBe(expected);
+  });
+
+  it("maps Gemini 3.7 Flash zero budget to LOW", () => {
+    expect(
+      resolveGoogleGemini3ThinkingLevel({
+        modelId: "google/gemini-3.7-flash",
+        thinkingBudget: 0,
+      }),
+    ).toBe("LOW");
+  });
+
   it("removes thinkingBudget=0 for Gemini 2.5 Pro", () => {
     const payload = {
       config: {

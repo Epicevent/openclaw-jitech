@@ -440,10 +440,15 @@ export function resolveGoogleGemini3ThinkingLevel(params: {
   if (!isGoogleGemini3FlashModel(params.modelId)) {
     return undefined;
   }
+  const minimumThinkingLevel = /(?:^|\/)gemini-3\.7-flash(?:-|$)/.test(
+    normalizeLowercaseStringOrEmpty(params.modelId),
+  )
+    ? "LOW"
+    : "MINIMAL";
   switch (params.thinkingLevel) {
     case "off":
     case "minimal":
-      return "MINIMAL";
+      return minimumThinkingLevel;
     case "low":
       return "LOW";
     case "medium":
@@ -464,7 +469,7 @@ export function resolveGoogleGemini3ThinkingLevel(params: {
     return undefined;
   }
   if (params.thinkingBudget <= 0) {
-    return "MINIMAL";
+    return minimumThinkingLevel;
   }
   if (params.thinkingBudget <= 2048) {
     return "LOW";
