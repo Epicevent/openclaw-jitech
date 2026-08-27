@@ -907,7 +907,7 @@ function resolveGoogleGemini3RetryThinkingLevel(modelId: string): GoogleThinking
     return "LOW";
   }
   if (isGoogleGemini3FlashModel(modelId)) {
-    if (modelId.toLowerCase().startsWith("gemini-3.7-flash")) {
+    if (/(?:^|\/)gemini-3\.7-flash(?:-|$)/.test(modelId.toLowerCase())) {
       return "LOW";
     }
     return "MINIMAL";
