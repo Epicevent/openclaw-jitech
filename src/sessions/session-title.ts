@@ -139,11 +139,12 @@ export async function generateSessionTitle(params: {
     if (title) {
       return title;
     }
-    return completeTitle(
-      userPrompt +
-        "\n\nThe previous attempt returned no visible title. " +
-        "Reply now with one non-empty title only, using at most 6 words.",
-    );
+    const fallbackSource =
+      params.fields.firstUserMessage ?? params.fields.lastMessagePreview ?? "Conversation";
+    const fallbackTitle =
+      sanitizeSuggestedSessionTitle(fallbackSource.trim().split(/\s+/).slice(0, 6).join(" ")) ||
+      "Conversation";
+    return completeTitle("Reply with exactly: " + fallbackTitle);
   } finally {
     clearTimeout(timer);
   }
