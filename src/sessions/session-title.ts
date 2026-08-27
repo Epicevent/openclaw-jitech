@@ -106,6 +106,11 @@ export async function generateSessionTitle(params: {
   if ("error" in prepared) {
     throw new Error(prepared.error);
   }
+  const maxTokens =
+    /(?:^|\/)gemini-3\.7-flash(?:-|$)/.test(prepared.selection.modelId.toLowerCase()) &&
+    typeof prepared.model.maxTokens === "number"
+      ? prepared.model.maxTokens
+      : SESSION_TITLE_MAX_TOKENS;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SESSION_TITLE_TIMEOUT_MS);
   try {
@@ -118,7 +123,7 @@ export async function generateSessionTitle(params: {
           systemPrompt: SESSION_TITLE_SYSTEM_PROMPT,
           messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
         },
-        options: { maxTokens: SESSION_TITLE_MAX_TOKENS, signal: controller.signal },
+        options: { maxTokens, signal: controller.signal },
       });
       return sanitizeSuggestedSessionTitle(extractAssistantText(response));
     };
