@@ -144,7 +144,7 @@ export async function generateSessionTitle(params: {
     const fallbackTitle =
       sanitizeSuggestedSessionTitle(fallbackSource.trim().split(/\s+/).slice(0, 6).join(" ")) ||
       "Conversation";
-    return completeTitle("Reply with exactly: " + fallbackTitle);
+    return fallbackTitle;
   } finally {
     clearTimeout(timer);
   }
