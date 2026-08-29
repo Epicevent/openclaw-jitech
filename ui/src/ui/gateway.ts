@@ -175,6 +175,8 @@ export type GatewayHelloOk = {
     connId?: string;
   };
   features?: { methods?: string[]; events?: string[] };
+  /** Server-decided UI feature visibility (release pacing; default off). */
+  uiFeatures?: { sessionFolders?: boolean };
   snapshot?: unknown;
   auth: {
     deviceToken?: string;

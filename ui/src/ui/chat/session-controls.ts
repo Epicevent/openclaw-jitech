@@ -593,6 +593,9 @@ export function resolveSessionOptionGroups(
 ): SessionOptionGroup[] {
   const rows = sessions?.sessions ?? [];
   const hideCron = state.sessionsHideCron ?? true;
+  // Release pacing (hello.uiFeatures): folder locations stay hidden in the
+  // picker until this deployment reveals the session-folder UI.
+  const showFolderPath = state.hello?.uiFeatures?.sessionFolders === true;
   const activeAgentId = resolveChatAgentFilterId(state, sessionKey);
   const defaultAgentId = normalizeAgentId(state.agentsList?.defaultId ?? "main");
   const byKey = new Map<string, SessionsListResult["sessions"][number]>();
@@ -632,7 +635,7 @@ export function resolveSessionOptionGroups(
     const scopeLabel = normalizeOptionalString(parsed?.rest) ?? key;
     group.options.push({
       key,
-      label: resolveSessionScopedOptionLabel(key, row, parsed?.rest),
+      label: resolveSessionScopedOptionLabel(key, row, parsed?.rest, showFolderPath),
       scopeLabel,
       title: key,
     });
@@ -756,6 +759,7 @@ function resolveSessionScopedOptionLabel(
   key: string,
   row?: SessionsListResult["sessions"][number],
   rest?: string,
+  showFolderPath = false,
 ) {
   const base = normalizeOptionalString(rest) ?? key;
   if (!row) {
@@ -770,7 +774,11 @@ function resolveSessionScopedOptionLabel(
       : base;
 
   // Keep the picker consistent with the sidebar folder tree: a session filed
-  // under a folder shows its location here too.
+  // under a folder shows its location here too — but only once the folder UI
+  // is revealed for this deployment (release pacing).
+  if (!showFolderPath) {
+    return named;
+  }
   const folderPath = normalizeOptionalString(row.folderPath);
   return folderPath ? `${folderPath} / ${named}` : named;
 }

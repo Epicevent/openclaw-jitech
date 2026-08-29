@@ -750,6 +750,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "ui.assistant": "Assistant Appearance",
   "ui.assistant.name": "Assistant Name",
   "ui.assistant.avatar": "Assistant Avatar",
+  "ui.sessionFolders": "Session Folder UI",
   "browser.evaluateEnabled": "Browser Evaluate Enabled",
   "browser.snapshotDefaults": "Browser Snapshot Defaults",
   "browser.snapshotDefaults.mode": "Browser Snapshot Mode",

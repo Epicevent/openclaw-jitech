@@ -70,11 +70,15 @@ function labelsForSessionOptions(params: {
   sessionKey: string;
   sessions?: SessionRow[];
   agentsList?: AppViewState["agentsList"];
+  sessionFoldersEnabled?: boolean;
 }) {
   const groups = resolveSessionOptionGroups(
     {
       sessionsHideCron: true,
       agentsList: params.agentsList ?? null,
+      hello: params.sessionFoldersEnabled
+        ? ({ uiFeatures: { sessionFolders: true } } as AppViewState["hello"])
+        : null,
     } as AppViewState,
     params.sessionKey,
     {
@@ -534,14 +538,25 @@ describe("resolveSessionOptionGroups", () => {
     expect(labels).toEqual(["Subagent: cron-config-check"]);
   });
 
-  it("prefixes the folder path so the picker mirrors the sidebar tree", () => {
+  it("prefixes the folder path when the session-folder UI is revealed", () => {
+    const sessionKey = "agent:main:dashboard:78c82f42-e3ad-4023-ba96-d1a81052af12";
+    const labels = labelsForSessionOptions({
+      sessionKey,
+      sessions: [row({ key: sessionKey, label: "테스트 B", folderPath: "전구체/액상" })],
+      sessionFoldersEnabled: true,
+    });
+
+    expect(labels).toEqual(["전구체/액상 / 테스트 B"]);
+  });
+
+  it("hides the folder path by default (release pacing: unrevealed deployment)", () => {
     const sessionKey = "agent:main:dashboard:78c82f42-e3ad-4023-ba96-d1a81052af12";
     const labels = labelsForSessionOptions({
       sessionKey,
       sessions: [row({ key: sessionKey, label: "테스트 B", folderPath: "전구체/액상" })],
     });
 
-    expect(labels).toEqual(["전구체/액상 / 테스트 B"]);
+    expect(labels).toEqual(["테스트 B"]);
   });
 
   it("keeps the active subagent session visible when no row exists yet", () => {

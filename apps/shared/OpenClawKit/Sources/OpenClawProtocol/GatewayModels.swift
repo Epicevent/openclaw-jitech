@@ -113,6 +113,7 @@ public struct HelloOk: Codable, Sendable {
     public let _protocol: Int
     public let server: [String: AnyCodable]
     public let features: [String: AnyCodable]
+    public let uifeatures: [String: AnyCodable]?
     public let snapshot: Snapshot
     public let pluginsurfaceurls: [String: AnyCodable]?
     public let auth: [String: AnyCodable]
@@ -123,6 +124,7 @@ public struct HelloOk: Codable, Sendable {
         _protocol: Int,
         server: [String: AnyCodable],
         features: [String: AnyCodable],
+        uifeatures: [String: AnyCodable]?,
         snapshot: Snapshot,
         pluginsurfaceurls: [String: AnyCodable]?,
         auth: [String: AnyCodable],
@@ -132,6 +134,7 @@ public struct HelloOk: Codable, Sendable {
         self._protocol = _protocol
         self.server = server
         self.features = features
+        self.uifeatures = uifeatures
         self.snapshot = snapshot
         self.pluginsurfaceurls = pluginsurfaceurls
         self.auth = auth
@@ -143,6 +146,7 @@ public struct HelloOk: Codable, Sendable {
         case _protocol = "protocol"
         case server
         case features
+        case uifeatures = "uiFeatures"
         case snapshot
         case pluginsurfaceurls = "pluginSurfaceUrls"
         case auth
